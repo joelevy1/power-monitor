@@ -1,0 +1,20 @@
+# Secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated docs (regenerate with build_cheat_sheet_docx.py)
+boat_monitor/WIRING_CHEAT_SHEET_v2.docx
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Nested P1 clone (track via github.com/joelevy1/remotebatterystatus)
+remotebatterystatus/
