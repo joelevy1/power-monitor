@@ -1,0 +1,46 @@
+{
+  "version": "0.2.0",
+  "notes": "Initial manifest-driven OTA bundle for Boat Monitor P2.",
+  "files": [
+    {
+      "path": "version.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
+    },
+    {
+      "path": "config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/config.py"
+    },
+    {
+      "path": "main.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
+    },
+    {
+      "path": "field_console.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/field_console.py"
+    },
+    {
+      "path": "ota.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+    },
+    {
+      "path": "ota_config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_config.py"
+    },
+    {
+      "path": "bench_test.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/bench_test.py"
+    },
+    {
+      "path": "modem_check.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_check.py"
+    },
+    {
+      "path": "ble_probe.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_probe.py"
+    },
+    {
+      "path": "ble_status.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_status.py"
+    }
+  ]
+}

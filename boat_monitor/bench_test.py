@@ -85,7 +85,8 @@ class INA219:
 def setup():
     inputs = {}
     for _label, gpio, _harness in cfg.HARNESS_SIGNALS:
-        inputs[gpio] = Pin(gpio, Pin.IN)
+        # HY-M154 / PC817 outputs are open-collector style: idle=1, active=0.
+        inputs[gpio] = Pin(gpio, Pin.IN, Pin.PULL_UP)
 
     tps_stat = Pin(cfg.PIN_TPS_STAT, Pin.IN)
     vsns = Pin(cfg.PIN_TPS_VSNS, Pin.OUT, value=0)
