@@ -60,6 +60,8 @@ https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota
 - The updater writes each downloaded file to `<name>.new` before replacing the
   current file.
 - The previous file is kept as `<name>.bak` where possible.
+- Keep device-specific secrets in `secrets.py` on the Pico only. Do not add
+  `secrets.py` to `ota_manifest.json`; it is intentionally ignored by git.
 - Avoid removing or renaming `ota.py` and `ota_config.py` from the manifest
   unless you have tested the replacement path.
 - Keep `bench_test.py` and `modem_check.py` available as recovery/debug tools.

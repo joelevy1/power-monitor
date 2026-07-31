@@ -1,6 +1,12 @@
 # Secrets
 .env
 *.env.local
+secrets.py
+boat_monitor/secrets.py
+local_config.py
+boat_monitor/local_config.py
+device_secrets.py
+boat_monitor/device_secrets.py
 
 # Python
 __pycache__/
