@@ -1,0 +1,30 @@
+{
+  "name": "boat-monitor-app",
+  "version": "0.1.0",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo run:ios",
+    "eas:ios": "eas build --platform ios --profile preview --non-interactive",
+    "eas:ios:prod": "eas build --platform ios --profile production --non-interactive",
+    "eas:submit:ios": "eas submit --platform ios --latest --profile production --non-interactive"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^14.0.0",
+    "buffer": "^6.0.3",
+    "expo": "~50.0.0",
+    "expo-build-properties": "~0.11.1",
+    "expo-constants": "~15.4.6",
+    "expo-status-bar": "~1.11.1",
+    "react": "18.2.0",
+    "react-native": "0.73.6",
+    "react-native-ble-plx": "^3.5.1"
+  },
+  "devDependencies": {
+    "@expo/config-plugins": "~7.9.2"
+  },
+  "engines": {
+    "node": ">=18 <=24"
+  }
+}

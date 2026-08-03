@@ -21,6 +21,7 @@ FILES = (
     "ota_config.py",
     "ota.py",
     "version.py",
+    "ble_service.py",
     "field_console.py",
     "main.py",
 )

@@ -1,6 +1,6 @@
 {
-  "version": "0.2.0",
-  "notes": "Initial manifest-driven OTA bundle for Boat Monitor P2.",
+  "version": "0.3.0",
+  "notes": "BLE-first Boat Monitor app service with Wi-Fi service-mode fallback.",
   "files": [
     {
       "path": "version.py",
@@ -41,6 +41,10 @@
     {
       "path": "ble_status.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_status.py"
+    },
+    {
+      "path": "ble_service.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
     }
   ]
 }

@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Boat Monitor",
+    "slug": "boat-monitor",
+    "scheme": "boatmonitor",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.joelevy.boatmonitor",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to your boat monitor.",
+        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to your boat monitor.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "newArchEnabled": false,
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
+    ]
+  }
+}

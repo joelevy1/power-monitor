@@ -13,4 +13,19 @@ try:
 except Exception as exc:
     print("OTA config unavailable:", exc)
 
-import field_console
+try:
+    import os
+
+    try:
+        os.stat("wifi_mode.txt")
+        os.remove("wifi_mode.txt")
+        print("Starting Wi-Fi service console")
+        import field_console
+    except OSError:
+        print("Starting BLE service")
+        import ble_service
+
+        ble_service.main()
+except Exception as exc:
+    print("BLE service failed, falling back to Wi-Fi:", exc)
+    import field_console

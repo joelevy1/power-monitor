@@ -9,6 +9,7 @@ Copy these files to the Pico:
 
 - `config.py`
 - `main.py`
+- `ble_service.py`
 - `field_console.py`
 - `ota.py`
 - `ota_config.py`
@@ -20,6 +21,12 @@ Optional debug/service files:
 - `modem_check.py`
 - `ble_probe.py`
 - `ble_status.py`
+
+## Default boot behavior (0.3.0+)
+
+- Normal boot starts the **BLE** service (`BoatMonitor` advertisement).
+- Use the iOS app or send a BLE command `wifi` to reboot into the **Wi‑Fi** field console (`wifi_mode.txt` one-shot flag).
+- If BLE fails to start, `main.py` falls back to the Wi‑Fi field console.
 
 ## Manual OTA from the Pico REPL
 
