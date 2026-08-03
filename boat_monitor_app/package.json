@@ -8,7 +8,9 @@
     "ios": "expo run:ios",
     "eas:ios": "eas build --platform ios --profile preview --non-interactive",
     "eas:ios:prod": "eas build --platform ios --profile production --non-interactive",
-    "eas:submit:ios": "eas submit --platform ios --latest --profile production --non-interactive"
+    "eas:ios:next": "eas build --platform ios --profile production_xcode26 --non-interactive",
+    "eas:submit:ios": "eas submit --platform ios --latest --profile production --non-interactive",
+    "eas:submit:ios:next": "eas submit --platform ios --latest --profile production_xcode26 --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",

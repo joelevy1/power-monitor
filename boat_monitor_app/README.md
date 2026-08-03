@@ -2,11 +2,13 @@
 
 Expo / React Native app that connects to the Pico W over BLE. Your phone can stay on cellular data while you read status and send service commands (refresh, Wi‑Fi service mode, OTA, reboot).
 
+**TestFlight from a PC (no Mac):** follow **[EAS_CI.md](./EAS_CI.md)** — same GitHub Actions + `EXPO_TOKEN` pattern as [ballast-app](https://github.com/joelevy1/ballast-app).
+
 ## Prerequisites
 
 - Node 18–24
-- Apple Developer account (for TestFlight / device builds)
-- [EAS CLI](https://docs.expo.dev/build/setup/): `npm install -g eas-cli`
+- Apple Developer account (for TestFlight)
+- [EAS CLI](https://docs.expo.dev/build/setup/): `npm install -g eas-cli` (optional if you only use GitHub Actions)
 
 ## Local development
 
@@ -18,16 +20,13 @@ npx expo start
 
 BLE requires a physical iPhone build; the iOS Simulator cannot talk to the boat monitor radio.
 
-## TestFlight (internal preview)
+## TestFlight via GitHub Actions (recommended)
 
-```bash
-cd boat_monitor_app
-npm install
-eas login
-eas build --platform ios --profile preview
-```
+1. Complete the one-time steps in **EAS_CI.md** (`eas init`, `EXPO_TOKEN`, Apple credentials on Expo).
+2. Merge to **`master`** (workflow triggers on pushes that change `boat_monitor_app/`).
+3. Open **TestFlight** on your iPhone after App Store Connect finishes processing the build.
 
-Install the build from the EAS link or add testers in App Store Connect. Bundle ID: `com.joelevy.boatmonitor`.
+Manual run: **Actions → EAS iOS build (Boat Monitor) → Run workflow**.
 
 ## Pico pairing
 

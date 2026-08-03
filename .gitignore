@@ -22,5 +22,9 @@ boat_monitor/WIRING_CHEAT_SHEET_v2.docx
 Thumbs.db
 desktop.ini
 
+# Node (Boat Monitor iOS app)
+boat_monitor_app/node_modules/
+boat_monitor_app/.expo/
+
 # Nested P1 clone (track via github.com/joelevy1/remotebatterystatus)
 remotebatterystatus/

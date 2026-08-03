@@ -20,6 +20,7 @@
       }
     },
     "plugins": [
+      "./plugins/withRemovePushEntitlement.js",
       [
         "expo-build-properties",
         {
