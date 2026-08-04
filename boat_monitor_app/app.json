@@ -6,7 +6,9 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "platforms": ["ios"],
+    "platforms": [
+      "ios"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.joelevy.boatmonitor",
@@ -30,6 +32,12 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d79c56f3-792d-4fca-bec4-99adfcfa7b18"
+      }
+    },
+    "owner": "joelevy"
   }
 }
