@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  InteractionManager,
   Platform,
   ScrollView,
   StyleSheet,
@@ -10,82 +9,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Constants from 'expo-constants';
-import { Buffer } from 'buffer';
-
-global.Buffer = Buffer;
+import appConfig from './app.json';
 
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
 
-const DEVICE_NAME = 'BoatMonitor';
-const SERVICE_UUID = '7e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const STATUS_UUID = '7e400002-b5a3-f393-e0a9-e50e24dcca9e';
-const COMMAND_UUID = '7e400003-b5a3-f393-e0a9-e50e24dcca9e';
-
-const APP_VERSION = Constants.expoConfig?.version || '0.0.0';
-const BUILD_LABEL = Constants.nativeBuildVersion || '?';
-
-function topInset() {
-  return (Constants.statusBarHeight || 0) + (Platform.OS === 'ios' ? 8 : 0);
-}
-
-function deviceLabel(device) {
-  return String(device?.name || device?.localName || '').trim();
-}
-
-function isBoatMonitor(device) {
-  if (!device) return false;
-  if (deviceLabel(device) === DEVICE_NAME) return true;
-  const uuids = device.serviceUUIDs;
-  return Array.isArray(uuids) && uuids.some((id) => String(id).toLowerCase() === SERVICE_UUID);
-}
-
-function waitForPoweredOn(manager, timeoutMs = 8000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      sub.remove();
-      reject(new Error('Bluetooth initialization timed out'));
-    }, timeoutMs);
-
-    const sub = manager.onStateChange((state) => {
-      if (state === 'PoweredOn') {
-        clearTimeout(timer);
-        sub.remove();
-        resolve();
-      } else if (state === 'Unsupported' || state === 'Unauthorized') {
-        clearTimeout(timer);
-        sub.remove();
-        reject(new Error(`Bluetooth is ${state}`));
-      }
-    }, true);
-  });
-}
-
-function decodeBleValue(value) {
-  if (!value) return '';
-  return Buffer.from(value, 'base64').toString('utf8');
-}
-
-function StatusRow({ label, value, danger }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, danger ? styles.danger : null]}>{value}</Text>
-    </View>
-  );
-}
-
-function fmtMetric(reading, field, digits = 2) {
-  if (!reading?.ok || typeof reading[field] !== 'number') return '--';
-  return reading[field].toFixed(digits);
-}
+const APP_VERSION = appConfig.expo.version || '0.0.0';
 
 export default function App() {
-  const bleManagerRef = useRef(null);
   const deviceRef = useRef(null);
   const monitorSubRef = useRef(null);
-  const [uiReady, setUiReady] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState(null);
@@ -93,25 +26,9 @@ export default function App() {
   const [message, setMessage] = useState('Not connected');
 
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => setUiReady(true));
-    return () => task.cancel();
-  }, []);
-
-  const ensureBleManager = useCallback(async () => {
-    if (bleManagerRef.current) return bleManagerRef.current;
-    const { BleManager } = await import('react-native-ble-plx');
-    const mgr = new BleManager();
-    bleManagerRef.current = mgr;
-    return mgr;
-  }, []);
-
-  useEffect(() => {
     return () => {
       monitorSubRef.current?.remove?.();
-      if (bleManagerRef.current) {
-        void bleManagerRef.current.destroy();
-        bleManagerRef.current = null;
-      }
+      import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
     };
   }, []);
 
@@ -122,38 +39,10 @@ export default function App() {
     setStatus(null);
     setRawStatus('');
 
-    let manager;
     try {
-      manager = await ensureBleManager();
-      await waitForPoweredOn(manager);
-      manager.stopDeviceScan();
-
-      const found = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          manager.stopDeviceScan();
-          reject(new Error('BoatMonitor not found'));
-        }, 12000);
-
-        manager.startDeviceScan(null, null, (error, device) => {
-          if (error) {
-            clearTimeout(timer);
-            manager.stopDeviceScan();
-            reject(error);
-            return;
-          }
-
-          if (isBoatMonitor(device)) {
-            clearTimeout(timer);
-            manager.stopDeviceScan();
-            resolve(device);
-          }
-        });
-      });
-
-      setMessage(`Connecting to ${deviceLabel(found) || found.id}...`);
-      const connectedDevice = await found.connect();
+      const ble = await import('./bleConnection');
+      const connectedDevice = await ble.scanAndConnect();
       deviceRef.current = connectedDevice;
-      await connectedDevice.discoverAllServicesAndCharacteristics();
 
       connectedDevice.onDisconnected(() => {
         setConnected(false);
@@ -164,14 +53,14 @@ export default function App() {
       });
 
       monitorSubRef.current = connectedDevice.monitorCharacteristicForService(
-        SERVICE_UUID,
-        STATUS_UUID,
+        ble.SERVICE_UUID,
+        ble.STATUS_UUID,
         (error, characteristic) => {
           if (error) {
             setMessage(`Notify error: ${error.message}`);
             return;
           }
-          const text = decodeBleValue(characteristic?.value);
+          const text = ble.decodeBleValue(characteristic?.value);
           setRawStatus(text);
           try {
             setStatus(JSON.parse(text));
@@ -181,8 +70,8 @@ export default function App() {
         },
       );
 
-      const first = await connectedDevice.readCharacteristicForService(SERVICE_UUID, STATUS_UUID);
-      const text = decodeBleValue(first.value);
+      const first = await connectedDevice.readCharacteristicForService(ble.SERVICE_UUID, ble.STATUS_UUID);
+      const text = ble.decodeBleValue(first.value);
       setRawStatus(text);
       try {
         setStatus(JSON.parse(text));
@@ -190,7 +79,7 @@ export default function App() {
         setStatus(null);
       }
       setConnected(true);
-      setMessage('Connected');
+      setMessage(`Connected to ${ble.deviceLabel(connectedDevice) || connectedDevice.id}`);
     } catch (error) {
       setMessage(error.message || String(error));
       Alert.alert('Connection failed', error.message || String(error));
@@ -224,29 +113,24 @@ export default function App() {
     }
 
     try {
-      const payload = Buffer.from(JSON.stringify({ cmd }), 'utf8').toString('base64');
-      await device.writeCharacteristicWithResponseForService(SERVICE_UUID, COMMAND_UUID, payload);
+      const ble = await import('./bleConnection');
+      const payload = ble.encodeBleCommand(cmd);
+      await device.writeCharacteristicWithResponseForService(ble.SERVICE_UUID, ble.COMMAND_UUID, payload);
       setMessage(`Sent command: ${cmd}`);
     } catch (error) {
       Alert.alert('Command failed', error.message || String(error));
     }
   }
 
-  if (!uiReady) {
-    return (
-      <View style={[styles.safe, { paddingTop: topInset() }]}>
-        <ActivityIndicator color="#93c5fd" />
-      </View>
-    );
-  }
-
   const inputs = status?.inputs || {};
   const mode = status?.mode || '--';
 
   return (
-    <View style={[styles.safe, { paddingTop: topInset() }]}>
-      <ScrollView contentContainerStyle={styles.container}>
+    <View style={styles.container}>
+      <View style={styles.header}>
         <Text style={styles.title}>Boat Monitor</Text>
+      </View>
+      <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.message}>{message}</Text>
 
         <View style={styles.buttonRow}>
@@ -287,10 +171,10 @@ export default function App() {
             <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('wifi')} disabled={!connected}>
               <Text style={styles.buttonText}>Start Wi-Fi</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.secondaryButton, styles.buttonSpacer]} onPress={() => sendCommand('ota')} disabled={!connected}>
+            <TouchableOpacity style={[styles.secondaryButton, styles.btnGap]} onPress={() => sendCommand('ota')} disabled={!connected}>
               <Text style={styles.buttonText}>OTA</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.dangerButton} onPress={() => sendCommand('reboot')} disabled={!connected}>
+            <TouchableOpacity style={[styles.dangerButton, styles.btnGap]} onPress={() => sendCommand('reboot')} disabled={!connected}>
               <Text style={styles.buttonText}>Reboot</Text>
             </TouchableOpacity>
           </View>
@@ -301,28 +185,43 @@ export default function App() {
           <Text style={styles.raw}>{rawStatus || 'No status yet'}</Text>
         </View>
 
-        <Text style={styles.buildLabel}>
-          v{APP_VERSION} (build {BUILD_LABEL})
-        </Text>
+        <Text style={styles.buildLabel}>v{APP_VERSION} — tap Connect BLE near Pico</Text>
       </ScrollView>
     </View>
   );
 }
 
+function StatusRow({ label, value, danger }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={[styles.rowValue, danger ? styles.danger : null]}>{value}</Text>
+    </View>
+  );
+}
+
+function fmtMetric(reading, field, digits = 2) {
+  if (!reading?.ok || typeof reading[field] !== 'number') return '--';
+  return reading[field].toFixed(digits);
+}
+
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-  },
-  container: {
-    padding: 18,
-    paddingBottom: 40,
+  container: { flex: 1, backgroundColor: '#0f172a' },
+  header: {
+    backgroundColor: '#1e3a5f',
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
   },
   title: {
     color: '#f8fafc',
     fontSize: 20,
     ...FW600,
-    marginBottom: 8,
+  },
+  scroll: {
+    padding: 18,
+    paddingBottom: 40,
   },
   message: {
     color: '#cbd5e1',
@@ -336,8 +235,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
-  buttonSpacer: {
+  btnGap: {
     marginLeft: 10,
+    marginTop: 10,
   },
   primaryButton: {
     flex: 1,
@@ -358,7 +258,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 10,
     alignItems: 'center',
-    marginLeft: 10,
   },
   buttonText: {
     color: '#fff',
