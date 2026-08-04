@@ -5,7 +5,7 @@
   },
   "build": {
     "smoke": {
-      "distribution": "internal",
+      "distribution": "store",
       "env": {
         "EXPO_PUBLIC_APP_VARIANT": "smoke"
       },
