@@ -2,27 +2,33 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  InteractionManager,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
 import { Buffer } from 'buffer';
 
 global.Buffer = Buffer;
 
-/** iOS 26: fontWeight can crash in native text layout (same fix as ballast-app). */
-const FW700 = Platform.OS === 'ios' ? {} : { fontWeight: '700' };
-const MONO_FONT = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
+const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
 
 const DEVICE_NAME = 'BoatMonitor';
 const SERVICE_UUID = '7e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const STATUS_UUID = '7e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const COMMAND_UUID = '7e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+const APP_VERSION = Constants.expoConfig?.version || '0.0.0';
+const BUILD_LABEL = Constants.nativeBuildVersion || '?';
+
+function topInset() {
+  return (Constants.statusBarHeight || 0) + (Platform.OS === 'ios' ? 8 : 0);
+}
 
 function deviceLabel(device) {
   return String(device?.name || device?.localName || '').trim();
@@ -65,7 +71,7 @@ function StatusRow({ label, value, danger }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, danger && styles.danger]}>{value}</Text>
+      <Text style={[styles.rowValue, danger ? styles.danger : null]}>{value}</Text>
     </View>
   );
 }
@@ -79,11 +85,17 @@ export default function App() {
   const bleManagerRef = useRef(null);
   const deviceRef = useRef(null);
   const monitorSubRef = useRef(null);
+  const [uiReady, setUiReady] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState(null);
   const [rawStatus, setRawStatus] = useState('');
   const [message, setMessage] = useState('Not connected');
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setUiReady(true));
+    return () => task.cancel();
+  }, []);
 
   const ensureBleManager = useCallback(async () => {
     if (bleManagerRef.current) return bleManagerRef.current;
@@ -220,19 +232,30 @@ export default function App() {
     }
   }
 
+  if (!uiReady) {
+    return (
+      <View style={[styles.safe, { paddingTop: topInset() }]}>
+        <ActivityIndicator color="#93c5fd" />
+      </View>
+    );
+  }
+
   const inputs = status?.inputs || {};
   const mode = status?.mode || '--';
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar style="light" />
+    <View style={[styles.safe, { paddingTop: topInset() }]}>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>Boat Monitor</Text>
         <Text style={styles.message}>{message}</Text>
 
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.primaryButton} onPress={connected ? disconnect : connect} disabled={scanning}>
-            {scanning ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{connected ? 'Disconnect' : 'Connect BLE'}</Text>}
+            {scanning ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>{connected ? 'Disconnect' : 'Connect BLE'}</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('refresh')} disabled={!connected}>
             <Text style={styles.buttonText}>Refresh</Text>
@@ -264,7 +287,7 @@ export default function App() {
             <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('wifi')} disabled={!connected}>
               <Text style={styles.buttonText}>Start Wi-Fi</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('ota')} disabled={!connected}>
+            <TouchableOpacity style={[styles.secondaryButton, styles.buttonSpacer]} onPress={() => sendCommand('ota')} disabled={!connected}>
               <Text style={styles.buttonText}>OTA</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.dangerButton} onPress={() => sendCommand('reboot')} disabled={!connected}>
@@ -277,8 +300,12 @@ export default function App() {
           <Text style={styles.cardTitle}>Raw BLE</Text>
           <Text style={styles.raw}>{rawStatus || 'No status yet'}</Text>
         </View>
+
+        <Text style={styles.buildLabel}>
+          v{APP_VERSION} (build {BUILD_LABEL})
+        </Text>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -293,8 +320,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#f8fafc',
-    fontSize: 32,
-    ...FW700,
+    fontSize: 20,
+    ...FW600,
     marginBottom: 8,
   },
   message: {
@@ -303,13 +330,14 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: 'row',
-    gap: 10,
     marginBottom: 14,
   },
   buttonRowWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+  },
+  buttonSpacer: {
+    marginLeft: 10,
   },
   primaryButton: {
     flex: 1,
@@ -317,6 +345,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 10,
     alignItems: 'center',
+    marginRight: 10,
   },
   secondaryButton: {
     backgroundColor: '#334155',
@@ -329,10 +358,11 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 10,
     alignItems: 'center',
+    marginLeft: 10,
   },
   buttonText: {
     color: '#fff',
-    ...FW700,
+    ...FW500,
   },
   card: {
     backgroundColor: '#1e293b',
@@ -342,14 +372,13 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     color: '#f8fafc',
-    fontSize: 20,
-    ...FW700,
+    fontSize: 18,
+    ...FW600,
     marginBottom: 10,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
     paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#334155',
@@ -357,6 +386,8 @@ const styles = StyleSheet.create({
   rowLabel: {
     color: '#cbd5e1',
     fontSize: 16,
+    flex: 1,
+    marginRight: 12,
   },
   rowValue: {
     color: '#f8fafc',
@@ -366,11 +397,17 @@ const styles = StyleSheet.create({
   },
   danger: {
     color: '#fca5a5',
-    ...FW700,
+    ...FW600,
   },
   raw: {
     color: '#cbd5e1',
-    fontFamily: MONO_FONT,
     fontSize: 12,
+  },
+  buildLabel: {
+    color: '#64748b',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 8,
+    ...FW500,
   },
 });
