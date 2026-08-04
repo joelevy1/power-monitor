@@ -3,7 +3,7 @@
     "name": "Boat Monitor",
     "slug": "boat-monitor",
     "scheme": "boatmonitor",
-    "version": "0.1.3",
+    "version": "0.1.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -25,12 +25,6 @@
     "plugins": [
       "./plugins/withRemovePushEntitlement.js",
       [
-        "react-native-ble-plx",
-        {
-          "bluetoothAlwaysPermission": "This app uses Bluetooth to connect to your boat monitor."
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "ios": {
@@ -38,7 +32,8 @@
             "deploymentTarget": "15.1"
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {

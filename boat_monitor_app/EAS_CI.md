@@ -1,98 +1,52 @@
-# EAS build automation (PC-friendly)
+# Boat Monitor iOS — test before EAS credits
 
-Same approach as **[ballast-app](https://github.com/joelevy1/ballast-app)**: **GitHub Actions on Linux** runs `eas build` and **`--auto-submit`** to TestFlight. You do **not** need a Mac for day-to-day releases.
+You cannot run the iPhone app from a Windows PC without **EAS** or a Mac. This repo adds **free GitHub checks** plus a **cheap diagnostic build** so you are not guessing on TestFlight.
 
-## One-time checklist
+## What runs automatically (free)
 
-Do these once (about 15–30 minutes). After that, pushes to `master` that touch `boat_monitor_app/` can ship to TestFlight automatically.
+On every push to `master` that touches `boat_monitor_app/`:
 
-### 1. Link this folder to an Expo project
+| Check | Runner | What it proves |
+|--------|--------|----------------|
+| **validate-js** | Linux | `expo-doctor`, JS bundles for **full** and **smoke** variants |
+| **ios-native-compile** | macOS | `pod install` + **Release simulator compile** for committed **full** `ios/` and a fresh **smoke** prebuild |
 
-On any PC (PowerShell or WSL), from the repo root:
+If **ios-native-compile** is green, the native shell and CocoaPods graph are sane. It still does **not** run on your physical iPhone.
 
-```bash
-cd boat_monitor_app
-npm install
-npx eas-cli login
-npx eas-cli init
-```
+## Recommended EAS order (manual — saves credits)
 
-- Choose **create a new project** (name e.g. `boat-monitor`).
-- Commit the updated `app.json` (`expo.extra.eas.projectId`).
+**Actions → EAS iOS build (Boat Monitor) → Run workflow**
 
-### 2. GitHub secret `EXPO_TOKEN`
+1. **`smoke`** — Internal distribution, **no BLE native module**, bundle id `com.joelevy.boatmonitor.smoke`.  
+   - Install from the Expo build page (QR / link).  
+   - **If this crashes on open:** signing, Expo shell, or device/OS issue — not BLE JS.  
+   - **If this opens:** the iOS shell is fine; continue.
 
-1. Expo: **Account settings → Access tokens** → create token (Build scope is enough).
-2. GitHub repo **power-monitor**: **Settings → Secrets and variables → Actions → New repository secret**
-   - Name: `EXPO_TOKEN`
-   - Value: paste the token.
+2. **`preview`** — Full app + BLE, **internal** only (no TestFlight submit).  
+   - Confirms BLE links and you can tap **Connect BLE** before store submit.
 
-(You can reuse the same token you already use for **ballast-app** if it is under the same Expo account.)
+3. **`production`** — TestFlight auto-submit (`ascAppId` in `eas.json`).  
+   - Uses **Xcode 16.4** image (same as smoke/preview) for stability.  
+   - Use **`production_xcode26`** only when you intentionally want the Xcode 26 image (Ballast-style).
 
-### 3. GitHub environment `eas-build` (optional approval gate)
+Production builds **do not** run on every push; only **Validate iOS app** does.
 
-**Settings → Environments → New environment** → name: `eas-build`  
-Add **Required reviewers** if you want to approve each build before EAS spends a credit. If the environment does not exist, create it before the first workflow run.
+## Local (PC)
 
-### 4. Apple credentials on Expo (required for auto-submit)
-
-Expo must be able to run **`eas submit` non-interactively**:
-
-- In [expo.dev](https://expo.dev) → your **boat-monitor** project → **Credentials** / **App Store Connect API key**, **or**
-- One **interactive** build (no `--non-interactive`) from PC/WSL:
+From `boat_monitor_app/`:
 
 ```bash
-cd boat_monitor_app
-npx eas-cli build --platform ios --profile production
+npm ci
+npm run validate
 ```
 
-Sign in to Apple when prompted and let EAS create provisioning for **`com.joelevy.boatmonitor`**. After one successful build, GitHub Actions can use `--non-interactive`.
+## If TestFlight still crashes immediately
 
-### 5. App Store Connect app record
+1. Run **smoke** first (above).  
+2. In App Store Connect → **Analytics → Crashes** or Xcode **Organizer**, copy the top frames (e.g. `ExceptionsManager`, `UIFont`, `BlePlx`).  
+3. Paste that excerpt in an issue — native vs JS is obvious from the stack.
 
-1. [App Store Connect](https://appstoreconnect.apple.com) → **Apps → +** → new app, bundle ID **`com.joelevy.boatmonitor`**.
-2. Optional but recommended: copy the numeric **Apple ID** from the app’s **App Information** page (URL looks like `.../apps/1234567890/...`) into `eas.json`:
+## Secrets
 
-```json
-"submit": {
-  "production": {
-    "ios": { "ascAppId": "1234567890" }
-  }
-}
-```
-
-(Same as ballast’s `ascAppId` in `ballast-app/eas.json`.)
-
-### 6. TestFlight testers
-
-App Store Connect → your app → **TestFlight** → add **internal** testers (your Apple ID). Assign the build to your group when processing finishes (often 15–30 minutes).
-
----
-
-## How CI works
-
-| Trigger | Behavior |
-|--------|----------|
-| Push to **`master`** changing `boat_monitor_app/**` | **`production`** iOS build + **`--auto-submit`** → TestFlight |
-| **Actions → EAS iOS build (Boat Monitor) → Run workflow** | Pick `production`, `production_xcode26`, or `preview` |
-| Commit message contains **`[skip-eas]`** | Skips the workflow on push |
-
-**`preview`** = internal distribution only (no auto-submit).  
-**`production`** / **`production_xcode26`** = store/TestFlight path (same Xcode image as ballast).
-
-Workflow file: `.github/workflows/eas-ios.yml` (runs with `working-directory: boat_monitor_app`).
-
-## Windows notes
-
-Local `eas build` on Windows often fails during upload (`EPERM` on `%TEMP%`). Prefer **GitHub Actions** or **WSL** — same as ballast’s `EAS_CI.md`.
-
-## Troubleshooting
-
-- **`app.json is missing expo.extra.eas.projectId`** → run `npx eas-cli init` and commit.
-- **`EXPO_TOKEN` / `eas whoami` failed** → regenerate token and update the GitHub secret.
-- **Credentials not set up in non-interactive mode** → complete step 4 once interactively.
-- **Auto-submit failed** → Expo dashboard → **Submissions** tab for the error; fix Apple API key / `ascAppId`, then re-run the workflow.
-
-## Pico firmware
-
-The iOS app is independent of CI. Flash **`ble_service.py`** + **`main.py`** (or OTA 0.3.0+) on the Pico before testing BLE.
+- GitHub **`EXPO_TOKEN`** — required for EAS workflow only.  
+- Optional **`eas-build`** environment with required reviewers so a build waits for your approval before it queues.
