@@ -1,45 +1,38 @@
-# EAS iOS builds from GitHub (Linux runner — same pattern as joelevy1/ballast-app).
-# App lives in boat_monitor_app/. For production profiles, --auto-submit queues TestFlight.
-# Requires repo secret: EXPO_TOKEN (https://expo.dev/account → Access tokens)
+# EAS iOS builds — manual only (saves credits). Run "smoke" first, then "production".
+# Requires: EXPO_TOKEN, eas-build environment (optional approval gate).
 #
-# One-time: GitHub → Settings → Environments → eas-build → required reviewers (optional gate).
+# Push to master runs validate-ios.yml instead (free bundle + expo-doctor).
 
 name: EAS iOS build (Boat Monitor)
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'boat_monitor_app/**'
-      - '.github/workflows/eas-ios.yml'
   workflow_dispatch:
     inputs:
       profile:
-        description: EAS profile (boat_monitor_app/eas.json)
+        description: EAS profile — run smoke before production
         required: true
-        default: production
+        default: smoke
         type: choice
         options:
+          - smoke
+          - preview
           - production
           - production_xcode26
-          - preview
 
 concurrency:
-  group: eas-ios-boat-monitor-${{ github.ref }}
+  group: eas-ios-boat-monitor
   cancel-in-progress: false
 
 jobs:
   build:
     environment: eas-build
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip-eas]') }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: boat_monitor_app
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      EAS_PROFILE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.profile || 'production' }}
+      EAS_PROFILE: ${{ github.event.inputs.profile }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -57,15 +50,12 @@ jobs:
       - name: Verify Expo project is linked
         run: |
           set -euo pipefail
-          if ! node -e "
+          node -e "
             const c = require('./app.json').expo;
             const id = c.extra && c.extra.eas && c.extra.eas.projectId;
-            if (!id) process.exit(1);
+            if (!id) { console.error('missing projectId'); process.exit(1); }
             console.log('EAS projectId:', id);
-          "; then
-            echo "::error::app.json is missing expo.extra.eas.projectId. One-time: cd boat_monitor_app && npx eas-cli login && npx eas-cli init — then commit app.json. See boat_monitor_app/EAS_CI.md"
-            exit 1
-          fi
+          "
 
       - name: Verify Expo authentication
         env:
@@ -73,22 +63,19 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${EXPO_TOKEN:-}" ]; then
-            echo "::error::Repository secret EXPO_TOKEN is missing. GitHub → Settings → Secrets and variables → Actions."
+            echo "::error::Missing EXPO_TOKEN"
             exit 1
           fi
-          if ! npx eas-cli@latest whoami; then
-            echo "::error::eas whoami failed — regenerate EXPO_TOKEN at expo.dev and update the repo secret."
-            exit 1
-          fi
+          npx eas-cli@latest whoami
 
-      - name: EAS Build (and queue TestFlight submit for store profiles)
+      - name: EAS Build (and TestFlight submit for production only)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
           LOG_FILE="$(mktemp)"
           SUBMIT_ARGS=()
-          if [ "${EAS_PROFILE:-}" != "preview" ]; then
+          if [ "${EAS_PROFILE:-}" = "production" ] || [ "${EAS_PROFILE:-}" = "production_xcode26" ]; then
             SUBMIT_ARGS+=(--auto-submit)
           fi
           set +e
@@ -98,10 +85,6 @@ jobs:
           set +o pipefail
           set -e
           if [ "$EXIT" -ne 0 ]; then
-            echo "### eas build failed — log tail (last 120 lines)" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo '```text' >> "$GITHUB_STEP_SUMMARY"
             tail -n 120 "$LOG_FILE" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
             exit "$EXIT"
           fi

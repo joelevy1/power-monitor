@@ -185,7 +185,7 @@ export default function App() {
           <Text style={styles.raw}>{rawStatus || 'No status yet'}</Text>
         </View>
 
-        <Text style={styles.buildLabel}>v{APP_VERSION} — tap Connect BLE near Pico</Text>
+        <Text style={styles.buildLabel}>v0.1.5 full — tap Connect BLE near Pico</Text>
       </ScrollView>
     </View>
   );

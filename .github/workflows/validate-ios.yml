@@ -1,0 +1,97 @@
+# Free checks before spending EAS credits (no iPhone required).
+# macOS job compiles the native iOS target (simulator) — closest thing to "will it launch?"
+# without EAS. It does NOT prove TestFlight behavior; use profile "smoke" on EAS for that.
+
+name: Validate iOS app (Boat Monitor)
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'boat_monitor_app/**'
+      - '.github/workflows/validate-ios.yml'
+  pull_request:
+    paths:
+      - 'boat_monitor_app/**'
+  workflow_dispatch:
+
+jobs:
+  validate-js:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: boat_monitor_app
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: boat_monitor_app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo doctor
+        continue-on-error: true
+        run: npx expo-doctor@latest
+
+      - name: Bundle iOS JS (full app)
+        env:
+          EXPO_PUBLIC_APP_VARIANT: full
+        run: npx expo export --platform ios --output-dir /tmp/expo-export-full
+
+      - name: Bundle iOS JS (smoke app)
+        env:
+          EXPO_PUBLIC_APP_VARIANT: smoke
+        run: npx expo export --platform ios --output-dir /tmp/expo-export-smoke
+
+  ios-native-compile:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: boat_monitor_app
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: full
+            use_committed_ios: true
+          - variant: smoke
+            use_committed_ios: false
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: boat_monitor_app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prebuild iOS (smoke only)
+        if: matrix.use_committed_ios == false
+        env:
+          EXPO_PUBLIC_APP_VARIANT: smoke
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: CocoaPods install
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Compile for iOS Simulator
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace ios/BoatMonitor.xcworkspace \
+            -scheme BoatMonitor \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
