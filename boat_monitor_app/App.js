@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,10 +11,13 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { BleManager } from 'react-native-ble-plx';
 import { Buffer } from 'buffer';
 
 global.Buffer = Buffer;
+
+/** iOS 26: fontWeight can crash in native text layout (same fix as ballast-app). */
+const FW700 = Platform.OS === 'ios' ? {} : { fontWeight: '700' };
+const MONO_FONT = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
 const DEVICE_NAME = 'BoatMonitor';
 const SERVICE_UUID = '7e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -72,7 +76,7 @@ function fmtMetric(reading, field, digits = 2) {
 }
 
 export default function App() {
-  const manager = useMemo(() => new BleManager(), []);
+  const bleManagerRef = useRef(null);
   const deviceRef = useRef(null);
   const monitorSubRef = useRef(null);
   const [scanning, setScanning] = useState(false);
@@ -81,12 +85,23 @@ export default function App() {
   const [rawStatus, setRawStatus] = useState('');
   const [message, setMessage] = useState('Not connected');
 
+  const ensureBleManager = useCallback(async () => {
+    if (bleManagerRef.current) return bleManagerRef.current;
+    const { BleManager } = await import('react-native-ble-plx');
+    const mgr = new BleManager();
+    bleManagerRef.current = mgr;
+    return mgr;
+  }, []);
+
   useEffect(() => {
     return () => {
       monitorSubRef.current?.remove?.();
-      manager.destroy();
+      if (bleManagerRef.current) {
+        void bleManagerRef.current.destroy();
+        bleManagerRef.current = null;
+      }
     };
-  }, [manager]);
+  }, []);
 
   async function connect() {
     if (scanning) return;
@@ -95,7 +110,9 @@ export default function App() {
     setStatus(null);
     setRawStatus('');
 
+    let manager;
     try {
+      manager = await ensureBleManager();
       await waitForPoweredOn(manager);
       manager.stopDeviceScan();
 
@@ -277,7 +294,7 @@ const styles = StyleSheet.create({
   title: {
     color: '#f8fafc',
     fontSize: 32,
-    fontWeight: '700',
+    ...FW700,
     marginBottom: 8,
   },
   message: {
@@ -315,7 +332,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
-    fontWeight: '700',
+    ...FW700,
   },
   card: {
     backgroundColor: '#1e293b',
@@ -326,7 +343,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     color: '#f8fafc',
     fontSize: 20,
-    fontWeight: '700',
+    ...FW700,
     marginBottom: 10,
   },
   row: {
@@ -349,11 +366,11 @@ const styles = StyleSheet.create({
   },
   danger: {
     color: '#fca5a5',
-    fontWeight: '700',
+    ...FW700,
   },
   raw: {
     color: '#cbd5e1',
-    fontFamily: 'Courier',
+    fontFamily: MONO_FONT,
     fontSize: 12,
   },
 });
