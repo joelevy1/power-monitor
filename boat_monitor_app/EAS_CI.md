@@ -17,7 +17,7 @@ If **ios-native-compile** is green, the native shell and CocoaPods graph are san
 
 **Actions → EAS iOS build (Boat Monitor) → Run workflow**
 
-1. **`smoke`** — Internal distribution, **no BLE native module**, bundle id `com.joelevy.boatmonitor.smoke`.  
+1. **`smoke`** — Internal distribution, **no BLE native module**, same bundle id as production (`com.joelevy.boatmonitor`) so Expo credentials reuse. App name shows **Boat Monitor Smoke**.  
    - The GitHub workflow **removes committed `ios/`** before upload so EAS runs a fresh prebuild for smoke.  
    - Install from the Expo build page (QR / link).  
    - **If this crashes on open:** signing, Expo shell, or device/OS issue — not BLE JS.  

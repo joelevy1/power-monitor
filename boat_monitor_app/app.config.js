@@ -20,7 +20,8 @@ module.exports = ({ config }) => {
     plugins,
     ios: {
       ...base.ios,
-      bundleIdentifier: isSmoke ? 'com.joelevy.boatmonitor.smoke' : base.ios.bundleIdentifier,
+      // Same bundle id as production so EAS internal credentials already on file work.
+      bundleIdentifier: base.ios.bundleIdentifier,
     },
   };
 };
