@@ -96,14 +96,51 @@ GOOGLE_SHEETS_ID = "your-spreadsheet-id-here"
 GOOGLE_SERVICE_ACCOUNT_FILE = r"C:\dev\secrets\boat-monitor-sheets.json"
 ```
 
-### For GitHub Actions / cloud agent (optional later)
+### For GitHub Actions / cloud agent
 
-Repo → **Settings** → **Secrets** → **Actions**:
+Repo → **Settings** → **Secrets and variables** → **Actions**:
 
 | Secret name | Value |
 |-------------|--------|
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Entire contents of the `.json` key file |
-| `GOOGLE_SHEETS_ID` | Spreadsheet ID from the URL |
+| `GOOGLE_SHEETS_ID` | Spreadsheet ID only (between `/d/` and `/edit` in the URL) |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Full service-account `.json` (see workarounds below) |
+
+**Rename:** If you created `YOUR_SPREADSHEET_ID`, add **`GOOGLE_SHEETS_ID`** with the same value (or keep `YOUR_SPREADSHEET_ID` — the bootstrap workflow accepts both).
+
+#### JSON in the GitHub web UI
+
+The **Value** field accepts multiline JSON. Paste the **entire** key file. Do not put JSON in the **Name** field.
+
+#### Easier: GitHub CLI from your PC (recommended)
+
+```powershell
+gh auth login
+gh secret set GOOGLE_SHEETS_ID --repo joelevy1/power-monitor --body "PASTE_SPREADSHEET_ID_HERE"
+Get-Content C:\dev\secrets\boat-monitor-sheets.json -Raw | gh secret set GOOGLE_SERVICE_ACCOUNT_JSON --repo joelevy1/power-monitor
+```
+
+#### Alternative: Base64 one-liner
+
+```powershell
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Content C:\dev\secrets\boat-monitor-sheets.json -Raw)))
+```
+
+Create secret **`GOOGLE_SERVICE_ACCOUNT_JSON_B64`** with that output. The **Bootstrap Google Sheets** workflow decodes it.
+
+#### Cursor cloud agent only
+
+Store **`GOOGLE_SERVICE_ACCOUNT_JSON`** and **`GOOGLE_SHEETS_ID`** in Cursor environment secrets — no Pico files, no GitHub JSON required for agent runs.
+
+---
+
+## 5b. Automate tabs + headers (§3.3–3.4)
+
+After the blank sheet exists and is **shared with the service account**:
+
+- **GitHub:** Actions → **Bootstrap Google Sheets** → Run workflow  
+- **Or PC/agent:** `python boat_monitor/sheets_bootstrap.py`
+
+Creates: `Power_Log`, `GPS_Log`, `Bilge_Log`, `Events`, `Config` and writes header row 1 on each.
 
 ---
 
