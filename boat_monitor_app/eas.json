@@ -11,7 +11,7 @@
         "EXPO_PUBLIC_APP_VARIANT": "smoke"
       },
       "ios": {
-        "image": "macos-sequoia-15.6-xcode-16.4"
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     },
     "preview": {
@@ -21,7 +21,7 @@
         "EXPO_PUBLIC_APP_VARIANT": "full"
       },
       "ios": {
-        "image": "macos-sequoia-15.6-xcode-16.4"
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     },
     "production": {
@@ -30,7 +30,7 @@
         "EXPO_PUBLIC_APP_VARIANT": "full"
       },
       "ios": {
-        "image": "macos-sequoia-15.6-xcode-16.4"
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     },
     "production_xcode26": {

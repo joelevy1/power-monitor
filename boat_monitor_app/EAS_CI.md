@@ -32,7 +32,7 @@ On every push to `master` that touches `boat_monitor_app/`:
 2. **`preview`** — Full app + BLE, **store** + **auto-submit** → TestFlight (full BLE before you rely on `production`).
 
 3. **`production`** / **`production_xcode26`** — Full app, TestFlight auto-submit.  
-   - Default image **Xcode 16.4**; use `production_xcode26` for the Xcode 26 image.
+   - **All profiles use the Xcode 26.2 image.** Apple now rejects App Store Connect uploads built with anything older ("must be built with the iOS 26 SDK or later, included in Xcode 26 or later") — an earlier Xcode 16.4 attempt failed submission with exactly that error.
 
 Approve the **`eas-build`** GitHub environment when prompted (optional credit gate — required reviewers must approve before the job runs).
 
