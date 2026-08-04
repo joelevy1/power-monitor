@@ -129,7 +129,11 @@ Create secret **`GOOGLE_SERVICE_ACCOUNT_JSON_B64`** with that output. The **Boot
 
 #### Cursor cloud agent only
 
-Store **`GOOGLE_SERVICE_ACCOUNT_JSON`** and **`GOOGLE_SHEETS_ID`** in Cursor environment secrets — no Pico files, no GitHub JSON required for agent runs.
+- **`GOOGLE_SERVICE_ACCOUNT_JSON`** — leave as your **spending / categorize-spend** key (all repos).
+- **`BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON`** — **boat-monitor-sheets** JSON (power-monitor only).
+- **`GOOGLE_SHEETS_ID`** — boat spreadsheet ID.
+
+Boat scripts prefer `BOAT_MONITOR_*` first so spending and boat do not conflict.
 
 ---
 

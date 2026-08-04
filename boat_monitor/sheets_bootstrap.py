@@ -37,35 +37,54 @@ TABS = {
 }
 
 
+def _service_account_raw():
+    for key in (
+        "BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON",
+        "GOOGLE_SERVICE_ACCOUNT_JSON",
+    ):
+        raw = os.environ.get(key, "").strip()
+        if raw:
+            return raw
+    secrets = Path(__file__).resolve().parent / "secrets.py"
+    if secrets.is_file():
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("boat_secrets", secrets)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        for attr in (
+            "BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON",
+            "GOOGLE_SERVICE_ACCOUNT_JSON",
+            "GOOGLE_SERVICE_ACCOUNT_FILE",
+        ):
+            val = getattr(mod, attr, "") or ""
+            if val:
+                return val
+    return ""
+
+
 def _credentials_path():
-    raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    raw = _service_account_raw()
     if not raw:
-        secrets = Path(__file__).resolve().parent / "secrets.py"
-        if secrets.is_file():
-            import importlib.util
-
-            spec = importlib.util.spec_from_file_location("boat_secrets", secrets)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            raw = getattr(mod, "GOOGLE_SERVICE_ACCOUNT_JSON", "") or ""
-            path = getattr(mod, "GOOGLE_SERVICE_ACCOUNT_FILE", "")
-            if path and Path(path).is_file():
-                return path
-
-    if raw.startswith("{"):
+        path = ""
+    elif raw.startswith("{"):
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         tmp.write(raw)
         tmp.close()
         return tmp.name
-
-    if raw and Path(raw).is_file():
+    elif Path(raw).is_file():
         return raw
+    else:
+        path = ""
 
     creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
     if creds and Path(creds).is_file():
         return creds
 
-    raise SystemExit("Missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS")
+    raise SystemExit(
+        "Missing BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SERVICE_ACCOUNT_JSON, "
+        "or GOOGLE_APPLICATION_CREDENTIALS"
+    )
 
 
 def _sheet_id():
