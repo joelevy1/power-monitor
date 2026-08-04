@@ -9,6 +9,7 @@ Boat house/engine power monitoring — Raspberry Pi Pico W on the boat.
 | Path | Description |
 |------|-------------|
 | `boat_monitor/` | **P2** — wiring docs, bench tests, field console, OTA-capable firmware |
+| `boat_monitor_app/` | **iOS** — Expo BLE app (TestFlight via `EAS_CI.md`; run `npm install` **here**, not repo root) |
 | `remotebatterystatus/` | **P1** — deployed firmware; mirrors [remotebatterystatus](https://github.com/joelevy1/remotebatterystatus) |
 | `BOAT_MONITOR_P2_PLAN.md` | Phased build plan |
 
