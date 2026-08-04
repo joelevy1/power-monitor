@@ -7,6 +7,10 @@ local_config.py
 boat_monitor/local_config.py
 device_secrets.py
 boat_monitor/device_secrets.py
+*-sa.json
+*service-account*.json
+google_service_account.json
+boat_monitor/google_service_account.json
 
 # Python
 __pycache__/
