@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,12 +9,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import appConfig from './app.json';
+import Constants from 'expo-constants';
 
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
 
-const APP_VERSION = appConfig.expo.version || '0.0.0';
+const APP_VERSION =
+  Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '0.0.0';
 
 export default function App() {
   const deviceRef = useRef(null);
@@ -24,13 +25,6 @@ export default function App() {
   const [status, setStatus] = useState(null);
   const [rawStatus, setRawStatus] = useState('');
   const [message, setMessage] = useState('Not connected');
-
-  useEffect(() => {
-    return () => {
-      monitorSubRef.current?.remove?.();
-      import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
-    };
-  }, []);
 
   async function connect() {
     if (scanning) return;
@@ -102,6 +96,7 @@ export default function App() {
       deviceRef.current = null;
       setConnected(false);
       setMessage('Disconnected');
+      import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
     }
   }
 
@@ -185,7 +180,7 @@ export default function App() {
           <Text style={styles.raw}>{rawStatus || 'No status yet'}</Text>
         </View>
 
-        <Text style={styles.buildLabel}>v0.1.5 full — tap Connect BLE near Pico</Text>
+        <Text style={styles.buildLabel}>v{APP_VERSION} full — tap Connect BLE near Pico</Text>
       </ScrollView>
     </View>
   );
