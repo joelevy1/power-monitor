@@ -47,6 +47,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare smoke variant (fresh prebuild on EAS, no full ios/)
+        if: ${{ github.event.inputs.profile == 'smoke' }}
+        run: rm -rf ios
+
       - name: Verify Expo project is linked
         run: |
           set -euo pipefail
