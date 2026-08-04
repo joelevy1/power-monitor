@@ -6,6 +6,7 @@
   "build": {
     "smoke": {
       "distribution": "store",
+      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_APP_VARIANT": "smoke"
       },
@@ -14,7 +15,8 @@
       }
     },
     "preview": {
-      "distribution": "internal",
+      "distribution": "store",
+      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_APP_VARIANT": "full"
       },
@@ -42,6 +44,16 @@
     }
   },
   "submit": {
+    "smoke": {
+      "ios": {
+        "ascAppId": "6797728128"
+      }
+    },
+    "preview": {
+      "ios": {
+        "ascAppId": "6797728128"
+      }
+    },
     "production": {
       "ios": {
         "ascAppId": "6797728128"
