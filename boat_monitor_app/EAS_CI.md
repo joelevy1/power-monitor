@@ -19,9 +19,11 @@ On every push to `master` that touches `boat_monitor_app/`:
 | **validate-js** | Linux | `expo-doctor`, JS bundles for **full** and **smoke** variants |
 | **ios-native-compile** | macOS | `pod install` + **Release simulator compile** for committed **full** `ios/` and a fresh **smoke** prebuild |
 
-## EAS profiles (manual workflow — all auto-submit to TestFlight)
+## EAS profiles (all auto-submit to TestFlight)
 
-**Actions → EAS iOS build (Boat Monitor) → Run workflow**
+**Every push to `master`** that touches `boat_monitor_app/**` runs an automatic **`production`** build + TestFlight submit (same pattern as Ballast). Add **`[skip-eas]`** to the commit message to skip a push (e.g. docs-only changes).
+
+**Actions → EAS iOS build (Boat Monitor) → Run workflow** for manual profiles:
 
 1. **`smoke`** — **Boat Monitor Smoke**, no BLE native, `EXPO_PUBLIC_APP_VARIANT=smoke`.  
    - Workflow **removes committed `ios/`** before upload so EAS prebuilds without BLE.  
@@ -32,7 +34,7 @@ On every push to `master` that touches `boat_monitor_app/`:
 3. **`production`** / **`production_xcode26`** — Full app, TestFlight auto-submit.  
    - Default image **Xcode 16.4**; use `production_xcode26` for the Xcode 26 image.
 
-Approve the **`eas-build`** GitHub environment when prompted (optional credit gate).
+Approve the **`eas-build`** GitHub environment when prompted (optional credit gate — required reviewers must approve before the job runs).
 
 ## Local (PC)
 

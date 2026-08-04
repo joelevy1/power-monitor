@@ -1,11 +1,20 @@
-# EAS iOS builds — manual dispatch; every profile uses --auto-submit to TestFlight.
+# EAS iOS builds — every profile uses --auto-submit to TestFlight.
+# Push to master (touching boat_monitor_app/**) → automatic "production" build + submit,
+# same pattern as the Ballast app. Put [skip-eas] in the commit message to skip (docs-only, etc).
+# Manual dispatch still available to run smoke/preview/production/production_xcode26 on demand.
 # Requires: EXPO_TOKEN, eas-build environment (optional approval gate).
 #
-# Push to master runs validate-ios.yml instead (free bundle + expo-doctor).
+# Push to master also runs validate-ios.yml (free bundle + expo-doctor + simulator compile).
 
 name: EAS iOS build (Boat Monitor)
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'boat_monitor_app/**'
+      - '.github/workflows/eas-ios.yml'
   workflow_dispatch:
     inputs:
       profile:
@@ -25,6 +34,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip-eas]') }}
     environment: eas-build
     runs-on: ubuntu-latest
     defaults:
@@ -32,7 +42,7 @@ jobs:
         working-directory: boat_monitor_app
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      EAS_PROFILE: ${{ github.event.inputs.profile }}
+      EAS_PROFILE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.profile || 'production' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
