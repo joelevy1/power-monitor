@@ -1,0 +1,39 @@
+name: Bootstrap Google Sheets
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r boat_monitor/requirements-sheets.txt
+
+      - name: Write service account key
+        env:
+          JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          B64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${B64:-}" ]; then
+            echo "$B64" | base64 -d > /tmp/sa.json
+          elif [ -n "${JSON:-}" ]; then
+            printf '%s' "$JSON" > /tmp/sa.json
+          else
+            echo "::error::Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_B64"
+            exit 1
+          fi
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json" >> "$GITHUB_ENV"
+
+      - name: Bootstrap tabs and headers
+        env:
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          YOUR_SPREADSHEET_ID: ${{ secrets.YOUR_SPREADSHEET_ID }}
+        run: python3 boat_monitor/sheets_bootstrap.py
