@@ -1,4 +1,4 @@
-# EAS iOS builds — manual only (saves credits). Run "smoke" first, then "production".
+# EAS iOS builds — manual dispatch; every profile uses --auto-submit to TestFlight.
 # Requires: EXPO_TOKEN, eas-build environment (optional approval gate).
 #
 # Push to master runs validate-ios.yml instead (free bundle + expo-doctor).
@@ -72,16 +72,13 @@ jobs:
           fi
           npx eas-cli@latest whoami
 
-      - name: EAS Build (and TestFlight submit for production only)
+      - name: EAS Build (queue TestFlight submit for store profiles)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
           LOG_FILE="$(mktemp)"
-          SUBMIT_ARGS=()
-          if [ "${EAS_PROFILE:-}" = "production" ] || [ "${EAS_PROFILE:-}" = "production_xcode26" ]; then
-            SUBMIT_ARGS+=(--auto-submit)
-          fi
+          SUBMIT_ARGS=(--auto-submit)
           set +e
           set -o pipefail
           npx eas-cli@latest build --platform ios --profile "$EAS_PROFILE" --non-interactive --no-wait "${SUBMIT_ARGS[@]}" 2>&1 | tee "$LOG_FILE"
@@ -89,6 +86,14 @@ jobs:
           set +o pipefail
           set -e
           if [ "$EXIT" -ne 0 ]; then
+            echo "### eas build failed — log tail (last 120 lines)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
             tail -n 120 "$LOG_FILE" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
             exit "$EXIT"
+          fi
+          BUILD_URL="$(grep -Eo 'https://expo.dev/[^[:space:]]+' "$LOG_FILE" | tail -1 || true)"
+          if [ -n "$BUILD_URL" ]; then
+            echo "### EAS build queued (auto-submit to TestFlight when build finishes)" >> "$GITHUB_STEP_SUMMARY"
+            echo "$BUILD_URL" >> "$GITHUB_STEP_SUMMARY"
           fi
