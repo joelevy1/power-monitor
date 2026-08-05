@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "notes": "Added automatic background logging (auto_log.py): the boat now logs itself to Power_Log/GPS_Log on a schedule, not just on a manual 'Log Now' press -- frequent (every 5 min) while mode == 'key_on' (engine running), much less frequent (every 60 min) otherwise, with an immediate log the moment the engine starts rather than waiting out whatever's left of the previous, longer docked interval. Runs from ble_service.py's existing run() loop (checked every ~2s tick) -- does NOT run while the Wi-Fi AP fallback console is active, since field_console.py's serve() loop blocks on a plain socket accept with no periodic hook. Reports outcomes via command_result ('auto_logged (power: ..., gps: ...)') same as a manual log. Also de-duplicated the actual Power_Log+GPS_Log logging logic: ble_service.py's manual 'log' command, this new auto-log trigger, and field_console.py's web Log Now page all now share one function (ble_service.log_power_and_gps()) instead of three separate near-identical copies.",
+  "version": "1.0.1",
+  "notes": "Added modem_power_cycle_test.py: a bench test to validate whether the modem can be fully powered down (AT+CPOWD=1) between logging cycles to save power, and reliably wake back up via the existing reset() sequence -- BEFORE trusting that in the unattended automatic logging flow (auto_log.py). Right now nothing powers the modem down between cycles at all; it stays fully powered and registered/idle-searching continuously, which likely draws more current than the Pico's own always-awake loop. AT+CPOWD is a real power-off though, not a soft reset -- many SIM7600 modules need their PWRKEY pin toggled to power back on, which may or may not be what config.py's PIN_MODEM_RESET is actually wired to on this board. Run this test first (with a PC connected, ready to physically power-cycle the modem if it doesn't come back) to find out safely before any of this gets wired into the automatic flow.",
   "files": [
     {
       "path": "version.py",
@@ -77,6 +77,10 @@
     {
       "path": "auto_log.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/auto_log.py"
+    },
+    {
+      "path": "modem_power_cycle_test.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_power_cycle_test.py"
     }
   ]
 }
