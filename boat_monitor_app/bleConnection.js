@@ -1,4 +1,4 @@
-import { decode, encode } from 'base64-js';
+import { toByteArray, fromByteArray } from 'base64-js';
 import { BleManager } from 'react-native-ble-plx';
 
 const DEVICE_NAME = 'BoatMonitor';
@@ -77,12 +77,12 @@ function stringToUtf8Bytes(str) {
 
 export function decodeBleValue(value) {
   if (!value) return '';
-  return utf8BytesToString(decode(value));
+  return utf8BytesToString(toByteArray(value));
 }
 
 export function encodeBleCommand(cmd) {
   const bytes = stringToUtf8Bytes(JSON.stringify({ cmd }));
-  return encode(bytes);
+  return fromByteArray(bytes);
 }
 
 export async function getBleManager() {

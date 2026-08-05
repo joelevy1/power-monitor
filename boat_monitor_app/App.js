@@ -50,16 +50,25 @@ export default function App() {
         ble.SERVICE_UUID,
         ble.STATUS_UUID,
         (error, characteristic) => {
-          if (error) {
-            setMessage(`Notify error: ${error.message}`);
-            return;
-          }
-          const text = ble.decodeBleValue(characteristic?.value);
-          setRawStatus(text);
+          // This runs as a native event callback, outside any surrounding
+          // try/catch in connect(). An uncaught throw here (e.g. a bad
+          // decode) escapes to RN's global exception handler and aborts
+          // the app in release builds instead of surfacing as a normal
+          // error -- see the BLE decode crash fixed in 0.1.8/0.1.9.
           try {
-            setStatus(JSON.parse(text));
-          } catch {
-            setStatus(null);
+            if (error) {
+              setMessage(`Notify error: ${error.message}`);
+              return;
+            }
+            const text = ble.decodeBleValue(characteristic?.value);
+            setRawStatus(text);
+            try {
+              setStatus(JSON.parse(text));
+            } catch {
+              setStatus(null);
+            }
+          } catch (exc) {
+            setMessage(`Notify handling failed: ${exc?.message || exc}`);
           }
         },
       );
