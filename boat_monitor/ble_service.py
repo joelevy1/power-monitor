@@ -413,6 +413,36 @@ class BoatMonitorBle:
             except Exception as exc:
                 self.command_result = "log_failed: %s" % exc
             self.update_status()
+        elif cmd in ("signal", "modem_status", "cell_status"):
+            # A lightweight cellular diagnostic -- registration + signal
+            # quality only, no AT+NETOPEN/data session -- so it's quick
+            # (a few seconds, not the 30-60s a full "log"/"ota" cellular
+            # session can take) and safe to run without disrupting
+            # anything else. This is the app-side equivalent of the
+            # "Waiting for network registration... CSQ: ..." lines Thonny
+            # already shows during boot, surfaced through command_result
+            # instead of requiring a laptop.
+            self.command_result = "checking_signal"
+            self.update_status()
+            try:
+                from cellular import CellularError, Sim7600Modem, one_line
+
+                modem = Sim7600Modem()
+                try:
+                    modem.check_alive()
+                    modem.check_sim()
+                    try:
+                        modem.wait_for_registration(seconds=15)
+                        reg_state = "registered"
+                    except CellularError:
+                        reg_state = "not registered"
+                    csq = one_line(modem.at("AT+CSQ", 2000, quiet=True))
+                    self.command_result = "signal: %s (%s)" % (csq, reg_state)
+                finally:
+                    modem.close_data()
+            except Exception as exc:
+                self.command_result = "signal_failed: %s" % exc
+            self.update_status()
         else:
             self.command_result = "unknown_command: %s" % cmd
             self.update_status()
