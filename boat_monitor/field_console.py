@@ -420,12 +420,60 @@ def http_response(html):
     return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n%s" % html
 
 
+def ensure_ble_off():
+    """Pico W: CYW43439 cannot reliably run WiFi AP while BLE is active --
+    same shared-radio constraint as ble_service.py's ensure_wifi_off(),
+    mirrored here for the AP side. This module is typically reached right
+    after machine.reset() from the BLE "wifi"/"start_wifi" command
+    (ble_service.py's handle_command()), i.e. moments after the CYW43439
+    was actively doing BLE work. A software reset of the RP2040 resets
+    the MCU but does not reliably reset the separate CYW43439 chip's
+    internal radio/firmware state -- the exact same caveat already
+    documented on ensure_wifi_off() -- so this settles it before
+    ap.active(True) instead of assuming a clean slate.
+    """
+    try:
+        import bluetooth
+
+        ble = bluetooth.BLE()
+        if ble.active():
+            ble.active(False)
+            print("BLE disabled for WiFi AP")
+    except Exception as exc:
+        print("BLE off: %s" % exc)
+    time.sleep_ms(250)
+
+
+# How long to wait for the AP interface to report active() before giving
+# up. The previous "while not ap.active(): time.sleep(0.2)" loop had NO
+# timeout -- if the radio didn't come up (e.g. still settling right after
+# the machine.reset() that got here), it hung forever with zero output:
+# no error, no AP, no console output, nothing to debug from. That silent
+# hang matches exactly what was reported ("I don't see boatmonitor
+# broadcast", no further Thonny output after the reset).
+AP_ACTIVE_TIMEOUT_MS = 8000
+
+
 def start_ap():
+    ensure_ble_off()
+
     ap = network.WLAN(network.AP_IF)
-    ap.active(True)
-    ap.config(essid=AP_NAME, password=AP_PASSWORD)
+    try:
+        ap.active(True)
+        ap.config(essid=AP_NAME, password=AP_PASSWORD)
+    except OSError as exc:
+        print("ERROR: WiFi AP activation failed:", exc)
+        print("Try a full power cycle (unplug ~10s) -- a soft/hard reset may not clear radio state.")
+        raise
+
+    start = time.ticks_ms()
     while not ap.active():
+        if time.ticks_diff(time.ticks_ms(), start) > AP_ACTIVE_TIMEOUT_MS:
+            print("ERROR: WiFi AP did not become active within %dms" % AP_ACTIVE_TIMEOUT_MS)
+            print("Try a full power cycle (unplug ~10s) -- a soft/hard reset may not clear radio state.")
+            raise OSError("WiFi AP did not become active")
         time.sleep(0.2)
+
     print("AP active:", AP_NAME)
     print("Open http://192.168.4.1")
     print("Config:", ap.ifconfig())
