@@ -104,20 +104,11 @@ class Gps:
         self._send("AT+CGPS=0")
         self.started = False
 
-    def read(self, timeout_s=90, poll_interval_s=5, on_progress=None):
+    def read(self, timeout_s=90, poll_interval_s=5):
         """Poll AT+CGPSINFO until a fix is found or timeout_s elapses.
 
         Does not call on() itself -- call it first (Phase 3.5/3.6: turn GPS
         on once after NETOPEN, read, then off() before CPWROFF/sleep).
-
-        on_progress: optional callable(elapsed_s, raw_line) invoked after
-        each unsuccessful poll, before the next sleep -- lets callers (e.g.
-        gps_test.py's Thonny bench test) show live "still searching..."
-        status instead of this staying silent for the entire timeout_s
-        window. Backward compatible: existing callers that don't pass it
-        see no change in behavior. Exceptions from on_progress itself are
-        swallowed so a broken progress callback can't break the actual GPS
-        poll loop.
         """
         start = time.ticks_ms()
         raw = ""
@@ -126,10 +117,5 @@ class Gps:
             lat, lon, line = parse_cgpsinfo(raw)
             if lat is not None and lon is not None:
                 return {"ok": True, "lat": lat, "lon": lon, "raw": line}
-            if on_progress is not None:
-                try:
-                    on_progress(time.ticks_diff(time.ticks_ms(), start) / 1000, raw)
-                except Exception:
-                    pass
             time.sleep(poll_interval_s)
         return {"ok": False, "lat": None, "lon": None, "raw": raw, "error": "no fix within %ds" % timeout_s}

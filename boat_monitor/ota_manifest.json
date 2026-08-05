@@ -1,6 +1,6 @@
 {
-  "version": "0.9.1",
-  "notes": "Added gps_test.py: a standalone Thonny bench test to check GPS signal live -- turns GPS on, polls AT+CGPSINFO with a 'still searching...' progress line every 5s (instead of gps.py's Gps.read() staying silent for its whole timeout), and reports a fix (lat/lon + clickable Google Maps link) or a clear 'no fix' with the most likely reasons (no dedicated GPS antenna -- a cellular-only antenna will NOT receive GPS, no clear sky view, or still mid cold-start). Does not touch cellular data (AT+CGPS/AT+CGPSINFO only), so it's safe to run standalone without opening a data session. Added Gps.read()'s new on_progress callback parameter (backward compatible, default None) to support this without changing read()'s behavior for existing callers.",
+  "version": "0.9.2",
+  "notes": "gps_test.py (0.9.1) crashed on real hardware: 'TypeError: unexpected keyword argument on_progress' -- it called Gps.read()'s brand new on_progress parameter, but the device's ALREADY-INSTALLED gps.py (from before this OTA) didn't have it yet. Real bug: a diagnostic test script should never require a firmware change just to run -- pasting a test script directly into Thonny (a completely normal, expected way to use these bench tests) doesn't go through OTA first. Fixed: gps_test.py is now fully self-contained, calling ONLY Gps.on()/off()/read(timeout_s, poll_interval_s) -- the exact signature that has existed since gps.py was first created -- in repeated short 5s chunks instead of depending on a new callback parameter. Reverted Gps.read()'s on_progress addition entirely (gps.py is back to byte-for-byte its pre-0.9.1 self) since nothing needs it anymore.",
   "files": [
     {
       "path": "version.py",

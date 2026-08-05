@@ -2,9 +2,18 @@
 Boat Monitor P2 - GPS bench test (run directly in Thonny).
 
 Turns the modem's GPS on, polls for a fix with live "still searching..."
-progress every few seconds (instead of gps.py's Gps.read() staying silent
-for its whole timeout), and reports either a lat/lon fix with a clickable
-Google Maps link, or a clear "no fix" with likely reasons.
+progress every few seconds, and reports either a lat/lon fix with a
+clickable Google Maps link, or a clear "no fix" with likely reasons.
+
+Deliberately self-contained: calls Gps.read(timeout_s, poll_interval_s)
+repeatedly in short CHUNK_TIMEOUT_S-long chunks instead of depending on
+any newer gps.py feature, so this script works standalone even if it's
+copy-pasted directly into Thonny ahead of an OTA update -- confirmed on
+real hardware that running this against an OLDER gps.py already on the
+device (from before Gps.read() gained an on_progress parameter) raised
+"TypeError: unexpected keyword argument 'on_progress'" when this script
+first tried to pass it. Gps.on()/off()/read(timeout_s, poll_interval_s)
+has existed since gps.py was first created, so this sticks to only that.
 
 Does NOT touch cellular data (no AT+NETOPEN/AT+HTTP*) -- GPS uses the
 modem's own separate AT+CGPS/AT+CGPSINFO commands, so this is safe to run
@@ -27,8 +36,8 @@ import time
 from gps import Gps
 
 TOTAL_TIMEOUT_S = 180  # give up after this long with no fix
-POLL_INTERVAL_S = 5  # how often to send AT+CGPSINFO
-PROGRESS_EVERY_S = 5  # how often to print "still searching..."
+CHUNK_TIMEOUT_S = 5  # each Gps.read() call tries for this long before returning
+POLL_INTERVAL_S = 1  # how often Gps.read() sends AT+CGPSINFO within one chunk
 
 
 def maps_link(lat, lon):
@@ -50,18 +59,24 @@ def main():
     print("First fix can take ~30 seconds to a few minutes.")
     print()
 
-    last_progress = [0]  # mutable cell so the nested function can update it
-
-    def on_progress(elapsed_s, raw):
-        if elapsed_s - last_progress[0] < PROGRESS_EVERY_S:
-            return
-        last_progress[0] = elapsed_s
-        print("  still searching... (%.0fs elapsed) raw: %s" % (elapsed_s, raw.strip() or "(no response)"))
+    start = time.ticks_ms()
+    fix = None
 
     try:
-        fix = gps.read(timeout_s=TOTAL_TIMEOUT_S, poll_interval_s=POLL_INTERVAL_S, on_progress=on_progress)
+        while time.ticks_diff(time.ticks_ms(), start) < TOTAL_TIMEOUT_S * 1000:
+            result = gps.read(timeout_s=CHUNK_TIMEOUT_S, poll_interval_s=POLL_INTERVAL_S)
+            if result["ok"]:
+                fix = result
+                break
+
+            elapsed = time.ticks_diff(time.ticks_ms(), start) / 1000
+            print(
+                "  still searching... (%.0fs elapsed) raw: %s"
+                % (elapsed, (result.get("raw") or "").strip() or "(no response)")
+            )
+
         print()
-        if fix["ok"]:
+        if fix:
             print("FIX ACQUIRED")
             print("  Lat:  %.7f" % fix["lat"])
             print("  Lon:  %.7f" % fix["lon"])
