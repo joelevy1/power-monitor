@@ -374,15 +374,40 @@ class BoatMonitorBle:
                 logger.ensure_data()
                 try:
                     status = read_status(self.command_result)
-                    logger.log_power(
-                        device=status["device"],
-                        mode=status["mode"],
-                        engine=status["engine"],
-                        house=status["house"],
-                        v50=status["v50"],
-                        note="ble_log_now",
+
+                    power_outcome = "ok"
+                    try:
+                        logger.log_power(
+                            device=status["device"],
+                            mode=status["mode"],
+                            engine=status["engine"],
+                            house=status["house"],
+                            v50=status["v50"],
+                            note="ble_log_now",
+                        )
+                    except Exception as exc:
+                        power_outcome = "failed: %s" % exc
+
+                    # A separate try/except from log_power above -- a GPS
+                    # hiccup (e.g. no fix, no antenna) shouldn't erase the
+                    # fact that the power row already logged successfully,
+                    # and vice versa. This is also what was MISSING before:
+                    # log_gps() existed but nothing ever called it, so
+                    # GPS_Log stayed empty no matter how many times "Log
+                    # Now" was pressed.
+                    gps_outcome = "no_fix"
+                    try:
+                        gps_result = logger.log_gps_now(status["device"], note="ble_log_now")
+                        gps_outcome = "ok" if gps_result.get("ok") else gps_result.get(
+                            "error", "no_fix"
+                        )
+                    except Exception as exc:
+                        gps_outcome = "failed: %s" % exc
+
+                    self.command_result = "logged (power: %s, gps: %s)" % (
+                        power_outcome,
+                        gps_outcome,
                     )
-                    self.command_result = "logged"
                 finally:
                     logger.close_data()
             except Exception as exc:

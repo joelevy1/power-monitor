@@ -82,6 +82,7 @@ def main():
                 "device": "pc-test",
                 "lat": 31.222388,
                 "lon": 121.354,
+                "maps_link": "https://www.google.com/maps?q=31.2223880,121.3540000",
                 "status": "fix",
                 "note": "apps_script_test.py",
             },

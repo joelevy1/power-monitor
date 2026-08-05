@@ -17,7 +17,8 @@ Usage from the Pico:
     logger = SheetsLogger()
     logger.ensure_data()                                    # Wi-Fi or cellular
     logger.log_row("Power_Log", {"device": "boat-p2", "engine_v": 12.6})
-    logger.log_gps("boat-p2", 12.34, -98.76)
+    logger.log_gps("boat-p2", 12.34, -98.76)                # known fix -- adds a maps_link column
+    logger.log_gps_now("boat-p2")                           # acquires a fresh fix first (cellular only)
     logger.close_data()                                     # Wi-Fi disconnect or cellular teardown
 
 Always call close_data() when done (Phase 2.4/2.11) -- mirrors
@@ -37,6 +38,21 @@ except ImportError:
 
 class SheetsLogError(Exception):
     pass
+
+
+def maps_link_url(lat, lon):
+    """Build a clickable Google Maps URL for a lat/lon pair, or "" if
+    either is missing (e.g. no GPS fix yet) -- a blank cell looks cleaner
+    in the sheet than a broken link with "None" baked into the query
+    string. Google Sheets auto-links plain http(s):// text appended to a
+    cell (the same behavior Apps Script's Code.gs sheet.appendRow() uses,
+    same as typing a URL into a cell by hand), so no =HYPERLINK() formula
+    is needed here -- this plain URL string renders as a clickable link
+    on its own.
+    """
+    if lat is None or lon is None:
+        return ""
+    return "https://www.google.com/maps?q=%.7f,%.7f" % (lat, lon)
 
 
 def _config_value(name):
@@ -163,7 +179,54 @@ class SheetsLogger:
     def log_gps(self, device, lat, lon, status="fix", note=""):
         return self.log_row(
             "GPS_Log",
-            {"device": device, "lat": lat, "lon": lon, "status": status, "note": note},
+            {
+                "device": device,
+                "lat": lat,
+                "lon": lon,
+                "maps_link": maps_link_url(lat, lon),
+                "status": status,
+                "note": note,
+            },
+        )
+
+    def log_gps_now(self, device, timeout_s=20, poll_interval_s=2, note=""):
+        """Get one GPS fix attempt over the modem's UART and log it to
+        GPS_Log (blank lat/lon/maps_link + status="no_fix" if none was
+        acquired in time) -- this is what was MISSING before: log_gps()
+        existed but nothing ever called it, so GPS_Log stayed empty even
+        while Power_Log kept getting rows from the same "log"/"log_now"
+        command.
+
+        Cellular-only: GPS is a SIM7600 AT-command feature (AT+CGPS/
+        AT+CGPSINFO), not something Wi-Fi provides. Reuses the SAME UART
+        object as self._cellular (rather than opening a second UART on
+        the same physical pins, which would fight over one peripheral)
+        -- safe to interleave with the HTTP AT commands already run by
+        ensure_data()/log_row() since AT commands are always
+        request/response, one at a time, never concurrent.
+
+        timeout_s defaults to a short 20s (not gps.py's 90s default) so
+        a "Log Now" button press stays reasonably responsive -- cold-start
+        GPS acquisition, especially with a weak/no GPS antenna, can take
+        much longer than that or never succeed at all; this is a quick
+        best-effort attempt, not a guarantee of a fix.
+        """
+        if self._cellular is None:
+            return {"ok": False, "error": "GPS requires the cellular modem (no GPS over Wi-Fi)"}
+
+        from gps import Gps
+
+        gps = Gps(uart=self._cellular.uart)
+        gps.on()
+        try:
+            fix = gps.read(timeout_s=timeout_s, poll_interval_s=poll_interval_s)
+        finally:
+            gps.off()
+
+        if fix["ok"]:
+            return self.log_gps(device, fix["lat"], fix["lon"], status="fix", note=note)
+        return self.log_gps(
+            device, None, None, status="no_fix", note=note or fix.get("error", "no fix")
         )
 
     def log_bilge(self, device, channel, state, note=""):
