@@ -43,6 +43,100 @@ function fetchWithTimeout(url, options, timeoutMs) {
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+// Friendly display names + rough expected duration for each command --
+// shown up front so "why is this taking so long" has an answer instead of
+// silence. Durations are real cellular round-trips (modem reset +
+// registration + HTTPS), not app slowness -- see cellular.py/auto_log.py.
+const COMMAND_INFO = {
+  refresh: { label: 'Refresh', hint: 'instant' },
+  log: { label: 'Log Now', hint: '~10-90s (cellular)' },
+  signal: { label: 'Check Signal', hint: '~5-20s (cellular, no data session)' },
+  ota: { label: 'OTA Check', hint: '~10-90s+ (cellular; reboots if updated)' },
+  wifi: { label: 'Start Wi-Fi', hint: 'reboots immediately -- BLE will disconnect' },
+  reboot: { label: 'Reboot', hint: 'reboots immediately -- BLE will disconnect' },
+};
+
+// Placeholder command_result values ble_service.py's handle_command() sets
+// immediately after receiving a command, before the real (often
+// multi-second) work finishes. Anything else is a final result -- used to
+// know when a pending command has actually resolved instead of just
+// showing "Sent command: X" forever with no further feedback.
+const IN_PROGRESS_RESULTS = new Set(['logging', 'checking_signal', 'ota_started', 'starting_wifi', 'rebooting']);
+
+// These intentionally reboot the Pico -- BLE disconnecting shortly after
+// sending them is EXPECTED (a successful outcome), not a failure/hang.
+const RESET_COMMANDS = new Set(['reboot', 'wifi']);
+
+// Expands the compact command_result strings ble_service.py sends into a
+// clearer sentence + icon. Covers every shape handle_command()/
+// _maybe_auto_log() actually produce (refreshed, rebooting, starting_wifi,
+// ota_current/updated/failed, logged/auto_logged (power: ..., gps: ...),
+// log_failed, signal: ...(...), signal_failed, unknown_command) -- falls
+// back to showing the raw text with a generic icon for anything else.
+function friendlyCommandResult(result) {
+  if (!result) return { icon: '⚪', text: 'No command sent yet.', danger: false };
+
+  const parsePowerGps = (inner) => {
+    const parts = {};
+    inner.split(',').forEach((part) => {
+      const idx = part.indexOf(':');
+      if (idx === -1) return;
+      const key = part.slice(0, idx).trim();
+      const value = part.slice(idx + 1).trim();
+      if (key) parts[key] = value;
+    });
+    const powerOk = parts.power === 'ok';
+    const gpsOk = parts.gps === 'ok';
+    const gpsNoFix = parts.gps === 'no_fix';
+    const gpsText = gpsOk
+      ? 'GPS logged a fix'
+      : gpsNoFix
+        ? 'GPS: no fix (normal without a GPS antenna)'
+        : `GPS: ${parts.gps || 'unknown'}`;
+    const powerText = powerOk ? 'Power logged' : `Power: ${parts.power || 'unknown'}`;
+    return { icon: powerOk ? '✅' : '⚠️', text: `${powerText}. ${gpsText}.`, danger: !powerOk };
+  };
+
+  let match = result.match(/^logged \((.*)\)$/);
+  if (match) return parsePowerGps(match[1]);
+
+  match = result.match(/^auto_logged \((.*)\)$/);
+  if (match) {
+    const inner = parsePowerGps(match[1]);
+    return { ...inner, text: `Automatic log — ${inner.text}` };
+  }
+
+  if (result.startsWith('signal: ')) {
+    return { icon: '✅', text: result.replace(/^signal:\s*/, 'Cellular signal: '), danger: false };
+  }
+  if (result === 'refreshed') return { icon: '✅', text: 'Status refreshed.', danger: false };
+  if (result === 'ota_current') return { icon: '✅', text: 'Already on the latest firmware.', danger: false };
+  if (result === 'ota_updated') {
+    return { icon: '✅', text: 'Firmware updated — Pico is rebooting now.', danger: false };
+  }
+  if (result === 'rebooting') return { icon: '⏳', text: 'Rebooting...', danger: false };
+  if (result === 'starting_wifi') return { icon: '⏳', text: 'Switching to Wi-Fi mode...', danger: false };
+
+  if (result.startsWith('ota_failed:')) {
+    return { icon: '❌', text: result.replace(/^ota_failed:\s*/, 'OTA check failed: '), danger: true };
+  }
+  if (result.startsWith('log_failed:')) {
+    return { icon: '❌', text: result.replace(/^log_failed:\s*/, 'Log failed: '), danger: true };
+  }
+  if (result.startsWith('signal_failed:')) {
+    return { icon: '❌', text: result.replace(/^signal_failed:\s*/, 'Signal check failed: '), danger: true };
+  }
+  if (result.startsWith('auto_log_failed:')) {
+    return { icon: '❌', text: result.replace(/^auto_log_failed:\s*/, 'Automatic log failed: '), danger: true };
+  }
+  if (result.startsWith('unknown_command:')) {
+    return { icon: '❌', text: result, danger: true };
+  }
+
+  const danger = /fail|error/i.test(result);
+  return { icon: danger ? '❌' : 'ℹ️', text: result, danger };
+}
+
 export default function App() {
   const deviceRef = useRef(null);
   const monitorSubRef = useRef(null);
@@ -56,6 +150,43 @@ export default function App() {
   const [signalStrength, setSignalStrength] = useState(null);
   const [wifiConsoleStatus, setWifiConsoleStatus] = useState('idle'); // idle | checking | reachable | unreachable
   const [wifiConsoleError, setWifiConsoleError] = useState(null);
+  const [pendingCommand, setPendingCommand] = useState(null);
+  const [pendingSince, setPendingSince] = useState(null);
+  const [pendingElapsedS, setPendingElapsedS] = useState(0);
+  const [commandResultAt, setCommandResultAt] = useState(null);
+  const lastCommandResultRef = useRef(null);
+
+  // Ticking display while a command is pending -- without this, pressing
+  // a button that takes 10-90s (a real cellular round-trip) just shows a
+  // static "Sent command: X" with zero further feedback, which is exactly
+  // what made this feel like nothing was happening.
+  useEffect(() => {
+    if (!pendingCommand || !pendingSince) {
+      setPendingElapsedS(0);
+      return undefined;
+    }
+    const id = setInterval(() => {
+      setPendingElapsedS(Math.round((Date.now() - pendingSince) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [pendingCommand, pendingSince]);
+
+  // Clears the pending state once a REAL (non-placeholder) command_result
+  // arrives over BLE -- see IN_PROGRESS_RESULTS. This is what actually
+  // resolves "Running Log Now... (14s)" back to a normal result, driven
+  // by the Pico's own status notifications rather than a fixed timeout.
+  useEffect(() => {
+    const result = status?.command_result;
+    if (!result) return;
+    if (result !== lastCommandResultRef.current) {
+      lastCommandResultRef.current = result;
+      setCommandResultAt(new Date());
+    }
+    if (pendingCommand && !IN_PROGRESS_RESULTS.has(result)) {
+      setPendingCommand(null);
+      setPendingSince(null);
+    }
+  }, [status?.command_result, pendingCommand]);
 
   // Passive BLE scan on the home screen: shows whether the Pico is
   // broadcasting nearby and its signal strength before you ever tap
@@ -159,6 +290,12 @@ export default function App() {
         setMessage('Disconnected');
         setLastUpdated(null);
         setSignalStrength(null);
+        // A pending "reboot"/"wifi" command causes exactly this disconnect
+        // as its expected, successful outcome -- but ANY disconnect ends
+        // whatever was pending, since there's no more BLE connection left
+        // to receive a final result on.
+        setPendingCommand(null);
+        setPendingSince(null);
         monitorSubRef.current?.remove?.();
         monitorSubRef.current = null;
         deviceRef.current = null;
@@ -227,6 +364,8 @@ export default function App() {
       setMessage('Disconnected');
       setLastUpdated(null);
       setSignalStrength(null);
+      setPendingCommand(null);
+      setPendingSince(null);
       import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
     }
   }
@@ -237,21 +376,37 @@ export default function App() {
       Alert.alert('Not connected', 'Connect to BoatMonitor first.');
       return;
     }
+    if (pendingCommand) {
+      // Refuse to overlap commands from the app side -- the Pico handles
+      // BLE commands one at a time, and stacking a second write while a
+      // long cellular round-trip is still in progress would just produce
+      // confusing, racy command_result updates.
+      return;
+    }
+
+    const label = COMMAND_INFO[cmd]?.label || cmd;
+    setPendingCommand(cmd);
+    setPendingSince(Date.now());
 
     try {
       const ble = await import('./bleConnection');
       const payload = ble.encodeBleCommand(cmd);
       await device.writeCharacteristicWithResponseForService(ble.SERVICE_UUID, ble.COMMAND_UUID, payload);
-      setMessage(`Sent command: ${cmd}`);
+      setMessage(
+        RESET_COMMANDS.has(cmd)
+          ? `${label} sent — Pico will reboot and disconnect shortly (expected).`
+          : `${label} sent — waiting for result...`,
+      );
     } catch (error) {
+      setPendingCommand(null);
+      setPendingSince(null);
       Alert.alert('Command failed', error.message || String(error));
     }
   }
 
   const inputs = status?.inputs || {};
   const mode = status?.mode || '--';
-  const commandResult = status?.command_result || null;
-  const commandResultDanger = /fail|error|unknown_command/i.test(commandResult || '');
+  const friendlyResult = friendlyCommandResult(status?.command_result);
 
   const activeRssi = connected ? signalStrength : scanRssi;
   const bleQuality = signalQualityFor(activeRssi);
@@ -273,8 +428,16 @@ export default function App() {
               <Text style={styles.buttonText}>{connected ? 'Disconnect' : 'Connect BLE'}</Text>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('refresh')} disabled={!connected}>
-            <Text style={styles.buttonText}>Refresh</Text>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => sendCommand('refresh')}
+            disabled={!connected || !!pendingCommand}
+          >
+            {pendingCommand === 'refresh' ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Refresh</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -331,12 +494,27 @@ export default function App() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Last Result</Text>
-          <Text style={[styles.resultText, commandResultDanger ? styles.danger : styles.resultOk]}>
-            {commandResult || 'No command sent yet'}
-          </Text>
+          {pendingCommand ? (
+            <View style={styles.pendingRow}>
+              <ActivityIndicator color="#7dd3fc" />
+              <Text style={styles.pendingText}>
+                Running {COMMAND_INFO[pendingCommand]?.label || pendingCommand}... ({pendingElapsedS}s)
+              </Text>
+            </View>
+          ) : (
+            <Text style={[styles.resultText, friendlyResult.danger ? styles.danger : styles.resultOk]}>
+              {friendlyResult.icon} {friendlyResult.text}
+            </Text>
+          )}
           <Text style={styles.hint}>
-            This is the outcome of the last command sent below (e.g. Log Now, OTA, Check Signal) --
-            same information Thonny's console would show, surfaced here so a laptop isn't needed.
+            {pendingCommand
+              ? `Expected: ${COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. This is a real cellular ` +
+                'round-trip (modem reset + network registration), not a bug -- the button will re-enable once it ' +
+                'finishes.'
+              : commandResultAt
+                ? `Outcome of the last command, received at ${fmtTime(commandResultAt)}.`
+                : "This is the outcome of the last command sent below (e.g. Log Now, OTA, Check Signal) -- same " +
+                  "information Thonny's console would show, surfaced here so a laptop isn't needed."}
           </Text>
         </View>
 
@@ -353,26 +531,19 @@ export default function App() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Service Commands</Text>
           <View style={styles.buttonRowWrap}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('log')} disabled={!connected}>
-              <Text style={styles.buttonText}>Log Now</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.secondaryButton, styles.btnGap]} onPress={() => sendCommand('signal')} disabled={!connected}>
-              <Text style={styles.buttonText}>Check Signal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.secondaryButton, styles.btnGap]} onPress={() => sendCommand('wifi')} disabled={!connected}>
-              <Text style={styles.buttonText}>Start Wi-Fi</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.secondaryButton, styles.btnGap]} onPress={() => sendCommand('ota')} disabled={!connected}>
-              <Text style={styles.buttonText}>OTA</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.dangerButton, styles.btnGap]} onPress={() => sendCommand('reboot')} disabled={!connected}>
-              <Text style={styles.buttonText}>Reboot</Text>
-            </TouchableOpacity>
+            <ServiceButton cmd="log" label="Log Now" style={styles.secondaryButton} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="signal" label="Check Signal" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="wifi" label="Start Wi-Fi" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="ota" label="OTA" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="reboot" label="Reboot" style={[styles.dangerButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
           </View>
           <Text style={styles.hint}>
             Log Now posts Power_Log and GPS_Log rows over cellular right now (bypasses Wi-Fi so BLE
-            stays connected). Check Signal reports cellular registration + signal strength without
-            opening a full data session. See "Last Result" above for the outcome of each.
+            stays connected, {COMMAND_INFO.log.hint}). Check Signal reports cellular registration +
+            signal strength without opening a full data session ({COMMAND_INFO.signal.hint}). Start
+            Wi-Fi and Reboot both {COMMAND_INFO.reboot.hint.toLowerCase()} -- that disconnect is
+            expected, not a failure. See "Last Result" above for the outcome of each, including while
+            it's still running.
           </Text>
         </View>
 
@@ -396,6 +567,20 @@ function StatusRow({ label, value, danger }) {
       <Text style={styles.rowLabel}>{label}</Text>
       <Text style={[styles.rowValue, danger ? styles.danger : null]}>{value}</Text>
     </View>
+  );
+}
+
+// Shows a spinner in-place of its own label the moment IT specifically is
+// the pending command (immediate feedback right where you tapped), and
+// disables every service button while ANY command is pending -- avoids
+// stacking overlapping BLE writes while a long cellular round-trip is
+// still in progress on the Pico.
+function ServiceButton({ cmd, label, style, connected, pendingCommand, onPress }) {
+  const isPending = pendingCommand === cmd;
+  return (
+    <TouchableOpacity style={style} onPress={() => onPress(cmd)} disabled={!connected || !!pendingCommand}>
+      {isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{label}</Text>}
+    </TouchableOpacity>
   );
 }
 
@@ -528,6 +713,16 @@ const styles = StyleSheet.create({
   },
   resultOk: {
     color: '#7dd3fc',
+  },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pendingText: {
+    color: '#7dd3fc',
+    fontSize: 16,
+    marginLeft: 10,
+    ...FW600,
   },
   raw: {
     color: '#cbd5e1',
