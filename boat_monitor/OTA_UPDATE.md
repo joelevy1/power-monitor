@@ -18,6 +18,7 @@ Copy these files to the Pico:
 - `ota_config.py`
 - `version.py`
 - `wifi_uplink.py`
+- `cellular.py`
 
 Optional (needed for Wi-Fi-first OTA/Sheets logging — copy
 `wifi_credentials.example.py` as `wifi_credentials.py`, fill in your real
@@ -33,6 +34,9 @@ Optional debug/service files:
 - `ble_status.py`
 - `gps.py`
 - `sheets_log.py`
+- `cellular_test.py` (bare cellular connectivity test -- no Sheets/Apps
+  Script setup needed, just confirms the modem/SIM/registration/NETOPEN
+  sequence works with your antenna and SIM)
 
 ## Default boot behavior (0.3.0+)
 

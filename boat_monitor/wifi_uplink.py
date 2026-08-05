@@ -148,9 +148,9 @@ def split_url(url):
 class WifiHttp:
     """Minimal HTTP/HTTPS client over a raw socket, no urequests needed.
 
-    Exposes http_get(url) -> text (same shape as ota.py's Sim7600Http, so
-    ota.load_manifest()/apply_manifest() can use either interchangeably),
-    plus http_post_json() for sheets_log.py.
+    Exposes http_get(url) -> text (same shape as cellular.py's
+    Sim7600Modem, so ota.load_manifest()/apply_manifest() can use either
+    interchangeably), plus http_post_json() for sheets_log.py.
     """
 
     def _request(self, method, url, body=None, headers=None, timeout_s=20):
@@ -230,9 +230,9 @@ class WifiHttp:
         return status, body.decode("utf-8", "ignore")
 
     def http_get(self, url, timeout_s=20):
-        """Matches Sim7600Http.http_get()'s signature/return shape (raises
-        WifiError on non-200 or malformed response, returns body text on
-        success) so ota.py's load_manifest()/apply_manifest() work with
+        """Matches cellular.Sim7600Modem.http_get()'s signature/return
+        shape (raises on non-200 or malformed response, returns body text
+        on success) so ota.py's load_manifest()/apply_manifest() work with
         either client unchanged.
         """
         status, body = self._request("GET", url, timeout_s=timeout_s)

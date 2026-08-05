@@ -1,6 +1,6 @@
 {
-  "version": "0.5.2",
-  "notes": "Same Log Now / Wi-Fi-conflict fix as the BLE command, applied to the Wi-Fi field console (field_console.py) too: new /log page posts one Power_Log row over cellular (prefer_wifi=False -- the console's own Wi-Fi AP is already using the radio, so trying Wi-Fi STA here risks dropping the very AP connection you're viewing the page over). Also fixes the console's pre-existing /ota page, which had the same latent conflict now that ota.py prefers Wi-Fi by default. /log reuses ble_service.read_status() instead of duplicating INA260/INA219 reads.",
+  "version": "0.6.0",
+  "notes": "Harden the cellular path (new cellular.py, shared by ota.py and sheets_log.py, replacing two duplicated copies of the same thin AT-command sequence). Every 'cellular data did not open' failure so far skipped straight to AT+NETOPEN with no check the modem was even responding, no SIM check, and no wait for network registration -- NETOPEN commonly fails if the modem hasn't attached to the tower yet, which can take up to a minute. Sim7600Modem now checks AT liveness, AT+CPIN? (SIM ready), waits for CREG/CGREG/CEREG registration with CSQ signal logged throughout, retries NETOPEN once after NETCLOSE if it errors, and raises a SPECIFIC reason (not responding / no SIM / not registered / NETOPEN failed / IPADDR failed) instead of one generic message. New cellular_test.py: bare cellular connectivity test, no Sheets/Apps Script setup needed. sheets_log_test.py now forces prefer_wifi=False so it actually exercises the cellular path being tested.",
   "files": [
     {
       "path": "version.py",
@@ -61,6 +61,14 @@
     {
       "path": "wifi_uplink.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
+    },
+    {
+      "path": "cellular.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular.py"
+    },
+    {
+      "path": "cellular_test.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular_test.py"
     }
   ]
 }

@@ -1,0 +1,304 @@
+"""
+Boat Monitor P2 - shared, hardened SIM7600 cellular data + HTTP client.
+
+Used by ota.py (OTA over cellular) and sheets_log.py (Sheets logging over
+cellular) instead of each keeping its own copy of the same AT-command
+sequence. Every "cellular data did not open" failure seen so far skipped
+straight to AT+NETOPEN with no check that the modem was even responding,
+no SIM check, and -- the most likely actual cause -- no wait for network
+registration first. AT+NETOPEN commonly fails/errors if the modem hasn't
+attached to the tower yet, which can take anywhere from a few seconds to
+over a minute after power-on, especially on IoT SIMs.
+
+Ports the registration-wait pattern already proven in modem_check.py's
+wait_for_registration() into a reusable class both callers share.
+
+Usage:
+    from cellular import Sim7600Modem, CellularError
+
+    modem = Sim7600Modem()
+    modem.ensure_data()          # raises CellularError with a SPECIFIC
+                                  # reason (not responding / no SIM / not
+                                  # registered / NETOPEN failed / IPADDR
+                                  # failed) instead of one generic message
+    text = modem.http_get(url)
+    modem.close_data()
+"""
+
+import time
+
+import ota_config
+
+
+class CellularError(Exception):
+    pass
+
+
+def one_line(text):
+    text = text.replace("\r", "\n")
+    parts = [line.strip() for line in text.split("\n") if line.strip() and line.strip() != "OK"]
+    return " | ".join(parts) if parts else "(none)"
+
+
+def parse_http_action(text):
+    marker = "+HTTPACTION:"
+    if marker not in text:
+        raise CellularError("missing HTTPACTION response")
+    line = text.split(marker, 1)[1].splitlines()[0].strip()
+    parts = [part.strip() for part in line.split(",")]
+    if len(parts) < 3:
+        raise CellularError("bad HTTPACTION response: %s" % line)
+    return int(parts[1]), int(parts[2])
+
+
+def parse_http_read(text):
+    marker = "+HTTPREAD:"
+    if marker not in text:
+        raise CellularError("missing HTTPREAD response")
+
+    after = text.split(marker, 1)[1]
+    first_newline = after.find("\n")
+    if first_newline < 0:
+        raise CellularError("bad HTTPREAD response")
+
+    data = after[first_newline + 1 :]
+    ok_pos = data.rfind("\r\nOK")
+    if ok_pos >= 0:
+        data = data[:ok_pos]
+    return data.lstrip("\r\n")
+
+
+class Sim7600Modem:
+    def __init__(self):
+        # Imported here, not at module level, so one_line()/parse_http_action()/
+        # parse_http_read() above stay importable and unit-testable on a PC
+        # without MicroPython's machine module -- see test_cellular_parser.py.
+        from machine import Pin, UART
+        import config as cfg
+
+        self.uart = UART(
+            1,
+            baudrate=cfg.MODEM_BAUD,
+            tx=Pin(cfg.PIN_UART_TX),
+            rx=Pin(cfg.PIN_UART_RX),
+        )
+        self.rst = Pin(cfg.PIN_MODEM_RESET, Pin.OUT, value=1)
+        self._cfg = cfg
+        self._data_open = False
+
+    def reset(self):
+        print("Resetting modem...")
+        self.rst.value(0)
+        time.sleep(0.3)
+        self.rst.value(1)
+        time.sleep(3)
+
+    def flush(self):
+        while self.uart.any():
+            self.uart.read()
+
+    def read_until(self, stop_tokens, timeout_ms):
+        start = time.ticks_ms()
+        buf = b""
+        if isinstance(stop_tokens, str):
+            stop_tokens = (stop_tokens,)
+        stop_tokens = tuple(token.encode() for token in stop_tokens)
+
+        while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            if self.uart.any():
+                buf += self.uart.read()
+                for token in stop_tokens:
+                    if token in buf:
+                        return buf.decode("utf-8", "ignore")
+            time.sleep(0.05)
+
+        return buf.decode("utf-8", "ignore")
+
+    def at(self, cmd, timeout_ms=3000, expect=("\r\nOK\r\n", "\r\nERROR\r\n"), quiet=False):
+        if not quiet:
+            print(">>>", cmd)
+        self.flush()
+        self.uart.write((cmd + "\r\n").encode())
+        text = self.read_until(expect, timeout_ms)
+        if not quiet:
+            print(text.strip() or "(no response)")
+        return text
+
+    def check_alive(self):
+        """Verify the modem responds to a basic AT at all, instead of
+        silently continuing through the rest of the sequence regardless.
+        Distinguishes "not wired/powered" from every other failure mode.
+        """
+        resp = self.at("AT", 2000)
+        if "OK" not in resp:
+            cfg = self._cfg
+            raise CellularError(
+                "Modem not responding to AT -- check power/wiring/baud "
+                "(config.py: PIN_UART_TX=%d, PIN_UART_RX=%d, PIN_MODEM_RESET=%d, MODEM_BAUD=%d)"
+                % (cfg.PIN_UART_TX, cfg.PIN_UART_RX, cfg.PIN_MODEM_RESET, cfg.MODEM_BAUD)
+            )
+        self.at("ATE0", 2000)
+
+    def check_sim(self):
+        resp = self.at("AT+CPIN?", 3000)
+        if "READY" in resp:
+            return
+        if "SIM PIN" in resp or "SIM PUK" in resp:
+            raise CellularError("SIM is PIN/PUK locked (AT+CPIN? -> %s)" % _one_line(resp))
+        raise CellularError("No SIM detected or not ready (AT+CPIN? -> %s)" % _one_line(resp))
+
+    def wait_for_registration(self, seconds=60):
+        print("Waiting for network registration (up to %ds)..." % seconds)
+        start = time.ticks_ms()
+        last_csq = "(none)"
+
+        while time.ticks_diff(time.ticks_ms(), start) < seconds * 1000:
+            creg = self.at("AT+CREG?", 2000, quiet=True)
+            cgreg = self.at("AT+CGREG?", 2000, quiet=True)
+            cereg = self.at("AT+CEREG?", 2000, quiet=True)
+            csq = self.at("AT+CSQ", 2000, quiet=True)
+            last_csq = one_line(csq)
+
+            print(
+                "CREG:", one_line(creg),
+                " CGREG:", one_line(cgreg),
+                " CEREG:", one_line(cereg),
+                " CSQ:", last_csq,
+            )
+
+            combined = creg + cgreg + cereg
+            if ",1" in combined or ",5" in combined:
+                print("Registered. Signal:", last_csq)
+                return
+
+            time.sleep(3)
+
+        raise CellularError(
+            "Not registered on the cellular network after %ds (last signal: %s) -- "
+            "check antenna connection, SIM activation, and coverage" % (seconds, last_csq)
+        )
+
+    def ensure_data(self, reset_modem=False, registration_timeout_s=60):
+        if self._data_open:
+            return
+
+        if reset_modem:
+            self.reset()
+
+        self.check_alive()
+        self.check_sim()
+        self.wait_for_registration(seconds=registration_timeout_s)
+
+        apn = ota_config.OTA_APN
+        cid = ota_config.OTA_CONTEXT_ID
+        pdp_type = ota_config.OTA_SOCKET_PDP_TYPE
+
+        self.at('AT+CGDCONT=%d,"IPV6","%s"' % (cid, apn), 3000)
+        self.at("AT+CSOCKSETPN=%d,%d" % (cid, pdp_type), 3000)
+
+        netopen = self.at("AT+NETOPEN", 30000, expect=("+NETOPEN:", "\r\nERROR\r\n"))
+        if "+NETOPEN:" not in netopen:
+            # Documented SIM7600 quirk: NETOPEN can ERROR if a previous
+            # session wasn't cleanly closed. One NETCLOSE + retry recovers
+            # most of the time.
+            print("NETOPEN did not confirm, retrying after NETCLOSE...")
+            self.at("AT+NETCLOSE", 10000)
+            time.sleep(1)
+            netopen = self.at("AT+NETOPEN", 30000, expect=("+NETOPEN:", "\r\nERROR\r\n"))
+            if "+NETOPEN:" not in netopen:
+                raise CellularError("AT+NETOPEN failed twice: %s" % one_line(netopen))
+
+        ip = self.at("AT+IPADDR", 5000)
+        if "+IP ERROR" in ip or "ERROR" in ip or not ip.strip():
+            raise CellularError(
+                "AT+NETOPEN reported success but AT+IPADDR failed: %s" % one_line(ip)
+            )
+
+        print("Cellular data open. IP:", one_line(ip))
+        self._data_open = True
+
+    def close_data(self):
+        try:
+            self.at("AT+HTTPTERM", 3000)
+        except Exception:
+            pass
+        try:
+            self.at("AT+NETCLOSE", 10000)
+        except Exception:
+            pass
+        self._data_open = False
+
+    def http_get(self, url):
+        print("HTTP GET", url)
+        self.at("AT+HTTPTERM", 3000)
+        self.at("AT+HTTPINIT", 5000)
+        self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 3000)
+
+        if url.startswith("https://"):
+            self.at("AT+HTTPSSL=1", 3000)
+        else:
+            self.at("AT+HTTPSSL=0", 3000)
+
+        self.at('AT+HTTPPARA="URL","%s"' % url, 5000)
+        action = self.at("AT+HTTPACTION=0", 60000, expect=("+HTTPACTION:", "\r\nERROR\r\n"))
+        status, length = parse_http_action(action)
+        if status != 200:
+            self.at("AT+HTTPTERM", 3000)
+            raise CellularError("HTTP status %s for %s" % (status, url))
+
+        if length <= 0:
+            self.at("AT+HTTPTERM", 3000)
+            raise CellularError("empty HTTP response for %s" % url)
+
+        raw = self.at(
+            "AT+HTTPREAD=0,%d" % length,
+            max(10000, length * 4),
+            expect=("\r\nOK\r\n", "\r\nERROR\r\n"),
+        )
+        self.at("AT+HTTPTERM", 3000)
+        return parse_http_read(raw)
+
+    def http_post_json(self, url, body_bytes, timeout_ms=60000):
+        self.at("AT+HTTPTERM", 3000)
+        self.at("AT+HTTPINIT", 5000)
+        self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 3000)
+
+        if url.startswith("https://"):
+            self.at("AT+HTTPSSL=1", 3000)
+        else:
+            self.at("AT+HTTPSSL=0", 3000)
+
+        self.at('AT+HTTPPARA="URL","%s"' % url, 5000)
+        self.at('AT+HTTPPARA="CONTENT","application/json"', 3000)
+
+        download_prompt = self.at(
+            "AT+HTTPDATA=%d,10000" % len(body_bytes),
+            5000,
+            expect=("DOWNLOAD", "\r\nERROR\r\n"),
+        )
+        if "DOWNLOAD" not in download_prompt:
+            self.at("AT+HTTPTERM", 3000)
+            raise CellularError("modem did not prompt DOWNLOAD for HTTPDATA")
+
+        print(">>> (writing %d bytes of JSON body)" % len(body_bytes))
+        self.flush()
+        self.uart.write(body_bytes)
+        self.read_until(("\r\nOK\r\n", "\r\nERROR\r\n"), 5000)
+
+        action = self.at("AT+HTTPACTION=1", timeout_ms, expect=("+HTTPACTION:", "\r\nERROR\r\n"))
+        status, length = parse_http_action(action)
+        if status != 200:
+            self.at("AT+HTTPTERM", 3000)
+            raise CellularError("HTTP status %s posting to %s" % (status, url))
+
+        if length <= 0:
+            self.at("AT+HTTPTERM", 3000)
+            return ""
+
+        raw = self.at(
+            "AT+HTTPREAD=0,%d" % length,
+            max(10000, length * 4),
+            expect=("\r\nOK\r\n", "\r\nERROR\r\n"),
+        )
+        self.at("AT+HTTPTERM", 3000)
+        return parse_http_read(raw)

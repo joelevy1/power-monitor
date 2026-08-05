@@ -90,11 +90,30 @@ WIFI_NETWORKS = [
 With this in place, `sheets_log_test.py` and `ota.update()` will connect to
 whichever of these is in range instead of using cellular at all.
 
+## 3c. Test cellular connectivity by itself first (no Sheets setup needed)
+
+Before involving Sheets/Apps Script at all, confirm the modem + SIM +
+antenna + registration sequence works on its own:
+
+```python
+import cellular_test
+cellular_test.main()
+```
+
+This runs `cellular.py`'s hardened sequence (modem-alive check, SIM check,
+network registration wait with signal logged throughout, `NETOPEN`, one
+retry if it errors) and finishes with a real HTTP GET of the OTA manifest.
+If this fails, it'll tell you specifically **why** (not responding / no
+SIM / not registered / NETOPEN failed) instead of the generic "cellular
+data did not open" every earlier attempt produced — that generic message
+came from skipping the registration wait entirely, which is very likely
+why every previous attempt failed the same way regardless of antenna.
+
 ## 4. Test one real cellular POST from the Pico (Phase 2.9)
 
-If no Wi-Fi network is configured/in range, `sheets_log_test.py` falls back
-to cellular automatically — this section is for testing that path
-specifically.
+`sheets_log_test.py` forces cellular (skips Wi-Fi even if configured) —
+it exists specifically to test this path. Run `cellular_test.py` above
+first; if that passes, this should too.
 
 With the SIM7600 modem wired and powered, in Thonny:
 
