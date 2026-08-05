@@ -30,7 +30,7 @@ TABS = {
         "v50_v",
         "note",
     ],
-    "GPS_Log": ["timestamp_utc", "device", "lat", "lon", "status", "note"],
+    "GPS_Log": ["timestamp_utc", "device", "lat", "lon", "maps_link", "status", "note"],
     "Bilge_Log": ["timestamp_utc", "device", "channel", "state", "note"],
     "Events": ["timestamp_utc", "device", "event", "detail"],
     "Config": ["key", "value", "updated_utc", "note"],
