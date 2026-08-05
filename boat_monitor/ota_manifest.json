@@ -1,6 +1,6 @@
 {
-  "version": "0.3.3",
-  "notes": "Fix a hard crash when handling BLE commands (e.g. tapping Refresh in the app killed the Pico's USB-serial link entirely). handle_command()/update_status() do I2C reads, JSON serialization, and gatts_write/notify -- calling all of that directly inside the BLE IRQ callback (_IRQ_GATTS_WRITE / _IRQ_CENTRAL_CONNECT) can corrupt the BLE stack's internal state, per MicroPython's own documented IRQ constraints. Now deferred via micropython.schedule() to run safely outside the IRQ context. Also includes prior fixes: BLE advertising overflow (34 > 31 byte limit), WiFi-off before BLE with a settle delay, and non-fatal gap_advertise error handling.",
+  "version": "0.4.0",
+  "notes": "Add Phase 2/3 tooling: gps.py (SIM7600 AT+CGPS helper, refactored from field_console.py's tested parser) and sheets_log.py (log Power_Log/GPS_Log/Bilge_Log/Events rows over cellular via the new Apps Script Web App receiver in boat_monitor/apps_script/Code.gs -- lighter than signing a Google service-account JWT on MicroPython). Nothing in main.py's boot flow changed; these are opt-in modules for bench testing via sheets_log_test.py. See APPS_SCRIPT_SETUP.md.",
   "files": [
     {
       "path": "version.py",
@@ -45,6 +45,18 @@
     {
       "path": "ble_service.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
+    },
+    {
+      "path": "gps.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/gps.py"
+    },
+    {
+      "path": "sheets_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+    },
+    {
+      "path": "sheets_log_test.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log_test.py"
     }
   ]
 }

@@ -168,7 +168,7 @@ You should see `OK: appended row to Power_Log` and a new row in the sheet.
 
 ## Pico / LTE note
 
-Posting from the **Pico over cellular** with a service-account JWT is possible but heavy on MicroPython. Many deployments use **Apps Script web POST** on the boat and **service account** on PC/cloud. Phase 2 in `BOAT_MONITOR_P2_PLAN.md` can add Pico-side logging once PC append is green.
+Posting from the **Pico over cellular** with a service-account JWT is possible but heavy on MicroPython. This repo uses an **Apps Script Web App** for that instead — see **`APPS_SCRIPT_SETUP.md`** for the receiver (`apps_script/Code.gs`), the Pico-side modules (`gps.py`, `sheets_log.py`), and how to test both the receiving end (PC, `apps_script_test.py`) and one real cellular POST (Pico, `sheets_log_test.py`) — covers Phase 2 + 3 in `BOAT_MONITOR_P2_PLAN.md`.
 
 ---
 
