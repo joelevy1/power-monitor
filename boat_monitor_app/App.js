@@ -25,6 +25,7 @@ export default function App() {
   const [status, setStatus] = useState(null);
   const [rawStatus, setRawStatus] = useState('');
   const [message, setMessage] = useState('Not connected');
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   async function connect() {
     if (scanning) return;
@@ -41,6 +42,7 @@ export default function App() {
       connectedDevice.onDisconnected(() => {
         setConnected(false);
         setMessage('Disconnected');
+        setLastUpdated(null);
         monitorSubRef.current?.remove?.();
         monitorSubRef.current = null;
         deviceRef.current = null;
@@ -62,6 +64,7 @@ export default function App() {
             }
             const text = ble.decodeBleValue(characteristic?.value);
             setRawStatus(text);
+            setLastUpdated(new Date());
             try {
               setStatus(JSON.parse(text));
             } catch {
@@ -76,6 +79,7 @@ export default function App() {
       const first = await connectedDevice.readCharacteristicForService(ble.SERVICE_UUID, ble.STATUS_UUID);
       const text = ble.decodeBleValue(first.value);
       setRawStatus(text);
+      setLastUpdated(new Date());
       try {
         setStatus(JSON.parse(text));
       } catch {
@@ -105,6 +109,7 @@ export default function App() {
       deviceRef.current = null;
       setConnected(false);
       setMessage('Disconnected');
+      setLastUpdated(null);
       import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
     }
   }
@@ -128,6 +133,8 @@ export default function App() {
 
   const inputs = status?.inputs || {};
   const mode = status?.mode || '--';
+  const commandResult = status?.command_result || null;
+  const commandResultDanger = /fail|error|unknown_command/i.test(commandResult || '');
 
   return (
     <View style={styles.container}>
@@ -153,10 +160,22 @@ export default function App() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Status</Text>
           <StatusRow label="Mode" value={mode} danger={mode === 'switch_on_key_off' || mode === 'float_alert'} />
-          <StatusRow label="Firmware" value={status?.fw || '--'} />
+          <StatusRow label="Pico firmware" value={status?.fw || '--'} />
+          <StatusRow label="Last updated" value={fmtTime(lastUpdated)} />
           <StatusRow label="Engine" value={`${fmtMetric(status?.engine, 'v')} V  ${fmtMetric(status?.engine, 'a', 3)} A`} />
           <StatusRow label="House" value={`${fmtMetric(status?.house, 'v')} V  ${fmtMetric(status?.house, 'a', 3)} A`} />
           <StatusRow label="V50" value={`${fmtMetric(status?.v50, 'v')} V`} />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Last Result</Text>
+          <Text style={[styles.resultText, commandResultDanger ? styles.danger : styles.resultOk]}>
+            {commandResult || 'No command sent yet'}
+          </Text>
+          <Text style={styles.hint}>
+            This is the outcome of the last command sent below (e.g. Log Now, OTA, Check Signal) --
+            same information Thonny's console would show, surfaced here so a laptop isn't needed.
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -175,6 +194,9 @@ export default function App() {
             <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('log')} disabled={!connected}>
               <Text style={styles.buttonText}>Log Now</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={[styles.secondaryButton, styles.btnGap]} onPress={() => sendCommand('signal')} disabled={!connected}>
+              <Text style={styles.buttonText}>Check Signal</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={[styles.secondaryButton, styles.btnGap]} onPress={() => sendCommand('wifi')} disabled={!connected}>
               <Text style={styles.buttonText}>Start Wi-Fi</Text>
             </TouchableOpacity>
@@ -186,8 +208,9 @@ export default function App() {
             </TouchableOpacity>
           </View>
           <Text style={styles.hint}>
-            Log Now posts a Power_Log row over cellular right now (bypasses Wi-Fi so BLE stays
-            connected). Check "command_result" below for logged / log_failed.
+            Log Now posts Power_Log and GPS_Log rows over cellular right now (bypasses Wi-Fi so BLE
+            stays connected). Check Signal reports cellular registration + signal strength without
+            opening a full data session. See "Last Result" above for the outcome of each.
           </Text>
         </View>
 
@@ -196,7 +219,10 @@ export default function App() {
           <Text style={styles.raw}>{rawStatus || 'No status yet'}</Text>
         </View>
 
-        <Text style={styles.buildLabel}>v{APP_VERSION} — tap Connect BLE near Pico</Text>
+        <Text style={styles.buildLabel}>
+          App v{APP_VERSION}
+          {status?.fw ? ` · Pico v${status.fw}` : ''} — tap Connect BLE near Pico
+        </Text>
       </ScrollView>
     </View>
   );
@@ -214,6 +240,15 @@ function StatusRow({ label, value, danger }) {
 function fmtMetric(reading, field, digits = 2) {
   if (!reading?.ok || typeof reading[field] !== 'number') return '--';
   return reading[field].toFixed(digits);
+}
+
+// Avoids toLocaleTimeString()/Intl -- Hermes' Intl support has been
+// unreliable in this app before (see the base64-js/TextDecoder crashes
+// fixed in 0.1.8/0.1.9), so this sticks to plain Date getters.
+function fmtTime(date) {
+  if (!date) return '--';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 const styles = StyleSheet.create({
@@ -308,6 +343,13 @@ const styles = StyleSheet.create({
   danger: {
     color: '#fca5a5',
     ...FW600,
+  },
+  resultText: {
+    fontSize: 16,
+    ...FW600,
+  },
+  resultOk: {
+    color: '#7dd3fc',
   },
   raw: {
     color: '#cbd5e1',
