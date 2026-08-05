@@ -16,6 +16,7 @@ try:
 except ImportError:
     version = None
 
+import auto_log
 import config as cfg
 
 
@@ -156,6 +157,60 @@ def read_status(command_result=None):
     return status
 
 
+def log_power_and_gps(note):
+    """Log one Power_Log row and attempt one GPS_Log row, tracking each
+    outcome independently so a GPS no-fix (e.g. no antenna) doesn't hide a
+    successful power log or vice versa. Shared by:
+    - ble_service.py's manual 'log'/'log_now' BLE command
+    - BoatMonitorBle._maybe_auto_log()'s automatic background trigger
+    - field_console.py's web '/log' page ("Log Now" button)
+    previously duplicated inline in the first two (and its own separate
+    copy in field_console.py).
+
+    Returns a "power: ..., gps: ..." summary string. Raises on
+    ensure_data()/close_data() failure (e.g. modem not responding at
+    all) -- the caller decides how to report that differently from a
+    partial power/gps failure.
+    """
+    import sheets_log
+
+    # prefer_wifi=False: BLE may be connected right now (this function is
+    # commonly reached from a BLE command/auto-log tick) -- Wi-Fi and BLE
+    # share one radio and cannot run at the same time, so trying Wi-Fi
+    # here could kill an active connection. Cellular uses separate UART
+    # hardware and is safe to run alongside BLE. field_console.py's own
+    # call site is Wi-Fi-AP-served, where the Wi-Fi radio is already busy
+    # as an AP -- same reasoning applies there too.
+    logger = sheets_log.SheetsLogger(prefer_wifi=False)
+    logger.ensure_data()
+    try:
+        status = read_status()
+
+        power_outcome = "ok"
+        try:
+            logger.log_power(
+                device=status["device"],
+                mode=status["mode"],
+                engine=status["engine"],
+                house=status["house"],
+                v50=status["v50"],
+                note=note,
+            )
+        except Exception as exc:
+            power_outcome = "failed: %s" % exc
+
+        gps_outcome = "no_fix"
+        try:
+            gps_result = logger.log_gps_now(status["device"], note=note)
+            gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
+        except Exception as exc:
+            gps_outcome = "failed: %s" % exc
+
+        return "power: %s, gps: %s" % (power_outcome, gps_outcome)
+    finally:
+        logger.close_data()
+
+
 def ensure_wifi_off():
     """Pico W: CYW43439 cannot reliably advertise BLE while WiFi STA/AP is active
     (shared radio). Same fix applied on the Ballast Monitor Pico firmware.
@@ -267,6 +322,16 @@ class BoatMonitorBle:
         self.update_status()
         self.advertise()
 
+        # Auto-logging schedule (auto_log.py): starts the interval fresh
+        # from boot rather than logging immediately -- avoids a cellular
+        # round-trip firing on every single reboot during development
+        # regardless of engine state. last_auto_log_mode stays None until
+        # the first tick, which is what keeps should_log_now() from
+        # forcing an immediate "log on engine start" the very first time
+        # it's called (see auto_log.py's docstring).
+        self._last_auto_log_ms = time.ticks_ms()
+        self._last_auto_log_mode = None
+
     def irq(self, event, data):
         # BLE IRQ callbacks must stay quick and must not re-enter the BLE
         # stack or do blocking hardware I/O (I2C reads, JSON work, etc) --
@@ -317,13 +382,15 @@ class BoatMonitorBle:
         print("BLE advertising as BoatMonitor")
 
     def update_status(self):
-        data = json.dumps(read_status(self.command_result)).encode()
+        status = read_status(self.command_result)
+        data = json.dumps(status).encode()
         self.ble.gatts_write(self.status_handle, data)
         for conn in self.connections:
             try:
                 self.ble.gatts_notify(conn, self.status_handle, data)
             except Exception as exc:
                 print("Notify failed:", exc)
+        return status
 
     def handle_command(self, raw):
         print("BLE command:", raw)
@@ -367,49 +434,8 @@ class BoatMonitorBle:
             self.command_result = "logging"
             self.update_status()
             try:
-                import sheets_log
-
-                # prefer_wifi=False for the same reason as "ota" above.
-                logger = sheets_log.SheetsLogger(prefer_wifi=False)
-                logger.ensure_data()
-                try:
-                    status = read_status(self.command_result)
-
-                    power_outcome = "ok"
-                    try:
-                        logger.log_power(
-                            device=status["device"],
-                            mode=status["mode"],
-                            engine=status["engine"],
-                            house=status["house"],
-                            v50=status["v50"],
-                            note="ble_log_now",
-                        )
-                    except Exception as exc:
-                        power_outcome = "failed: %s" % exc
-
-                    # A separate try/except from log_power above -- a GPS
-                    # hiccup (e.g. no fix, no antenna) shouldn't erase the
-                    # fact that the power row already logged successfully,
-                    # and vice versa. This is also what was MISSING before:
-                    # log_gps() existed but nothing ever called it, so
-                    # GPS_Log stayed empty no matter how many times "Log
-                    # Now" was pressed.
-                    gps_outcome = "no_fix"
-                    try:
-                        gps_result = logger.log_gps_now(status["device"], note="ble_log_now")
-                        gps_outcome = "ok" if gps_result.get("ok") else gps_result.get(
-                            "error", "no_fix"
-                        )
-                    except Exception as exc:
-                        gps_outcome = "failed: %s" % exc
-
-                    self.command_result = "logged (power: %s, gps: %s)" % (
-                        power_outcome,
-                        gps_outcome,
-                    )
-                finally:
-                    logger.close_data()
+                summary = self._log_power_and_gps(note="ble_log_now")
+                self.command_result = "logged (%s)" % summary
             except Exception as exc:
                 self.command_result = "log_failed: %s" % exc
             self.update_status()
@@ -447,9 +473,60 @@ class BoatMonitorBle:
             self.command_result = "unknown_command: %s" % cmd
             self.update_status()
 
+    def _log_power_and_gps(self, note):
+        return log_power_and_gps(note)
+
+    def _maybe_auto_log(self, mode):
+        """Called once per run() tick (~2s cadence) with the mode from
+        that tick's already-fetched status (avoids a second read_status()
+        call -- and its I2C/GPIO reads -- purely to look up the mode again
+        here). Checks auto_log.should_log_now() and, when due, performs
+        the same Power_Log + GPS_Log cycle as a manual 'Log Now' press,
+        just triggered automatically instead of by command.
+
+        Frequent while the engine is on (mode == 'key_on'), much less
+        frequent otherwise -- see auto_log.py for the actual intervals
+        and reasoning. This intentionally blocks run()'s loop for the
+        duration of the cellular round-trip (commonly 10-90s -- modem
+        reset + registration + NETOPEN + 1-2 HTTPS POSTs), exactly like
+        the manual 'log'/'ota' BLE commands already do: BLE status
+        updates/command handling pause during that window rather than
+        being skipped or run concurrently, since this codebase is
+        single-threaded. If BLE is connected when this fires, the app's
+        displayed status will simply look stale for that window instead
+        of updating live -- a known, already-accepted trade-off (same as
+        pressing "Log Now" or "OTA" manually), not a new one introduced
+        here.
+
+        Only runs from ble_service.py's main loop -- does NOT run while
+        the Wi-Fi AP fallback console (field_console.py) is active, since
+        that module's serve() loop blocks on a plain socket accept with
+        no periodic hook to call this from.
+        """
+        now = time.ticks_ms()
+        elapsed_s = time.ticks_diff(now, self._last_auto_log_ms) / 1000
+
+        if not auto_log.should_log_now(mode, elapsed_s, self._last_auto_log_mode):
+            self._last_auto_log_mode = mode
+            return
+
+        self._last_auto_log_mode = mode
+        self._last_auto_log_ms = now
+
+        print("Auto-log: mode=%s, elapsed=%.0fs" % (mode, elapsed_s))
+        try:
+            summary = self._log_power_and_gps(note="auto_log")
+            self.command_result = "auto_logged (%s)" % summary
+            print("Auto-log result:", summary)
+        except Exception as exc:
+            self.command_result = "auto_log_failed: %s" % exc
+            print("Auto-log failed:", exc)
+        self.update_status()
+
     def run(self):
         while True:
-            self.update_status()
+            status = self.update_status()
+            self._maybe_auto_log(status["mode"])
             time.sleep(2)
 
 

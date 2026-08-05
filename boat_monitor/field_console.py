@@ -388,47 +388,15 @@ def ota_html():
 
 def log_html():
     try:
-        import sheets_log
-        from ble_service import read_status
+        # prefer_wifi=False handled inside log_power_and_gps() for the
+        # same reason as ota_html() above -- the Wi-Fi radio here is
+        # already busy serving this page as an AP. Shared with
+        # ble_service.py's manual 'log' command and its automatic
+        # background logging -- previously this page had its own
+        # separate (near-identical) copy of this logic.
+        from ble_service import log_power_and_gps
 
-        status = read_status()
-        # prefer_wifi=False for the same reason as ota_html() above -- the
-        # Wi-Fi radio here is already busy serving this page as an AP.
-        logger = sheets_log.SheetsLogger(prefer_wifi=False)
-        logger.ensure_data()
-        try:
-            try:
-                result = logger.log_power(
-                    device=status["device"],
-                    mode=status["mode"],
-                    engine=status["engine"],
-                    house=status["house"],
-                    v50=status["v50"],
-                    note="wifi_console_log_now",
-                )
-                if result.get("ok"):
-                    power_msg = "Power: logged (row %s)." % result.get("row")
-                else:
-                    power_msg = "Power: failed -- %s" % result.get("error", result)
-            except Exception as e:
-                power_msg = "Power: failed -- %s" % e
-
-            # Same separate try/except as ble_service.py's "log" command --
-            # a GPS hiccup shouldn't hide a successful power log, and this
-            # is also what wires up GPS_Log at all: log_gps() previously
-            # existed but nothing here ever called it.
-            try:
-                gps_result = logger.log_gps_now(status["device"], note="wifi_console_log_now")
-                if gps_result.get("ok"):
-                    gps_msg = "GPS: logged (row %s)." % gps_result.get("row")
-                else:
-                    gps_msg = "GPS: %s" % gps_result.get("error", "no fix")
-            except Exception as e:
-                gps_msg = "GPS: failed -- %s" % e
-
-            msg = power_msg + "\n" + gps_msg
-        finally:
-            logger.close_data()
+        msg = "Logged: %s" % log_power_and_gps(note="wifi_console_log_now")
     except Exception as e:
         msg = "Log failed: %s" % e
     return page("Log Now", "<h1>Log Now</h1><p><a href='/'>Back</a></p><div class='card'><pre>%s</pre></div>" % safe(msg))
