@@ -261,6 +261,12 @@ class Sim7600Modem:
             print(text.strip() or "(no response)")
         return text
 
+    # Read cap used when AT+HTTPACTION declared length is 0/unknown (see
+    # read_http_data()'s expected_length=None mode) -- Apps Script JSON
+    # responses this codebase actually reads back are well under 1KB, so
+    # this is generous headroom, not a tight fit.
+    UNKNOWN_LENGTH_READ_CAP = 8192
+
     def read_http_data(self, expected_length, timeout_ms):
         """Send/read AT+HTTPREAD without relying on read_until()'s
         "\\r\\nOK\\r\\n" stop-token match at all.
@@ -277,13 +283,34 @@ class Sim7600Modem:
         once that total reaches expected_length (or on \\r\\nERROR\\r\\n,
         or timeout) -- never based on an OK/ERROR text match that could
         be a false positive partway through real data.
+
+        expected_length=None (or <= 0): the response's real length isn't
+        known in advance -- confirmed on real hardware against
+        script.googleusercontent.com's Apps Script redirect target, which
+        answers with Transfer-Encoding: chunked (no Content-Length
+        header). This modem/firmware reports THAT as declared length 0
+        via AT+HTTPACTION (immediately followed by an unsolicited
+        "+HTTP_PEER_CLOSED", which per SIMCom's manual just means the
+        server closed the TCP connection -- not that the response was
+        lost; the modem still buffers it internally for AT+HTTPREAD).
+        In this mode, request UNKNOWN_LENGTH_READ_CAP bytes and rely on
+        the modem's own "+HTTPREAD: 0" (zero-more-bytes) terminator to
+        know when the response is complete, instead of a byte count
+        known in advance -- every prior successful transfer (known-length
+        or not) has ended with this exact terminator right after its
+        last real chunk, so this is the same signal the modem already
+        gives, just used as the primary stop condition instead of an
+        afterthought drain.
         """
-        cmd = "AT+HTTPREAD=0,%d" % expected_length
+        known_length = expected_length is not None and expected_length > 0
+        read_cap = expected_length if known_length else self.UNKNOWN_LENGTH_READ_CAP
+        cmd = "AT+HTTPREAD=0,%d" % read_cap
         print(">>>", cmd)
         self.flush()
         self.uart.write((cmd + "\r\n").encode())
 
         marker = b"+HTTPREAD: DATA,"
+        terminator = b"+HTTPREAD: 0"
         start = time.ticks_ms()
         buf = b""
         accounted_for = 0
@@ -311,9 +338,18 @@ class Sim7600Modem:
                     accounted_for += chunk_len
                     scan_pos = data_start + chunk_len
 
-                if accounted_for >= expected_length:
-                    # Briefly drain any trailing "+HTTPREAD: 0\r\n\r\nOK\r\n"
-                    # terminator, then stop -- we have everything we need.
+                if known_length:
+                    done = accounted_for >= expected_length
+                else:
+                    # Only search past the last parsed chunk, matching the
+                    # same defensive posture as the marker search above --
+                    # avoids a false positive if this literal substring
+                    # ever appeared inside real chunk data.
+                    done = terminator in buf[scan_pos:]
+
+                if done:
+                    # Briefly drain any trailing "\r\nOK\r\n", then stop --
+                    # we have everything we need.
                     time.sleep(0.2)
                     if self.uart.any():
                         buf += self.uart.read()
@@ -509,13 +545,28 @@ class Sim7600Modem:
                 self.at("AT+HTTPTERM", 15000)
                 raise CellularError("HTTP status %s for %s" % (status, url))
 
-            if length <= 0:
+            if length > 0:
+                raw = self.read_http_data(length, max(HTTP_CMD_TIMEOUT_MS, length * 4))
                 self.at("AT+HTTPTERM", 15000)
-                raise CellularError("empty HTTP response for %s" % url)
+                return parse_http_read(raw, expected_length=length)
 
-            raw = self.read_http_data(length, max(HTTP_CMD_TIMEOUT_MS, length * 4))
+            # Declared length 0 with a 200 status does NOT necessarily mean
+            # an empty body -- confirmed on real hardware against
+            # script.googleusercontent.com's Apps Script redirect target
+            # (the same URL a Google Sheets logging POST's 302 redirect
+            # leads to): AT+HTTPACTION reported "0,200,0" here, immediately
+            # followed by an unsolicited "+HTTP_PEER_CLOSED" (SIMCom's
+            # manual: the server closed the connection -- not that the
+            # response was lost). That response is Transfer-Encoding:
+            # chunked (no Content-Length header), which this modem/
+            # firmware reports as declared length 0. Previously this
+            # branch raised immediately without ever trying AT+HTTPREAD at
+            # all. read_http_data(None, ...) now attempts the read anyway,
+            # relying on the modem's own "+HTTPREAD: 0" terminator instead
+            # of a byte count known in advance.
+            raw = self.read_http_data(None, HTTP_CMD_TIMEOUT_MS)
             self.at("AT+HTTPTERM", 15000)
-            return parse_http_read(raw, expected_length=length)
+            return parse_http_read(raw, expected_length=None)
 
     def http_post_json(self, url, body_bytes, timeout_ms=HTTP_CMD_TIMEOUT_MS):
         self.at("AT+HTTPTERM", 15000)

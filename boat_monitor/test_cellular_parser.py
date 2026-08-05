@@ -152,6 +152,25 @@ def run():
             real_recovered == real_config_bytes.decode("utf-8"),
         )
 
+    # parse_http_read() with expected_length=None -- the "declared length
+    # 0 doesn't mean empty body" path added for
+    # script.googleusercontent.com's Apps Script redirect target, which
+    # answers with Transfer-Encoding: chunked (no Content-Length header).
+    # AT+HTTPACTION reports that as declared length 0 on this modem/
+    # firmware; read_http_data(None, ...) requests a generous cap instead
+    # and relies on the "+HTTPREAD: 0" terminator, so parse_http_read()
+    # here has no expected_length to validate against -- just needs to
+    # still reassemble correctly.
+    apps_script_body = '{"ok":true,"tab":"Power_Log","row":5}'
+    unknown_length_raw = (
+        b"OK\r\n\r\n+HTTPREAD: DATA,%d\r\n%s\r\n+HTTPREAD: 0\r\n\r\nOK\r\n"
+        % (len(apps_script_body), apps_script_body.encode())
+    )
+    check(
+        "http_read with expected_length=None still reassembles",
+        parse_http_read(unknown_length_raw, expected_length=None, debug=False) == apps_script_body,
+    )
+
     # extract_location(): pulls "Location:" out of AT+HTTPHEAD's raw header
     # block. This is the mechanism that made Google Apps Script POSTs work
     # over cellular -- script.google.com/.../exec always answers with a
