@@ -87,9 +87,30 @@ jobs:
       - name: Compile for iOS Simulator
         run: |
           set -euo pipefail
+          # The smoke variant's app.config.js renames the app to "Boat
+          # Monitor Smoke" (isSmoke check), so expo prebuild generates a
+          # differently-named ios/*.xcworkspace than the committed
+          # "BoatMonitor.xcworkspace" this used to hardcode -- that name
+          # only exists for the full variant's committed ios/. Resolve it
+          # from whatever prebuild/checkout actually produced instead.
+          workspace=$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)
+          if [ -z "$workspace" ]; then
+            echo "::error::No .xcworkspace found under ios/"
+            exit 1
+          fi
+          # Query Xcode for the real scheme name instead of assuming it
+          # matches the workspace filename -- safer than guessing given
+          # this can't be verified without a macOS/Xcode environment.
+          scheme=$(xcodebuild -list -workspace "$workspace" 2>/dev/null | awk '/Schemes:/{flag=1; next} flag && NF{print; exit}' | xargs)
+          if [ -z "$scheme" ]; then
+            echo "::error::Could not determine a scheme from $workspace"
+            xcodebuild -list -workspace "$workspace" || true
+            exit 1
+          fi
+          echo "Using workspace: $workspace (scheme: $scheme)"
           xcodebuild \
-            -workspace ios/BoatMonitor.xcworkspace \
-            -scheme BoatMonitor \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
             -configuration Release \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
