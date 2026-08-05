@@ -213,20 +213,27 @@ def apply_manifest(client, manifest):
         write_file(path, data)
 
 
-def _get_client(reset_modem=False):
-    """Prefer Wi-Fi over cellular -- see module docstring for why this is
-    safe here specifically (OTA runs before BLE starts). Returns
-    (client, used_wifi); used_wifi tells the caller which teardown to run.
-    """
-    try:
-        import wifi_uplink
+def _get_client(reset_modem=False, prefer_wifi=True):
+    """Prefer Wi-Fi over cellular when prefer_wifi is True -- see module
+    docstring for why this is only safe when BLE is NOT active (e.g. the
+    boot-time OTA check). Callers that can run while BLE is connected --
+    e.g. the "ota" BLE command in ble_service.py -- MUST pass
+    prefer_wifi=False so this never touches the Wi-Fi radio and only uses
+    the cellular modem (separate UART hardware, no conflict with BLE).
 
-        ssid = wifi_uplink.connect(timeout_s=15)
-        if ssid:
-            print("OTA: using Wi-Fi (%s)" % ssid)
-            return wifi_uplink.WifiHttp(), True
-    except Exception as exc:
-        print("OTA: Wi-Fi attempt failed, falling back to cellular:", exc)
+    Returns (client, used_wifi); used_wifi tells the caller which teardown
+    to run.
+    """
+    if prefer_wifi:
+        try:
+            import wifi_uplink
+
+            ssid = wifi_uplink.connect(timeout_s=15)
+            if ssid:
+                print("OTA: using Wi-Fi (%s)" % ssid)
+                return wifi_uplink.WifiHttp(), True
+        except Exception as exc:
+            print("OTA: Wi-Fi attempt failed, falling back to cellular:", exc)
 
     print("OTA: using cellular")
     client = Sim7600Http()
@@ -257,12 +264,12 @@ def _close_client(client, used_wifi):
         pass
 
 
-def update(reset_modem=False, reboot=False):
+def update(reset_modem=False, reboot=False, prefer_wifi=True):
     print("Boat Monitor OTA update")
     print("Current version:", current_version())
     print("Manifest:", ota_config.OTA_MANIFEST_URL)
 
-    client, used_wifi = _get_client(reset_modem)
+    client, used_wifi = _get_client(reset_modem, prefer_wifi=prefer_wifi)
     try:
         manifest = load_manifest(client)
         target_version = manifest.get("version", "unknown")
@@ -287,8 +294,8 @@ def update(reset_modem=False, reboot=False):
         _close_client(client, used_wifi)
 
 
-def check():
-    client, used_wifi = _get_client()
+def check(prefer_wifi=True):
+    client, used_wifi = _get_client(prefer_wifi=prefer_wifi)
     try:
         manifest = load_manifest(client)
         print("Current:", current_version())

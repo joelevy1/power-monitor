@@ -1,6 +1,6 @@
 {
-  "version": "0.5.0",
-  "notes": "Add wifi_uplink.py: Wi-Fi STA uplink (multiple saved networks, tried in priority order from wifi_credentials.py) tried before cellular for internet access. Wired into ota.py (OTA checks) and sheets_log.py (Sheets logging), both falling back to cellular automatically if Wi-Fi isn't configured or fails to connect. Safe because both only run before BLE starts (main.py's boot flow) or as standalone bench tests -- Wi-Fi and BLE share one radio on the Pico W and cannot run at the same time. See OTA_UPDATE.md / APPS_SCRIPT_SETUP.md.",
+  "version": "0.5.1",
+  "notes": "Add BLE command 'log'/'log_now' to post one Power_Log row over cellular on demand -- for testing/using Sheets logging once mounted on the boat with no laptop attached (BLE from the phone is the only way to trigger anything there). Forces prefer_wifi=False since BLE is active during this command; Wi-Fi and BLE share one radio and would drop the connection you used to trigger it. Also fixes the existing 'ota' BLE command, which was about to inherit that same Wi-Fi-vs-BLE conflict now that ota.py prefers Wi-Fi by default -- it now also forces prefer_wifi=False. See APPS_SCRIPT_SETUP.md for the three distinct testing/operation modes (bench test, BLE Log Now, and not-yet-built automatic periodic logging).",
   "files": [
     {
       "path": "version.py",

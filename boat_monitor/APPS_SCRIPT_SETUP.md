@@ -144,6 +144,24 @@ g.off()
 logger.close_data()
 ```
 
+## Three different ways this gets tested/used (don't confuse them)
+
+| | Trigger | Transport | When to use |
+|---|---|---|---|
+| **Bench test** | `sheets_log_test.py` via Thonny/USB | Wi-Fi first, cellular fallback | At your desk, laptop plugged in |
+| **BLE "Log Now"** | Tap **Log Now** in the app (BLE command `log`) | **Cellular only** (`prefer_wifi=False`) | Once it's mounted on the boat — no laptop there, but your phone over BLE always works. Forces cellular specifically because Wi-Fi and BLE share one radio; trying Wi-Fi while BLE is connected would drop the very connection you're using to trigger it. |
+| **Automatic periodic logging** | *(not built yet)* | — | Phase 6 (winter storage, hourly RTC wake) / Phase 7B (underway GPS every 30s) in `BOAT_MONITOR_P2_PLAN.md`. This is what would eventually log without you doing anything — it doesn't exist yet. |
+
+**Log Now** only posts `Power_Log` (current voltage/current/mode) — no GPS, kept
+intentionally fast (GPS fixes can take up to 90s, which would leave the BLE
+connection quiet for way too long). Result shows up in the app's `Raw BLE`
+panel as `"command_result": "logged"` or `"log_failed: ..."` once the
+cellular POST finishes (typically 10–60s depending on modem/network).
+
+The same `prefer_wifi=False` fix was needed for the existing **OTA** BLE
+command too — it was about to inherit the same Wi-Fi-vs-BLE conflict once
+Wi-Fi-first landed in `ota.py`. Both are fixed now.
+
 ## What's intentionally *not* wired in yet
 
 `gps.py` and `sheets_log.py` are **not** called from `main.py`'s boot flow

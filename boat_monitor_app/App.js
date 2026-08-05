@@ -172,7 +172,10 @@ export default function App() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Service Commands</Text>
           <View style={styles.buttonRowWrap}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('wifi')} disabled={!connected}>
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('log')} disabled={!connected}>
+              <Text style={styles.buttonText}>Log Now</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.secondaryButton, styles.btnGap]} onPress={() => sendCommand('wifi')} disabled={!connected}>
               <Text style={styles.buttonText}>Start Wi-Fi</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.secondaryButton, styles.btnGap]} onPress={() => sendCommand('ota')} disabled={!connected}>
@@ -182,6 +185,10 @@ export default function App() {
               <Text style={styles.buttonText}>Reboot</Text>
             </TouchableOpacity>
           </View>
+          <Text style={styles.hint}>
+            Log Now posts a Power_Log row over cellular right now (bypasses Wi-Fi so BLE stays
+            connected). Check "command_result" below for logged / log_failed.
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -305,6 +312,11 @@ const styles = StyleSheet.create({
   raw: {
     color: '#cbd5e1',
     fontSize: 12,
+  },
+  hint: {
+    color: '#64748b',
+    fontSize: 11,
+    marginTop: 10,
   },
   buildLabel: {
     color: '#64748b',

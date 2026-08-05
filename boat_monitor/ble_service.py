@@ -353,10 +353,40 @@ class BoatMonitorBle:
             try:
                 import ota
 
-                changed = ota.update(reboot=True)
+                # prefer_wifi=False: BLE is connected right now (that's how
+                # this command arrived) -- Wi-Fi and BLE share one radio and
+                # cannot run at the same time, so trying Wi-Fi here would
+                # kill this very connection. Cellular uses separate UART
+                # hardware and is safe to run alongside BLE.
+                changed = ota.update(reboot=True, prefer_wifi=False)
                 self.command_result = "ota_updated" if changed else "ota_current"
             except Exception as exc:
                 self.command_result = "ota_failed: %s" % exc
+            self.update_status()
+        elif cmd in ("log", "log_now"):
+            self.command_result = "logging"
+            self.update_status()
+            try:
+                import sheets_log
+
+                # prefer_wifi=False for the same reason as "ota" above.
+                logger = sheets_log.SheetsLogger(prefer_wifi=False)
+                logger.ensure_data()
+                try:
+                    status = read_status(self.command_result)
+                    logger.log_power(
+                        device=status["device"],
+                        mode=status["mode"],
+                        engine=status["engine"],
+                        house=status["house"],
+                        v50=status["v50"],
+                        note="ble_log_now",
+                    )
+                    self.command_result = "logged"
+                finally:
+                    logger.close_data()
+            except Exception as exc:
+                self.command_result = "log_failed: %s" % exc
             self.update_status()
         else:
             self.command_result = "unknown_command: %s" % cmd
