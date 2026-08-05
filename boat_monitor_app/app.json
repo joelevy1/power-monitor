@@ -16,6 +16,7 @@
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to your boat monitor.",
         "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to your boat monitor.",
+        "NSLocalNetworkUsageDescription": "This app checks whether your boat monitor's Wi-Fi console is reachable when you've joined its Wi-Fi network.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true

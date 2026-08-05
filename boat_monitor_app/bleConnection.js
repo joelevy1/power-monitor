@@ -150,6 +150,42 @@ function safeStopScan(manager) {
   }
 }
 
+// Passive scan: listen for BoatMonitor's advertisements (RSSI included)
+// WITHOUT connecting -- lets the home screen show "broadcasting nearby"
+// and signal strength before the user taps Connect, same pattern as the
+// Ballast app's home screen. Scanning with no UUID filter (null) and
+// checking isBoatMonitor() manually in the callback matches
+// scanAndConnect() below rather than relying on react-native-ble-plx's
+// native UUID-array filter, since BoatMonitor's advertisement splits its
+// service UUID (primary AD packet) from its name (scan response packet)
+// to stay under BLE's 31-byte legacy advertising limit -- already proven
+// to work reliably this way in scanAndConnect(), so passive scanning
+// follows the identical approach instead of a second, untested filtering
+// path.
+export function startPassiveScan(manager, onDevice, onError) {
+  try {
+    manager.startDeviceScan(null, { allowDuplicates: true }, (error, device) => {
+      try {
+        if (error) {
+          onError?.(error);
+          return;
+        }
+        if (isBoatMonitor(device)) {
+          onDevice(device);
+        }
+      } catch (exc) {
+        onError?.(exc);
+      }
+    });
+  } catch (exc) {
+    onError?.(exc);
+  }
+}
+
+export function stopScan(manager) {
+  safeStopScan(manager);
+}
+
 export async function scanAndConnect() {
   const manager = await getBleManager();
   await waitForPoweredOn(manager);

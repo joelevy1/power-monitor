@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,32 @@ const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
 const APP_VERSION =
   Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '0.0.0';
 
+// Passive BLE scan (home screen, not connected): listen for advertisements
+// for PASSIVE_SCAN_WINDOW_MS, then stop -- avoids scanning continuously in
+// the background (battery), re-running every PASSIVE_SCAN_REPEAT_MS so the
+// "broadcasting nearby" status still stays reasonably fresh while idle.
+// Same pattern as the Ballast app's home screen passive RSSI scan.
+const PASSIVE_SCAN_WINDOW_MS = 12000;
+const PASSIVE_SCAN_REPEAT_MS = 25000;
+const LIVE_RSSI_POLL_MS = 2000;
+
+// The Pico's own Wi-Fi AP fallback console (field_console.py's start_ap(),
+// see main.py's "wifi"/"start_wifi" boot path). iOS does NOT let
+// third-party apps scan for nearby Wi-Fi networks/SSIDs at all -- that's a
+// platform restriction, not something this app can work around -- so this
+// checks REACHABILITY of the console instead: it only succeeds once your
+// phone has actually joined the BoatMonitor Wi-Fi network in iOS Settings,
+// at which point a real fetch to it is the practical equivalent of "is the
+// AP up and serving".
+const WIFI_CONSOLE_URL = 'http://192.168.4.1/';
+const WIFI_CHECK_TIMEOUT_MS = 4000;
+
+function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 export default function App() {
   const deviceRef = useRef(null);
   const monitorSubRef = useRef(null);
@@ -26,6 +52,95 @@ export default function App() {
   const [rawStatus, setRawStatus] = useState('');
   const [message, setMessage] = useState('Not connected');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [scanRssi, setScanRssi] = useState(null);
+  const [signalStrength, setSignalStrength] = useState(null);
+  const [wifiConsoleStatus, setWifiConsoleStatus] = useState('idle'); // idle | checking | reachable | unreachable
+  const [wifiConsoleError, setWifiConsoleError] = useState(null);
+
+  // Passive BLE scan on the home screen: shows whether the Pico is
+  // broadcasting nearby and its signal strength before you ever tap
+  // Connect. Only runs when idle (not connected, not mid-connect-scan) --
+  // stops immediately once either of those becomes true.
+  useEffect(() => {
+    if (connected || scanning) return undefined;
+    let cancelled = false;
+    let mgr = null;
+    let windowTimer = null;
+    let repeatTimer = null;
+
+    const runWindow = async () => {
+      if (cancelled) return;
+      try {
+        const ble = await import('./bleConnection');
+        if (cancelled) return;
+        mgr = await ble.getBleManager();
+        await ble.waitForPoweredOn(mgr, 5000);
+        if (cancelled) return;
+        setScanRssi(null);
+        ble.startPassiveScan(
+          mgr,
+          (device) => {
+            if (!cancelled && Number.isFinite(device?.rssi)) {
+              setScanRssi(device.rssi);
+            }
+          },
+          () => {
+            // Passive scanning is best-effort -- ignore scan errors (e.g.
+            // Bluetooth toggled off mid-scan) rather than alerting the
+            // user for a background check they didn't explicitly ask for.
+          },
+        );
+        windowTimer = setTimeout(() => {
+          if (mgr) ble.stopScan(mgr);
+        }, PASSIVE_SCAN_WINDOW_MS);
+      } catch {
+        // Bluetooth not ready/available -- leave scanRssi as-is and try
+        // again on the next repeat cycle.
+      }
+    };
+
+    runWindow();
+    repeatTimer = setInterval(runWindow, PASSIVE_SCAN_REPEAT_MS);
+
+    return () => {
+      cancelled = true;
+      if (windowTimer) clearTimeout(windowTimer);
+      if (repeatTimer) clearInterval(repeatTimer);
+      if (mgr) {
+        import('./bleConnection').then((ble) => ble.stopScan(mgr)).catch(() => {});
+      }
+    };
+  }, [connected, scanning]);
+
+  // Live RSSI while actually connected -- same 2s cadence as the Ballast
+  // app, using the already-connected device instead of a fresh scan.
+  useEffect(() => {
+    if (!connected || !deviceRef.current) return undefined;
+    const id = setInterval(async () => {
+      try {
+        const d = await deviceRef.current.readRSSI();
+        const r = typeof d === 'number' ? d : d?.rssi;
+        if (Number.isFinite(r)) setSignalStrength(r);
+      } catch {
+        // Device may have just disconnected -- the onDisconnected handler
+        // will clean up state; ignore this one failed read.
+      }
+    }, LIVE_RSSI_POLL_MS);
+    return () => clearInterval(id);
+  }, [connected]);
+
+  async function checkWifiConsole() {
+    setWifiConsoleStatus('checking');
+    setWifiConsoleError(null);
+    try {
+      const res = await fetchWithTimeout(WIFI_CONSOLE_URL, { method: 'GET' }, WIFI_CHECK_TIMEOUT_MS);
+      setWifiConsoleStatus(res.ok ? 'reachable' : 'unreachable');
+      if (!res.ok) setWifiConsoleError(`HTTP ${res.status}`);
+    } catch (error) {
+      setWifiConsoleStatus('unreachable');
+      setWifiConsoleError(error?.message || String(error));
+    }
+  }
 
   async function connect() {
     if (scanning) return;
@@ -43,6 +158,7 @@ export default function App() {
         setConnected(false);
         setMessage('Disconnected');
         setLastUpdated(null);
+        setSignalStrength(null);
         monitorSubRef.current?.remove?.();
         monitorSubRef.current = null;
         deviceRef.current = null;
@@ -110,6 +226,7 @@ export default function App() {
       setConnected(false);
       setMessage('Disconnected');
       setLastUpdated(null);
+      setSignalStrength(null);
       import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
     }
   }
@@ -136,6 +253,10 @@ export default function App() {
   const commandResult = status?.command_result || null;
   const commandResultDanger = /fail|error|unknown_command/i.test(commandResult || '');
 
+  const activeRssi = connected ? signalStrength : scanRssi;
+  const bleQuality = signalQualityFor(activeRssi);
+  const bleBroadcasting = connected || Number.isFinite(scanRssi);
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -155,6 +276,47 @@ export default function App() {
           <TouchableOpacity style={styles.secondaryButton} onPress={() => sendCommand('refresh')} disabled={!connected}>
             <Text style={styles.buttonText}>Refresh</Text>
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Signal</Text>
+          <StatusRow
+            label="Bluetooth"
+            value={bleBroadcasting ? `${bleQuality.bars}  ${bleQuality.text}` : 'Not detected nearby'}
+            danger={!bleBroadcasting}
+          />
+          <StatusRow label="RSSI" value={Number.isFinite(activeRssi) ? `${activeRssi} dBm` : '--'} />
+          <StatusRow
+            label="Wi-Fi console"
+            value={
+              wifiConsoleStatus === 'checking'
+                ? 'Checking...'
+                : wifiConsoleStatus === 'reachable'
+                  ? 'Reachable (192.168.4.1)'
+                  : wifiConsoleStatus === 'unreachable'
+                    ? `Not reachable${wifiConsoleError ? ` (${wifiConsoleError})` : ''}`
+                    : 'Not checked yet'
+            }
+            danger={wifiConsoleStatus === 'unreachable'}
+          />
+          <TouchableOpacity
+            style={[styles.secondaryButton, styles.checkWifiButton]}
+            onPress={checkWifiConsole}
+            disabled={wifiConsoleStatus === 'checking'}
+          >
+            {wifiConsoleStatus === 'checking' ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Check Wi-Fi Console</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.hint}>
+            Bluetooth updates automatically -- broadcasting nearby even before you connect, live
+            signal once connected. iOS does not let apps scan for nearby Wi-Fi networks, so the
+            Wi-Fi console check only works after you have joined the "BoatMonitor" Wi-Fi network
+            yourself in iOS Settings (Start Wi-Fi command, or automatic BLE fallback) -- it then
+            confirms the console at 192.168.4.1 is actually responding.
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -237,6 +399,19 @@ function StatusRow({ label, value, danger }) {
   );
 }
 
+// Pure/no BLE dependency, so this stays a plain local helper instead of
+// living in bleConnection.js -- that module is always lazy-loaded here
+// (await import('./bleConnection')) to keep app startup crash-safe, and
+// this needs to run synchronously during render.
+function signalQualityFor(rssi) {
+  if (!Number.isFinite(rssi)) return { bars: '○○○○○', text: 'No Signal' };
+  if (rssi >= -50) return { bars: '●●●●●', text: 'Excellent' };
+  if (rssi >= -60) return { bars: '●●●●○', text: 'Good' };
+  if (rssi >= -70) return { bars: '●●●○○', text: 'Fair' };
+  if (rssi >= -80) return { bars: '●●○○○', text: 'Weak' };
+  return { bars: '●○○○○', text: 'Poor' };
+}
+
 function fmtMetric(reading, field, digits = 2) {
   if (!reading?.ok || typeof reading[field] !== 'number') return '--';
   return reading[field].toFixed(digits);
@@ -283,6 +458,9 @@ const styles = StyleSheet.create({
   },
   btnGap: {
     marginLeft: 10,
+    marginTop: 10,
+  },
+  checkWifiButton: {
     marginTop: 10,
   },
   primaryButton: {

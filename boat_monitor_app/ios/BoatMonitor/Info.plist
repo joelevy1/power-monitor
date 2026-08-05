@@ -47,6 +47,8 @@
     <string>This app uses Bluetooth to connect to your boat monitor.</string>
     <key>NSBluetoothPeripheralUsageDescription</key>
     <string>This app uses Bluetooth to connect to your boat monitor.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>This app checks whether your boat monitor's Wi-Fi console is reachable when you've joined its Wi-Fi network.</string>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
     <key>UIRequiredDeviceCapabilities</key>
