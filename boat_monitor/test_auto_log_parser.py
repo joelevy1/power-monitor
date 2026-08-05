@@ -37,7 +37,12 @@ def run():
             "interval_for_mode %s is the long interval" % other_mode,
             interval_for_mode(other_mode) == INTERVAL_ENGINE_OFF_S,
         )
-    check("engine-on interval is shorter than engine-off", INTERVAL_ENGINE_ON_S < INTERVAL_ENGINE_OFF_S)
+    # <=, not <: INTERVAL_ENGINE_OFF_S is temporarily set equal to
+    # INTERVAL_ENGINE_ON_S for a multi-day standalone battery-life test
+    # (see auto_log.py) -- this only asserts engine-on is never LONGER,
+    # which stays true whether they're temporarily equal or (normally)
+    # engine-off is the longer one.
+    check("engine-on interval is never longer than engine-off", INTERVAL_ENGINE_ON_S <= INTERVAL_ENGINE_OFF_S)
 
     # should_log_now(): the ordinary "enough time has passed" case, for
     # both engine-on and engine-off intervals.

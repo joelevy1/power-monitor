@@ -386,12 +386,34 @@ class Sim7600Modem:
         self.at("ATE0", 2000)
 
     def check_sim(self):
-        resp = self.at("AT+CPIN?", 3000)
-        if "READY" in resp:
-            return
-        if "SIM PIN" in resp or "SIM PUK" in resp:
-            raise CellularError("SIM is PIN/PUK locked (AT+CPIN? -> %s)" % _one_line(resp))
-        raise CellularError("No SIM detected or not ready (AT+CPIN? -> %s)" % _one_line(resp))
+        """Retries a few times on "SIM busy" specifically -- confirmed on
+        real hardware right after AT+CFUN=1 (restoring full functionality
+        from the low-power AT+CFUN=0 mode): the SIM subsystem needs a
+        moment to reinitialize and can transiently answer AT+CPIN? with
+        "+CME ERROR: SIM busy" before settling to "+CPIN: READY" a moment
+        later. Any other non-ready response fails immediately as before --
+        this isn't a blanket retry, just covering this one specific,
+        already-observed transient.
+
+        Also fixes a real pre-existing bug: both error branches below
+        called an undefined _one_line() (the actual module-level function
+        is one_line(), no underscore) -- meaning check_sim() would have
+        raised a confusing NameError instead of the intended CellularError
+        with a clear diagnostic, the moment either branch was ever
+        actually hit. Never caught before now because the SIM had always
+        responded "READY" on the very first attempt in every prior test.
+        """
+        for attempt in range(3):
+            resp = self.at("AT+CPIN?", 3000)
+            if "READY" in resp:
+                return
+            if "SIM PIN" in resp or "SIM PUK" in resp:
+                raise CellularError("SIM is PIN/PUK locked (AT+CPIN? -> %s)" % one_line(resp))
+            if "SIM busy" in resp and attempt < 2:
+                print("SIM busy, retrying...")
+                time.sleep(1)
+                continue
+            raise CellularError("No SIM detected or not ready (AT+CPIN? -> %s)" % one_line(resp))
 
     def wait_for_registration(self, seconds=60):
         print("Waiting for network registration (up to %ds)..." % seconds)
@@ -477,6 +499,23 @@ class Sim7600Modem:
             pass
         try:
             self.at("AT+NETCLOSE", 15000)
+        except Exception:
+            pass
+        try:
+            # AT+CFUN=0 (minimum functionality): shuts off RF/network
+            # circuits -- the modem's biggest power draw while otherwise
+            # idle between logging cycles -- confirmed safe on real
+            # hardware via modem_cfun_test.py (stays UART-responsive the
+            # whole time; AT+CFUN=1 reliably restores it and re-registers).
+            # Deliberately NOT using AT+CPOF (true power-off): also
+            # confirmed on real hardware that this board's wiring can't
+            # wake the modem from that state at all -- see
+            # modem_power_cycle_test.py. ensure_data()'s existing
+            # self.reset() (a hardware reset, called at the start of every
+            # cycle regardless) already reliably brings the modem out of
+            # CFUN=0 the same way it recovers from every other prior
+            # state, so no change needed there.
+            self.at("AT+CFUN=0", 15000)
         except Exception:
             pass
         self._data_open = False

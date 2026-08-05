@@ -36,7 +36,16 @@ INTERVAL_ENGINE_ON_S = 300  # 5 minutes
 # in the sheet even with nobody around to press "Log Now", without
 # spending cellular data/EAS-adjacent SIM costs on a near-real-time cadence
 # that only actually matters while underway.
-INTERVAL_ENGINE_OFF_S = 3600  # 60 minutes
+#
+# TEMPORARY: set to 5 minutes (matching INTERVAL_ENGINE_ON_S) for the
+# multi-day standalone battery-life test (Pico + modem on a power bank,
+# no PC/Thonny, nothing wired to the mode-detection GPIO pins so mode
+# stays "docked_off" the whole time) -- this is what makes that test
+# actually log every 5 minutes throughout, giving a detailed drain curve
+# and many repeated cycles of the automatic flow instead of one row per
+# hour. Revert to 3600 (60 minutes) before real field/dock use, once the
+# battery-life numbers are in.
+INTERVAL_ENGINE_OFF_S = 300  # 5 minutes (TEMPORARY -- see comment above; normally 3600s)
 
 ENGINE_ON_MODE = "key_on"
 
