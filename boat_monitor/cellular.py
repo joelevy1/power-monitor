@@ -128,6 +128,20 @@ def parse_http_read(text, expected_length=None, debug=True):
 
 
 class Sim7600Modem:
+    # MicroPython's default UART RX buffer (rp2 port) is small -- far
+    # smaller than a burst of several KB the modem can send back-to-back
+    # for a chunked AT+HTTPREAD response. If the hardware/driver buffer
+    # fills faster than read_until()'s Python-level loop drains it
+    # (time.sleep(0.05) between checks -- at 115200 baud that's ~576 bytes
+    # per interval), excess bytes are silently DROPPED at the driver level
+    # before Python ever sees them. This matches exactly what was observed
+    # on real hardware: a DIFFERENT, RANDOM amount of data missing on each
+    # run (1024 bytes once, 160 another time), at essentially random
+    # positions, and never reproducible in a pure-string simulation (no
+    # real hardware buffer to overflow there). A generous explicit rxbuf
+    # is cheap insurance against this class of loss.
+    RX_BUFFER_SIZE = 4096
+
     def __init__(self):
         # Imported here, not at module level, so one_line()/parse_http_action()/
         # parse_http_read() above stay importable and unit-testable on a PC
@@ -140,6 +154,7 @@ class Sim7600Modem:
             baudrate=cfg.MODEM_BAUD,
             tx=Pin(cfg.PIN_UART_TX),
             rx=Pin(cfg.PIN_UART_RX),
+            rxbuf=self.RX_BUFFER_SIZE,
         )
         self.rst = Pin(cfg.PIN_MODEM_RESET, Pin.OUT, value=1)
         self._cfg = cfg
@@ -169,7 +184,11 @@ class Sim7600Modem:
                 for token in stop_tokens:
                     if token in buf:
                         return buf.decode("utf-8", "ignore")
-            time.sleep(0.05)
+            # Drain frequently (not just rely on RX_BUFFER_SIZE) -- defense
+            # in depth against the buffer-overflow data loss described on
+            # Sim7600Modem.RX_BUFFER_SIZE, in case a future response
+            # exceeds even that buffer.
+            time.sleep(0.01)
 
         return buf.decode("utf-8", "ignore")
 
