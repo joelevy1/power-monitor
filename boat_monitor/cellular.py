@@ -53,6 +53,22 @@ class CellularError(Exception):
 # too-short timeout would cause a real, in-progress transfer to be cut off.
 HTTP_CMD_TIMEOUT_MS = 120000
 
+# Google Apps Script Web Apps (the script.google.com/.../exec URL used by
+# sheets_log.py) ALWAYS answer with an HTTP redirect to a
+# script.googleusercontent.com URL that serves the actual doPost()/doGet()
+# response body -- confirmed on real hardware: AT+HTTPACTION returned
+# "1,302,0" (status 302, zero-length body -- nothing for AT+HTTPREAD to
+# read). This is normal, expected Apps Script behavior, not an error. It
+# was invisible from the PC-side test (apps_script_test.py) because
+# Python's urllib follows redirects automatically; the SIM7600's own HTTP
+# client does not (its AT+HTTPPARA options have no auto-redirect toggle --
+# checked against SIMCom's official AT command manual). The fix mirrors
+# what a browser/urllib already does: read the Location header via
+# AT+HTTPHEAD (the response body isn't where redirect targets live) and
+# re-request it.
+REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+MAX_REDIRECTS = 5
+
 
 def one_line(text):
     text = text.replace("\r", "\n")
@@ -69,6 +85,22 @@ def parse_http_action(text):
     if len(parts) < 3:
         raise CellularError("bad HTTPACTION response: %s" % line)
     return int(parts[1]), int(parts[2])
+
+
+def extract_location(header_text):
+    """Pull the value of a "Location:" header out of AT+HTTPHEAD's raw
+    response text (the header block SIMCom's manual example shows as
+    "HTTP/1.1 200 OK\\r\\nDate: ...\\r\\n..."). Case-insensitive since HTTP
+    header names aren't guaranteed a specific case. Returns None if no
+    Location header is present (e.g. a non-redirect status).
+    """
+    if isinstance(header_text, bytes):
+        header_text = header_text.decode("utf-8", "ignore")
+    for line in header_text.replace("\r", "\n").split("\n"):
+        line = line.strip()
+        if line[:9].lower() == "location:":
+            return line.split(":", 1)[1].strip()
+    return None
 
 
 def parse_http_read(data, expected_length=None, debug=True):
@@ -413,33 +445,77 @@ class Sim7600Modem:
             pass
         self._data_open = False
 
+    def read_http_head(self, timeout_ms=15000):
+        """Read the response headers for the just-completed AT+HTTPACTION
+        via AT+HTTPHEAD -- must be called BEFORE AT+HTTPTERM, which
+        discards them. This is the only way to see a redirect's Location
+        header: AT+HTTPREAD only returns the response BODY, and a
+        redirect's <data_len> from AT+HTTPACTION is typically 0.
+
+        Deliberately does NOT include "+HTTPHEAD:" as a read_until() stop
+        token (unlike AT+HTTPACTION's use of "+HTTPACTION:") -- that
+        marker appears at the very START of this response, so stopping on
+        it would return before the header text and trailing OK have
+        actually arrived. Waiting for the normal "\\r\\nOK\\r\\n"/
+        "\\r\\nERROR\\r\\n" terminators (this method's default expect)
+        gets the whole block.
+        """
+        resp = self.at("AT+HTTPHEAD", timeout_ms)
+        if "+HTTPHEAD" not in resp:
+            raise CellularError("AT+HTTPHEAD failed: %s" % one_line(resp))
+        return resp
+
+    def _resolve_redirect(self, url, redirect_count):
+        """Read the Location header for the just-completed AT+HTTPACTION
+        and close out this HTTP session. Must run before AT+HTTPTERM.
+        """
+        if redirect_count >= MAX_REDIRECTS:
+            self.at("AT+HTTPTERM", 15000)
+            raise CellularError("too many redirects starting from %s" % url)
+
+        head = self.read_http_head(15000)
+        location = extract_location(head)
+        self.at("AT+HTTPTERM", 15000)
+        if not location:
+            raise CellularError("redirect with no Location header: %s" % one_line(head))
+        print("Following redirect ->", location)
+        return location
+
     def http_get(self, url):
         print("HTTP GET", url)
-        self.at("AT+HTTPTERM", 15000)
-        self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
-        self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
-
-        if url.startswith("https://"):
-            self.at("AT+HTTPSSL=1", 15000)
-        else:
-            self.at("AT+HTTPSSL=0", 15000)
-
-        self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
-        action = self.at(
-            "AT+HTTPACTION=0", HTTP_CMD_TIMEOUT_MS, expect=("+HTTPACTION:", "\r\nERROR\r\n")
-        )
-        status, length = parse_http_action(action)
-        if status != 200:
+        redirect_count = 0
+        while True:
             self.at("AT+HTTPTERM", 15000)
-            raise CellularError("HTTP status %s for %s" % (status, url))
+            self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
+            self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
 
-        if length <= 0:
+            if url.startswith("https://"):
+                self.at("AT+HTTPSSL=1", 15000)
+            else:
+                self.at("AT+HTTPSSL=0", 15000)
+
+            self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
+            action = self.at(
+                "AT+HTTPACTION=0", HTTP_CMD_TIMEOUT_MS, expect=("+HTTPACTION:", "\r\nERROR\r\n")
+            )
+            status, length = parse_http_action(action)
+
+            if status in REDIRECT_STATUSES:
+                url = self._resolve_redirect(url, redirect_count)
+                redirect_count += 1
+                continue
+
+            if status != 200:
+                self.at("AT+HTTPTERM", 15000)
+                raise CellularError("HTTP status %s for %s" % (status, url))
+
+            if length <= 0:
+                self.at("AT+HTTPTERM", 15000)
+                raise CellularError("empty HTTP response for %s" % url)
+
+            raw = self.read_http_data(length, max(HTTP_CMD_TIMEOUT_MS, length * 4))
             self.at("AT+HTTPTERM", 15000)
-            raise CellularError("empty HTTP response for %s" % url)
-
-        raw = self.read_http_data(length, max(HTTP_CMD_TIMEOUT_MS, length * 4))
-        self.at("AT+HTTPTERM", 15000)
-        return parse_http_read(raw, expected_length=length)
+            return parse_http_read(raw, expected_length=length)
 
     def http_post_json(self, url, body_bytes, timeout_ms=HTTP_CMD_TIMEOUT_MS):
         self.at("AT+HTTPTERM", 15000)
@@ -470,6 +546,19 @@ class Sim7600Modem:
 
         action = self.at("AT+HTTPACTION=1", timeout_ms, expect=("+HTTPACTION:", "\r\nERROR\r\n"))
         status, length = parse_http_action(action)
+
+        if status in REDIRECT_STATUSES:
+            # Per-spec a 307/308 should re-POST the same body, but Apps
+            # Script (the only POST target this code has) only ever sends
+            # 302 here, and its redirect target serves the already-computed
+            # doPost() response on a plain GET -- the same convention
+            # browsers and Python's urllib follow when downgrading a
+            # redirected POST to GET. http_get() reuses this same
+            # redirect-following loop for the (rare) case the redirect
+            # target itself redirects again.
+            redirect_url = self._resolve_redirect(url, 0)
+            return self.http_get(redirect_url)
+
         if status != 200:
             self.at("AT+HTTPTERM", 15000)
             raise CellularError("HTTP status %s posting to %s" % (status, url))

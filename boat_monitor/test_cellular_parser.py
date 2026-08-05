@@ -12,7 +12,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from cellular import CellularError, one_line, parse_http_action, parse_http_read  # noqa: E402
+from cellular import (  # noqa: E402
+    CellularError,
+    extract_location,
+    one_line,
+    parse_http_action,
+    parse_http_read,
+)
 
 
 def run():
@@ -145,6 +151,33 @@ def run():
             "http_read reassembles the real config.py byte-for-byte",
             real_recovered == real_config_bytes.decode("utf-8"),
         )
+
+    # extract_location(): pulls "Location:" out of AT+HTTPHEAD's raw header
+    # block. This is the mechanism that made Google Apps Script POSTs work
+    # over cellular -- script.google.com/.../exec always answers with a
+    # 302 to a script.googleusercontent.com URL carrying the real
+    # response, confirmed on real hardware (AT+HTTPACTION returned
+    # "1,302,0" -- zero-length body, nothing for AT+HTTPREAD to read).
+    head = (
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://script.googleusercontent.com/macros/echo?user_content_key=abc\r\n"
+        "Content-Length: 0\r\n"
+    )
+    check(
+        "extract_location finds Location header",
+        extract_location(head)
+        == "https://script.googleusercontent.com/macros/echo?user_content_key=abc",
+    )
+    check(
+        "extract_location is case-insensitive",
+        extract_location(head.replace("Location:", "location:")) is not None,
+    )
+    check("extract_location returns None with no Location header", extract_location("HTTP/1.1 200 OK\r\n") is None)
+    check(
+        "extract_location works on bytes input",
+        extract_location(head.encode("utf-8"))
+        == "https://script.googleusercontent.com/macros/echo?user_content_key=abc",
+    )
 
     print()
     if failures:

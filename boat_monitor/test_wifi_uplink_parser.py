@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from wifi_uplink import split_url  # noqa: E402
+from wifi_uplink import WifiHttp, split_url  # noqa: E402
 
 
 def run():
@@ -70,6 +70,38 @@ def run():
         check("missing host raises ValueError", False)
     except ValueError:
         check("missing host raises ValueError", True)
+
+    # 7. WifiHttp._parse_response() -- pure header/body parsing, no socket
+    # needed. Covers the same redirect scenario cellular.py now handles:
+    # Google Apps Script's /exec URL always answers with a 302 carrying a
+    # Location header, and the real response body is 0 bytes here too.
+    http = WifiHttp()
+
+    status, headers, body = http._parse_response(
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 13\r\n\r\n"
+        b'{"ok": true}\n'
+    )
+    check("parse_response 200 status", status == 200)
+    check("parse_response 200 body", body == '{"ok": true}\n')
+    check("parse_response 200 header lookup", headers.get("content-type") == "application/json")
+
+    status, headers, body = http._parse_response(
+        b"HTTP/1.1 302 Found\r\n"
+        b"Location: https://script.googleusercontent.com/macros/echo?user_content_key=abc\r\n"
+        b"Content-Length: 0\r\n\r\n"
+    )
+    check("parse_response 302 status", status == 302)
+    check(
+        "parse_response 302 location header (case-insensitive key)",
+        headers.get("location") == "https://script.googleusercontent.com/macros/echo?user_content_key=abc",
+    )
+    check("parse_response 302 empty body", body == "")
+
+    try:
+        http._parse_response(b"not a valid http response, no header terminator")
+        check("parse_response malformed response raises", False)
+    except Exception:
+        check("parse_response malformed response raises", True)
 
     print()
     if failures:

@@ -145,6 +145,20 @@ def split_url(url):
     return host, port, path, is_https
 
 
+# A GET/POST to a URL answering with one of these should be re-requested
+# against its Location header instead of treated as the final response --
+# same convention cellular.py's Sim7600Modem client now follows, added for
+# the identical reason: Google Apps Script Web Apps (script.google.com/
+# .../exec, used by sheets_log.py) ALWAYS answer with a 302 to a
+# script.googleusercontent.com URL carrying the real response. This path
+# is currently untested on real hardware (no Wi-Fi network configured yet
+# -- see wifi_uplink: no networks configured in the boot log) but would
+# hit the exact same bug the moment it were used, so it's fixed here too
+# rather than waiting to rediscover it later.
+REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+MAX_REDIRECTS = 5
+
+
 class WifiHttp:
     """Minimal HTTP/HTTPS client over a raw socket, no urequests needed.
 
@@ -153,7 +167,7 @@ class WifiHttp:
     interchangeably), plus http_post_json() for sheets_log.py.
     """
 
-    def _request(self, method, url, body=None, headers=None, timeout_s=20):
+    def _request(self, method, url, body=None, headers=None, timeout_s=20, _redirect_count=0):
         import socket
 
         host, port, path, is_https = split_url(url)
@@ -207,7 +221,34 @@ class WifiHttp:
         finally:
             sock.close()
 
-        return self._parse_response(response)
+        status, resp_headers, response_body = self._parse_response(response)
+
+        if status in REDIRECT_STATUSES:
+            if _redirect_count >= MAX_REDIRECTS:
+                raise WifiError("too many redirects starting from %s" % url)
+            location = resp_headers.get("location")
+            if not location:
+                raise WifiError("redirect (status %s) with no Location header from %s" % (status, url))
+            print("wifi_uplink: following redirect ->", location)
+            # 301/302/303 downgrade to GET with no body, matching what
+            # browsers/urllib do (and what the redirect target expects --
+            # Apps Script's redirect serves the already-computed doPost()
+            # response on a plain GET). 307/308 must preserve the ORIGINAL
+            # request's method+body, not this redirect response's body.
+            if status in (307, 308):
+                next_method, next_body, next_headers = method, body, headers
+            else:
+                next_method, next_body, next_headers = "GET", None, None
+            return self._request(
+                next_method,
+                location,
+                body=next_body,
+                headers=next_headers,
+                timeout_s=timeout_s,
+                _redirect_count=_redirect_count + 1,
+            )
+
+        return status, response_body
 
     def _parse_response(self, response):
         header_end = response.find(b"\r\n\r\n")
@@ -215,19 +256,26 @@ class WifiHttp:
             raise WifiError("malformed HTTP response (no header terminator)")
 
         header_text = response[:header_end].decode("utf-8", "ignore")
-        status_line = header_text.split("\r\n", 1)[0]
+        header_lines = header_text.split("\r\n")
+        status_line = header_lines[0]
         try:
             status = int(status_line.split(" ")[1])
         except (IndexError, ValueError):
             raise WifiError("could not parse HTTP status line: %s" % status_line)
 
-        body = response[header_end + 4:]
+        resp_headers = {}
+        for line in header_lines[1:]:
+            if ":" in line:
+                key, value = line.split(":", 1)
+                resp_headers[key.strip().lower()] = value.strip()
+
+        raw_body = response[header_end + 4:]
 
         # Not de-chunking Transfer-Encoding: chunked -- GitHub raw content
         # and Apps Script /exec responses both send Content-Length, which
         # is all this client targets. If a server sends chunked encoding
         # instead, the body will include chunk-size markers; not handled.
-        return status, body.decode("utf-8", "ignore")
+        return status, resp_headers, raw_body.decode("utf-8", "ignore")
 
     def http_get(self, url, timeout_s=20):
         """Matches cellular.Sim7600Modem.http_get()'s signature/return
