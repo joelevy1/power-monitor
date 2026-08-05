@@ -2,6 +2,7 @@ import struct
 import time
 import bluetooth
 import machine
+import micropython
 from machine import I2C, Pin
 from micropython import const
 
@@ -267,11 +268,17 @@ class BoatMonitorBle:
         self.advertise()
 
     def irq(self, event, data):
+        # BLE IRQ callbacks must stay quick and must not re-enter the BLE
+        # stack or do blocking hardware I/O (I2C reads, JSON work, etc) --
+        # doing so can corrupt the stack's internal state and hard-crash the
+        # board (seen on-device as Thonny's USB-serial link dying entirely:
+        # "ConnectionError: EOF"). micropython.schedule() defers the actual
+        # work to run outside the IRQ context, where all of that is safe.
         if event == _IRQ_CENTRAL_CONNECT:
             conn_handle, addr_type, addr = data
             print("BLE connected", conn_handle)
             self.connections.add(conn_handle)
-            self.update_status()
+            self._schedule(self._scheduled_update_status, 0)
         elif event == _IRQ_CENTRAL_DISCONNECT:
             conn_handle, addr_type, addr = data
             print("BLE disconnected", conn_handle)
@@ -281,7 +288,23 @@ class BoatMonitorBle:
             conn_handle, value_handle = data
             if value_handle == self.command_handle:
                 raw = self.ble.gatts_read(self.command_handle)
-                self.handle_command(raw.decode("utf-8", "ignore").strip())
+                text = raw.decode("utf-8", "ignore").strip()
+                self._schedule(self._scheduled_handle_command, text)
+
+    def _schedule(self, fn, arg):
+        try:
+            micropython.schedule(fn, arg)
+        except RuntimeError as exc:
+            # Scheduler queue full or nested schedule call -- drop this one
+            # rather than crash; the periodic run() loop will still update
+            # status on its own 2s cadence.
+            print("schedule failed (dropped):", exc)
+
+    def _scheduled_update_status(self, _arg):
+        self.update_status()
+
+    def _scheduled_handle_command(self, raw):
+        self.handle_command(raw)
 
     def advertise(self):
         try:

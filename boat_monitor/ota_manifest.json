@@ -1,6 +1,6 @@
 {
-  "version": "0.3.2",
-  "notes": "Fix BLE advertising overflow (34 bytes > 31-byte limit) that dropped the device name/UUID from the air, causing app scans to time out even though generic BLE scanners (e.g. LightBlue) could still see and connect to the device. Ports hardening patterns from the working Ballast Monitor Pico firmware: disable WiFi before enabling BLE (shared CYW43439 radio), settle delay + clear power-cycle diagnostics if the radio was mid-transition from a prior WiFi session (soft reboot does not reset this; a real power cycle does), and non-fatal gap_advertise error handling so a radio hiccup doesn't silently fall back to WiFi mode.",
+  "version": "0.3.3",
+  "notes": "Fix a hard crash when handling BLE commands (e.g. tapping Refresh in the app killed the Pico's USB-serial link entirely). handle_command()/update_status() do I2C reads, JSON serialization, and gatts_write/notify -- calling all of that directly inside the BLE IRQ callback (_IRQ_GATTS_WRITE / _IRQ_CENTRAL_CONNECT) can corrupt the BLE stack's internal state, per MicroPython's own documented IRQ constraints. Now deferred via micropython.schedule() to run safely outside the IRQ context. Also includes prior fixes: BLE advertising overflow (34 > 31 byte limit), WiFi-off before BLE with a settle delay, and non-fatal gap_advertise error handling.",
   "files": [
     {
       "path": "version.py",
