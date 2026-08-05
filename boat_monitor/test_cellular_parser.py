@@ -92,6 +92,20 @@ def run():
     except CellularError:
         check("http_read missing marker raises", True)
 
+    # expected_length validation: catches a dropped/short chunk instead of
+    # silently returning truncated data -- this is what happened on real
+    # hardware the second time (AT+HTTPACTION declared 3393 bytes, only
+    # 2369 came back, with no error at all before this check existed).
+    raw_two_chunks = "".join("+HTTPREAD: DATA,%d\r\n%s" % (len(p), p) for p in parts) + "\r\nOK\r\n"
+    try:
+        parse_http_read(raw_two_chunks, expected_length=999, debug=False)
+        check("http_read length mismatch raises", False)
+    except CellularError as exc:
+        check("http_read length mismatch raises", "999" in str(exc))
+
+    ok_body = parse_http_read(raw_two_chunks, expected_length=len("".join(parts)), debug=False)
+    check("http_read correct expected_length passes", ok_body == "".join(parts))
+
     print()
     if failures:
         print("FAILED: %d check(s): %s" % (len(failures), ", ".join(failures)))

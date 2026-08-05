@@ -1,6 +1,6 @@
 {
-  "version": "0.6.1",
-  "notes": "Fix real data corruption found on first successful cellular test: this modem's firmware splits large AT+HTTPREAD responses into multiple '+HTTPREAD: DATA,<n>' chunks (observed: a 3522-byte manifest came back as 4 chunks of up to 1024 bytes each), not the single-marker shape assumed in 0.6.0's parse_http_read(). The old parser only stripped the FIRST chunk's marker line, leaving later chunks' marker lines embedded as literal garbage and silently dropping real content -- caused 'syntax error in JSON' on the very first real OTA check after cellular connectivity was confirmed working. Also: cellular.py now always resets the modem before the first AT command (previously an opt-in flag that defaulted to False, almost certainly why every earlier attempt got zero response from the modem before it was even powered).",
+  "version": "0.6.2",
+  "notes": "0.6.1's HTTPREAD chunk fix still dropped exactly one whole chunk on the very next real run (AT+HTTPACTION declared 3393 bytes, only 2369 came back -- 1024 short, matching one full chunk -- with no error raised at all). Root cause not yet pinned down (a clean synthetic reproduction of the same chunk-size pattern reassembles correctly), so instead of guessing further: parse_http_read() now takes the already-known expected_length (from AT+HTTPACTION) and raises a clear CellularError if the reassembled size doesn't match, instead of silently returning truncated data that fails later with a cryptic JSON error. Also prints each chunk found (index/declared length/actual length) so the next real run's Thonny output shows exactly where a chunk goes missing, if it happens again.",
   "files": [
     {
       "path": "version.py",

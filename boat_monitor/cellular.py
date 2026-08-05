@@ -51,7 +51,7 @@ def parse_http_action(text):
     return int(parts[1]), int(parts[2])
 
 
-def parse_http_read(text):
+def parse_http_read(text, expected_length=None, debug=True):
     """Parse one or more '+HTTPREAD: DATA,<n>\\r\\n<n bytes>' chunks.
 
     Observed on-device: large AT+HTTPREAD responses get split into
@@ -64,6 +64,15 @@ def parse_http_read(text):
     real hardware (a big chunk of text silently vanished because the
     second chunk's own marker line was left embedded instead of stripped).
 
+    expected_length: if given (the byte count already known from
+    AT+HTTPACTION's response), raise CellularError with the exact
+    shortfall/mismatch instead of silently returning truncated data --
+    exactly one chunk went missing (with no error at all) the second time
+    this ran on real hardware, for a reason not yet understood; this at
+    least turns silent corruption into a diagnosable error, and debug=True
+    prints each chunk found (index/declared length/position) so the next
+    real run's Thonny output shows exactly what happened.
+
     Note: operates on the already-decoded text string, so chunk lengths
     are treated as character counts. Fine for the ASCII JSON payloads this
     codebase actually transfers (OTA manifest, Sheets POST bodies); would
@@ -75,6 +84,7 @@ def parse_http_read(text):
 
     chunks = []
     pos = 0
+    chunk_index = 0
     while True:
         idx = text.find(marker, pos)
         if idx < 0:
@@ -92,13 +102,29 @@ def parse_http_read(text):
             raise CellularError("bad HTTPREAD chunk length: %r" % length_str)
 
         data_start = newline_idx + 1
-        chunks.append(text[data_start : data_start + chunk_len])
+        chunk = text[data_start : data_start + chunk_len]
+        chunks.append(chunk)
+        if debug:
+            print(
+                "  HTTPREAD chunk %d: marker at %d, declared %d bytes, got %d"
+                % (chunk_index, idx, chunk_len, len(chunk))
+            )
         pos = data_start + chunk_len
+        chunk_index += 1
 
     if not chunks:
         raise CellularError("no HTTPREAD DATA chunks found")
 
-    return "".join(chunks)
+    result = "".join(chunks)
+
+    if expected_length is not None and len(result) != expected_length:
+        raise CellularError(
+            "HTTPREAD reassembled %d bytes but AT+HTTPACTION declared %d -- "
+            "%d chunk(s) found, likely one was skipped or truncated"
+            % (len(result), expected_length, len(chunks))
+        )
+
+    return result
 
 
 class Sim7600Modem:
@@ -296,7 +322,7 @@ class Sim7600Modem:
             expect=("\r\nOK\r\n", "\r\nERROR\r\n"),
         )
         self.at("AT+HTTPTERM", 3000)
-        return parse_http_read(raw)
+        return parse_http_read(raw, expected_length=length)
 
     def http_post_json(self, url, body_bytes, timeout_ms=60000):
         self.at("AT+HTTPTERM", 3000)
@@ -341,4 +367,4 @@ class Sim7600Modem:
             expect=("\r\nOK\r\n", "\r\nERROR\r\n"),
         )
         self.at("AT+HTTPTERM", 3000)
-        return parse_http_read(raw)
+        return parse_http_read(raw, expected_length=length)
