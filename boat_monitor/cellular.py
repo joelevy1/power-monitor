@@ -23,6 +23,14 @@ Usage:
                                   # failed) instead of one generic message
     text = modem.http_get(url)
     modem.close_data()
+
+HTTP AT command behavior (chunked "+HTTPREAD: DATA,<n>" responses,
+"Maximum Response Time: 120000ms" for HTTPINIT/HTTPTERM/HTTPACTION/
+HTTPREAD) is per SIMCom's official SIM7500_SIM7600 Series AT Command
+Manual (HTTP(S) AT Commands chapter) -- confirms the chunked format this
+code parses was correct from the start; the actual bugs were an
+undersized UART RX buffer and timeouts far shorter than the documented
+maximum, both fixed below.
 """
 
 import time
@@ -32,6 +40,18 @@ import ota_config
 
 class CellularError(Exception):
     pass
+
+
+# SIMCom's official SIM7500_SIM7600 Series AT Command Manual (HTTP(S) AT
+# Commands chapter) documents "Maximum Response Time: 120000ms" for
+# AT+HTTPINIT, AT+HTTPTERM, AT+HTTPACTION, and AT+HTTPREAD. This code was
+# previously using much shorter guessed timeouts (3-5s for INIT/TERM,
+# ~10-15s for a response this size) -- all well under what the modem is
+# officially allowed to take under real-world/adverse network conditions.
+# Under good conditions responses come back in a couple seconds regardless;
+# this only matters when the network is slow, which is exactly when a
+# too-short timeout would cause a real, in-progress transfer to be cut off.
+HTTP_CMD_TIMEOUT_MS = 120000
 
 
 def one_line(text):
@@ -371,78 +391,80 @@ class Sim7600Modem:
 
     def close_data(self):
         try:
-            self.at("AT+HTTPTERM", 3000)
+            self.at("AT+HTTPTERM", 15000)
         except Exception:
             pass
         try:
-            self.at("AT+NETCLOSE", 10000)
+            self.at("AT+NETCLOSE", 15000)
         except Exception:
             pass
         self._data_open = False
 
     def http_get(self, url):
         print("HTTP GET", url)
-        self.at("AT+HTTPTERM", 3000)
-        self.at("AT+HTTPINIT", 5000)
-        self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 3000)
+        self.at("AT+HTTPTERM", 15000)
+        self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
+        self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
 
         if url.startswith("https://"):
-            self.at("AT+HTTPSSL=1", 3000)
+            self.at("AT+HTTPSSL=1", 15000)
         else:
-            self.at("AT+HTTPSSL=0", 3000)
+            self.at("AT+HTTPSSL=0", 15000)
 
-        self.at('AT+HTTPPARA="URL","%s"' % url, 5000)
-        action = self.at("AT+HTTPACTION=0", 60000, expect=("+HTTPACTION:", "\r\nERROR\r\n"))
+        self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
+        action = self.at(
+            "AT+HTTPACTION=0", HTTP_CMD_TIMEOUT_MS, expect=("+HTTPACTION:", "\r\nERROR\r\n")
+        )
         status, length = parse_http_action(action)
         if status != 200:
-            self.at("AT+HTTPTERM", 3000)
+            self.at("AT+HTTPTERM", 15000)
             raise CellularError("HTTP status %s for %s" % (status, url))
 
         if length <= 0:
-            self.at("AT+HTTPTERM", 3000)
+            self.at("AT+HTTPTERM", 15000)
             raise CellularError("empty HTTP response for %s" % url)
 
-        raw = self.read_http_data(length, max(10000, length * 4))
-        self.at("AT+HTTPTERM", 3000)
+        raw = self.read_http_data(length, max(HTTP_CMD_TIMEOUT_MS, length * 4))
+        self.at("AT+HTTPTERM", 15000)
         return parse_http_read(raw, expected_length=length)
 
-    def http_post_json(self, url, body_bytes, timeout_ms=60000):
-        self.at("AT+HTTPTERM", 3000)
-        self.at("AT+HTTPINIT", 5000)
-        self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 3000)
+    def http_post_json(self, url, body_bytes, timeout_ms=HTTP_CMD_TIMEOUT_MS):
+        self.at("AT+HTTPTERM", 15000)
+        self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
+        self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
 
         if url.startswith("https://"):
-            self.at("AT+HTTPSSL=1", 3000)
+            self.at("AT+HTTPSSL=1", 15000)
         else:
-            self.at("AT+HTTPSSL=0", 3000)
+            self.at("AT+HTTPSSL=0", 15000)
 
-        self.at('AT+HTTPPARA="URL","%s"' % url, 5000)
-        self.at('AT+HTTPPARA="CONTENT","application/json"', 3000)
+        self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
+        self.at('AT+HTTPPARA="CONTENT","application/json"', 15000)
 
         download_prompt = self.at(
             "AT+HTTPDATA=%d,10000" % len(body_bytes),
-            5000,
+            15000,
             expect=("DOWNLOAD", "\r\nERROR\r\n"),
         )
         if "DOWNLOAD" not in download_prompt:
-            self.at("AT+HTTPTERM", 3000)
+            self.at("AT+HTTPTERM", 15000)
             raise CellularError("modem did not prompt DOWNLOAD for HTTPDATA")
 
         print(">>> (writing %d bytes of JSON body)" % len(body_bytes))
         self.flush()
         self.uart.write(body_bytes)
-        self.read_until(("\r\nOK\r\n", "\r\nERROR\r\n"), 5000)
+        self.read_until(("\r\nOK\r\n", "\r\nERROR\r\n"), 15000)
 
         action = self.at("AT+HTTPACTION=1", timeout_ms, expect=("+HTTPACTION:", "\r\nERROR\r\n"))
         status, length = parse_http_action(action)
         if status != 200:
-            self.at("AT+HTTPTERM", 3000)
+            self.at("AT+HTTPTERM", 15000)
             raise CellularError("HTTP status %s posting to %s" % (status, url))
 
         if length <= 0:
-            self.at("AT+HTTPTERM", 3000)
+            self.at("AT+HTTPTERM", 15000)
             return ""
 
-        raw = self.read_http_data(length, max(10000, length * 4))
-        self.at("AT+HTTPTERM", 3000)
+        raw = self.read_http_data(length, max(HTTP_CMD_TIMEOUT_MS, length * 4))
+        self.at("AT+HTTPTERM", 15000)
         return parse_http_read(raw, expected_length=length)
