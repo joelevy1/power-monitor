@@ -1,6 +1,6 @@
 {
-  "version": "0.9.0",
-  "notes": "Added a new BLE 'signal'/'modem_status'/'cell_status' command: a quick cellular diagnostic (check_alive, check_sim, wait_for_registration up to 15s, then AT+CSQ) with NO AT+NETOPEN/data session -- a few seconds, not the 30-60s a full 'log'/'ota' cellular session can take. Reports 'signal: <CSQ line> (registered|not registered)' via command_result. This is the app-side equivalent of the 'Waiting for network registration... CSQ: ...' lines Thonny already shows during boot, now available without a laptop -- added specifically to support a new 'Check Signal' button in the phone app.",
+  "version": "0.9.1",
+  "notes": "Added gps_test.py: a standalone Thonny bench test to check GPS signal live -- turns GPS on, polls AT+CGPSINFO with a 'still searching...' progress line every 5s (instead of gps.py's Gps.read() staying silent for its whole timeout), and reports a fix (lat/lon + clickable Google Maps link) or a clear 'no fix' with the most likely reasons (no dedicated GPS antenna -- a cellular-only antenna will NOT receive GPS, no clear sky view, or still mid cold-start). Does not touch cellular data (AT+CGPS/AT+CGPSINFO only), so it's safe to run standalone without opening a data session. Added Gps.read()'s new on_progress callback parameter (backward compatible, default None) to support this without changing read()'s behavior for existing callers.",
   "files": [
     {
       "path": "version.py",
@@ -69,6 +69,10 @@
     {
       "path": "cellular_test.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular_test.py"
+    },
+    {
+      "path": "gps_test.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/gps_test.py"
     }
   ]
 }
