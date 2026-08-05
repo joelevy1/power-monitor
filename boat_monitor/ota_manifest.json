@@ -1,6 +1,6 @@
 {
-  "version": "0.3.0",
-  "notes": "BLE-first Boat Monitor app service with Wi-Fi service-mode fallback.",
+  "version": "0.3.1",
+  "notes": "Fix BLE advertising overflow (34 bytes > 31-byte limit) that dropped the device name/UUID from the air, causing app scans to time out even though generic BLE scanners (e.g. LightBlue) could still see and connect to the device.",
   "files": [
     {
       "path": "version.py",

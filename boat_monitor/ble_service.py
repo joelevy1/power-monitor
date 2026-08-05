@@ -155,17 +155,35 @@ def read_status(command_result=None):
     return status
 
 
-def adv_payload(name, service_uuid=None):
+def _append_ad(payload, adv_type, value):
+    payload.extend(struct.pack("BB", len(value) + 1, adv_type))
+    payload.extend(value)
+
+
+def adv_payload(service_uuid=None):
+    """Primary advertising packet: flags + service UUID only.
+
+    Legacy BLE advertising PDUs are capped at 31 bytes. Flags (3) + a full
+    128-bit service UUID (18) = 21 bytes, leaving no room for the device
+    name in the same packet (name would push the total to 34 bytes, which
+    gets truncated/rejected and breaks central-side name/UUID matching —
+    see resp_payload() for where the name goes instead).
+    """
     payload = bytearray()
-
-    def append(adv_type, value):
-        payload.extend(struct.pack("BB", len(value) + 1, adv_type))
-        payload.extend(value)
-
-    append(0x01, b"\x06")
+    _append_ad(payload, 0x01, b"\x06")
     if service_uuid:
-        append(0x07, bytes(bluetooth.UUID(service_uuid)))
-    append(0x09, name.encode())
+        _append_ad(payload, 0x07, bytes(bluetooth.UUID(service_uuid)))
+    return payload
+
+
+def resp_payload(name):
+    """Scan-response packet: device name only (13 bytes for "BoatMonitor").
+
+    Active scanners (including iOS CoreBluetooth / react-native-ble-plx)
+    request this automatically and merge it with the advertising packet.
+    """
+    payload = bytearray()
+    _append_ad(payload, 0x09, name.encode())
     return payload
 
 
@@ -186,7 +204,12 @@ class BoatMonitorBle:
         )
 
         ((self.status_handle, self.command_handle),) = self.ble.gatts_register_services((service,))
-        self.payload = adv_payload("BoatMonitor", "7e400001-b5a3-f393-e0a9-e50e24dcca9e")
+        self.payload = adv_payload("7e400001-b5a3-f393-e0a9-e50e24dcca9e")
+        self.scan_resp_payload = resp_payload("BoatMonitor")
+        print(
+            "BLE adv payload: %d bytes, scan response: %d bytes (limit 31 each)"
+            % (len(self.payload), len(self.scan_resp_payload))
+        )
         self.update_status()
         self.advertise()
 
@@ -209,7 +232,7 @@ class BoatMonitorBle:
 
     def advertise(self):
         print("BLE advertising as BoatMonitor")
-        self.ble.gap_advertise(500000, adv_data=self.payload)
+        self.ble.gap_advertise(500000, adv_data=self.payload, resp_data=self.scan_resp_payload)
 
     def update_status(self):
         data = json.dumps(read_status(self.command_result)).encode()
