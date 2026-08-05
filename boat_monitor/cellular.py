@@ -493,29 +493,31 @@ class Sim7600Modem:
         self._data_open = True
 
     def close_data(self):
+        # NOTE: this deliberately does NOT send AT+CFUN=0 anymore.
+        # modem_cfun_test.py's standalone bench run (CFUN=0 -> confirm
+        # still AT-responsive -> CFUN=1 -> re-register) passed cleanly, so
+        # this was wired in here for real power savings between logging
+        # cycles. On the very next real boot afterward, the boot-time OTA
+        # check's very first AT+CPIN? got "+CME ERROR: SIM failure" --
+        # not the transient "SIM busy" check_sim() already retries on,
+        # but a harder failure -- and the SAME failure repeated identically
+        # on the next auto-log cycle 300s later. check_alive() (AT/ATE0)
+        # succeeded both times; only SIM detection failed, immediately
+        # after self.reset()'s hardware reset pulse -- meaning reset()
+        # alone did NOT reliably clear whatever state AT+CFUN=0 left the
+        # SIM interface in, contradicting this method's own reasoning
+        # above about reset() recovering from every prior state. The
+        # timing (first cellular attempt after this exact change shipped)
+        # is too suspicious to keep running unattended without further
+        # investigation on real hardware -- reverted out of caution rather
+        # than guessing at an unverified fix (e.g. adding AT+CFUN=1 to
+        # ensure_data() without being able to test it directly).
         try:
             self.at("AT+HTTPTERM", 15000)
         except Exception:
             pass
         try:
             self.at("AT+NETCLOSE", 15000)
-        except Exception:
-            pass
-        try:
-            # AT+CFUN=0 (minimum functionality): shuts off RF/network
-            # circuits -- the modem's biggest power draw while otherwise
-            # idle between logging cycles -- confirmed safe on real
-            # hardware via modem_cfun_test.py (stays UART-responsive the
-            # whole time; AT+CFUN=1 reliably restores it and re-registers).
-            # Deliberately NOT using AT+CPOF (true power-off): also
-            # confirmed on real hardware that this board's wiring can't
-            # wake the modem from that state at all -- see
-            # modem_power_cycle_test.py. ensure_data()'s existing
-            # self.reset() (a hardware reset, called at the start of every
-            # cycle regardless) already reliably brings the modem out of
-            # CFUN=0 the same way it recovers from every other prior
-            # state, so no change needed there.
-            self.at("AT+CFUN=0", 15000)
         except Exception:
             pass
         self._data_open = False
