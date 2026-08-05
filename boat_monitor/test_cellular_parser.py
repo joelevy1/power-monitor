@@ -106,6 +106,46 @@ def run():
     ok_body = parse_http_read(raw_two_chunks, expected_length=len("".join(parts)), debug=False)
     check("http_read correct expected_length passes", ok_body == "".join(parts))
 
+    # Multi-byte UTF-8 character straddling a chunk boundary -- this is
+    # the REAL bug found on real hardware fetching config.py: its header
+    # comment contains an em dash ("\u2014", 3 bytes/1 character), which
+    # shrinks the decoded string 2 characters shorter than its declared
+    # byte count. Slicing an already-decoded string by byte-length
+    # offsets (the previous implementation) corrupted every subsequent
+    # chunk boundary the moment such a character appeared before one.
+    # parse_http_read() now operates on bytes throughout and decodes only
+    # once at the end, specifically to avoid this.
+    em_dash_chunk1 = ("x" * 20 + "\u2014" + "y" * 5).encode("utf-8")  # 3-byte char mid-chunk
+    em_dash_chunk2 = b"tail content after the boundary"
+    raw_utf8 = (
+        b"OK\r\n\r\n+HTTPREAD: DATA,%d\r\n%s+HTTPREAD: DATA,%d\r\n%s\r\n+HTTPREAD: 0\r\n\r\nOK\r\n"
+        % (len(em_dash_chunk1), em_dash_chunk1, len(em_dash_chunk2), em_dash_chunk2)
+    )
+    expected_text = (em_dash_chunk1 + em_dash_chunk2).decode("utf-8")
+    body_utf8 = parse_http_read(
+        raw_utf8, expected_length=len(em_dash_chunk1) + len(em_dash_chunk2), debug=False
+    )
+    check("http_read handles multi-byte UTF-8 straddling a chunk boundary", body_utf8 == expected_text)
+
+    # And the actual real file that triggered this on hardware, split the
+    # same way (1024/426 bytes) it actually arrived.
+    config_path = Path(__file__).resolve().parent / "config.py"
+    if config_path.is_file():
+        with open(config_path, "rb") as f:
+            real_config_bytes = f.read()
+        real_chunks = [real_config_bytes[i : i + 1024] for i in range(0, len(real_config_bytes), 1024)]
+        real_raw = b"OK\r\n\r\n"
+        for c in real_chunks:
+            real_raw += b"+HTTPREAD: DATA,%d\r\n" % len(c) + c
+        real_raw += b"\r\n+HTTPREAD: 0\r\n\r\nOK\r\n"
+        real_recovered = parse_http_read(
+            real_raw, expected_length=len(real_config_bytes), debug=False
+        )
+        check(
+            "http_read reassembles the real config.py byte-for-byte",
+            real_recovered == real_config_bytes.decode("utf-8"),
+        )
+
     print()
     if failures:
         print("FAILED: %d check(s): %s" % (len(failures), ", ".join(failures)))

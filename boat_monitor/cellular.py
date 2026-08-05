@@ -71,58 +71,65 @@ def parse_http_action(text):
     return int(parts[1]), int(parts[2])
 
 
-def parse_http_read(text, expected_length=None, debug=True):
+def parse_http_read(data, expected_length=None, debug=True):
     """Parse one or more '+HTTPREAD: DATA,<n>\\r\\n<n bytes>' chunks.
 
     Observed on-device: large AT+HTTPREAD responses get split into
     multiple ~1024-byte chunks, each with its own '+HTTPREAD: DATA,<n>'
     header -- not the single '+HTTPREAD: <n>\\r\\n<data>\\r\\nOK' shape some
-    SIM7600 docs describe. Extracting each chunk by its declared byte
-    length (rather than scanning for the next marker/OK/newline) is
-    required because the data itself can contain those substrings --
-    scanning for them corrupted real content the first time this ran on
-    real hardware (a big chunk of text silently vanished because the
-    second chunk's own marker line was left embedded instead of stripped).
+    SIM7600 docs describe (SIMCom's official manual confirms this exact
+    repeated-chunk format is correct). Extracting each chunk by its
+    declared byte length (rather than scanning for the next marker/OK/
+    newline) is required because the data itself can contain those
+    substrings.
+
+    Operates on RAW BYTES, not a decoded string -- <n> is a byte count
+    declared by the modem, and this codebase's own Python source files
+    can contain multi-byte UTF-8 characters (e.g. the em dash "\u2014" in
+    config.py's header comment: 3 bytes, 1 character after decoding).
+    Slicing an already-decoded string by that byte count corrupted a real
+    chunk boundary on real hardware the moment such a character landed
+    before it -- config.py was exactly the file that triggered this,
+    since the OTA manifest (pure ASCII JSON) never contains one. Decoding
+    to UTF-8 only once, after all chunks are correctly reassembled as
+    bytes, avoids this entirely.
 
     expected_length: if given (the byte count already known from
     AT+HTTPACTION's response), raise CellularError with the exact
-    shortfall/mismatch instead of silently returning truncated data --
-    exactly one chunk went missing (with no error at all) the second time
-    this ran on real hardware, for a reason not yet understood; this at
-    least turns silent corruption into a diagnosable error, and debug=True
-    prints each chunk found (index/declared length/position) so the next
-    real run's Thonny output shows exactly what happened.
+    shortfall/mismatch instead of silently returning truncated data.
+    debug=True prints each chunk found (index/declared length/position)
+    for diagnosing any future issue directly from Thonny output.
 
-    Note: operates on the already-decoded text string, so chunk lengths
-    are treated as character counts. Fine for the ASCII JSON payloads this
-    codebase actually transfers (OTA manifest, Sheets POST bodies); would
-    need byte-precise slicing on raw bytes for arbitrary UTF-8 content.
+    Returns a decoded UTF-8 string (same external type as before).
     """
-    marker = "+HTTPREAD: DATA,"
-    if marker not in text:
+    if isinstance(data, str):
+        data = data.encode("utf-8", "ignore")
+
+    marker = b"+HTTPREAD: DATA,"
+    if marker not in data:
         raise CellularError("missing HTTPREAD DATA response")
 
     chunks = []
     pos = 0
     chunk_index = 0
     while True:
-        idx = text.find(marker, pos)
+        idx = data.find(marker, pos)
         if idx < 0:
             break
 
         header_start = idx + len(marker)
-        newline_idx = text.find("\n", header_start)
+        newline_idx = data.find(b"\n", header_start)
         if newline_idx < 0:
             raise CellularError("bad HTTPREAD chunk header (no newline after length)")
 
-        length_str = text[header_start:newline_idx].strip().rstrip("\r")
+        length_str = data[header_start:newline_idx].strip().rstrip(b"\r")
         try:
             chunk_len = int(length_str)
         except ValueError:
             raise CellularError("bad HTTPREAD chunk length: %r" % length_str)
 
         data_start = newline_idx + 1
-        chunk = text[data_start : data_start + chunk_len]
+        chunk = data[data_start : data_start + chunk_len]
         chunks.append(chunk)
         if debug:
             print(
@@ -135,16 +142,16 @@ def parse_http_read(text, expected_length=None, debug=True):
     if not chunks:
         raise CellularError("no HTTPREAD DATA chunks found")
 
-    result = "".join(chunks)
+    result_bytes = b"".join(chunks)
 
-    if expected_length is not None and len(result) != expected_length:
+    if expected_length is not None and len(result_bytes) != expected_length:
         raise CellularError(
             "HTTPREAD reassembled %d bytes but AT+HTTPACTION declared %d -- "
             "%d chunk(s) found, likely one was skipped or truncated"
-            % (len(result), expected_length, len(chunks))
+            % (len(result_bytes), expected_length, len(chunks))
         )
 
-    return result
+    return result_bytes.decode("utf-8", "ignore")
 
 
 class Sim7600Modem:
@@ -285,9 +292,15 @@ class Sim7600Modem:
 
             time.sleep(0.01)
 
-        text = buf.decode("utf-8", "ignore")
-        print(text.strip() or "(no response)")
-        return text
+        # Print a decoded preview for diagnostics only -- the actual return
+        # value stays as raw bytes. Decoding here and returning that string
+        # (instead of bytes) previously risked losing a multi-byte UTF-8
+        # character split across a UART read boundary (errors="ignore"
+        # silently drops incomplete sequences); parse_http_read() does the
+        # one real decode, after chunks are correctly reassembled by byte
+        # length.
+        print(buf.decode("utf-8", "ignore").strip() or "(no response)")
+        return buf
 
     def check_alive(self):
         """Verify the modem responds to a basic AT at all, instead of
