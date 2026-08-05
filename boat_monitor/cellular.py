@@ -52,20 +52,53 @@ def parse_http_action(text):
 
 
 def parse_http_read(text):
-    marker = "+HTTPREAD:"
+    """Parse one or more '+HTTPREAD: DATA,<n>\\r\\n<n bytes>' chunks.
+
+    Observed on-device: large AT+HTTPREAD responses get split into
+    multiple ~1024-byte chunks, each with its own '+HTTPREAD: DATA,<n>'
+    header -- not the single '+HTTPREAD: <n>\\r\\n<data>\\r\\nOK' shape some
+    SIM7600 docs describe. Extracting each chunk by its declared byte
+    length (rather than scanning for the next marker/OK/newline) is
+    required because the data itself can contain those substrings --
+    scanning for them corrupted real content the first time this ran on
+    real hardware (a big chunk of text silently vanished because the
+    second chunk's own marker line was left embedded instead of stripped).
+
+    Note: operates on the already-decoded text string, so chunk lengths
+    are treated as character counts. Fine for the ASCII JSON payloads this
+    codebase actually transfers (OTA manifest, Sheets POST bodies); would
+    need byte-precise slicing on raw bytes for arbitrary UTF-8 content.
+    """
+    marker = "+HTTPREAD: DATA,"
     if marker not in text:
-        raise CellularError("missing HTTPREAD response")
+        raise CellularError("missing HTTPREAD DATA response")
 
-    after = text.split(marker, 1)[1]
-    first_newline = after.find("\n")
-    if first_newline < 0:
-        raise CellularError("bad HTTPREAD response")
+    chunks = []
+    pos = 0
+    while True:
+        idx = text.find(marker, pos)
+        if idx < 0:
+            break
 
-    data = after[first_newline + 1 :]
-    ok_pos = data.rfind("\r\nOK")
-    if ok_pos >= 0:
-        data = data[:ok_pos]
-    return data.lstrip("\r\n")
+        header_start = idx + len(marker)
+        newline_idx = text.find("\n", header_start)
+        if newline_idx < 0:
+            raise CellularError("bad HTTPREAD chunk header (no newline after length)")
+
+        length_str = text[header_start:newline_idx].strip().rstrip("\r")
+        try:
+            chunk_len = int(length_str)
+        except ValueError:
+            raise CellularError("bad HTTPREAD chunk length: %r" % length_str)
+
+        data_start = newline_idx + 1
+        chunks.append(text[data_start : data_start + chunk_len])
+        pos = data_start + chunk_len
+
+    if not chunks:
+        raise CellularError("no HTTPREAD DATA chunks found")
+
+    return "".join(chunks)
 
 
 class Sim7600Modem:
@@ -178,12 +211,19 @@ class Sim7600Modem:
             "check antenna connection, SIM activation, and coverage" % (seconds, last_csq)
         )
 
-    def ensure_data(self, reset_modem=False, registration_timeout_s=60):
+    def ensure_data(self, registration_timeout_s=60):
         if self._data_open:
             return
 
-        if reset_modem:
-            self.reset()
+        # Always reset first -- the modem needs several seconds after
+        # power-on/reset before it reliably responds to AT at all. This was
+        # previously opt-in via a reset_modem flag that defaulted to False,
+        # which is almost certainly why every earlier attempt failed at the
+        # very first "AT" command with zero response. modem_check.py's
+        # already-proven bench test resets first by default for the same
+        # reason (main(reset_modem=True, ...)) -- match that here instead
+        # of leaving it as a flag someone has to remember to pass.
+        self.reset()
 
         self.check_alive()
         self.check_sim()

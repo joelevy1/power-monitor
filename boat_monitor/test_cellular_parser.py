@@ -57,12 +57,34 @@ def run():
     except CellularError:
         check("http_action too few fields raises", True)
 
-    # parse_http_read(): "+HTTPREAD: <len>\r\n<data>\r\nOK\r\n"
-    body = parse_http_read('+HTTPREAD: 13\r\n{"ok": true}\n\r\nOK\r\n')
-    check("http_read extracts body", body.strip() == '{"ok": true}')
+    # parse_http_read(): "+HTTPREAD: DATA,<n>\r\n<n bytes>" -- observed
+    # on-device format, one chunk per ~1024 bytes for large responses.
 
-    body2 = parse_http_read("+HTTPREAD: 9\r\nNot Found\r\nOK\r\n")
-    check("http_read extracts non-JSON body", body2.strip() == "Not Found")
+    # Single chunk (small response, fits in one).
+    small_body = '{"ok": true}'
+    body = parse_http_read("OK\r\n\r\n+HTTPREAD: DATA,%d\r\n%s\r\nOK\r\n" % (len(small_body), small_body))
+    check("http_read single chunk extracts body", body == small_body)
+
+    # Multiple chunks, boundary falling in the middle of a word -- this is
+    # exactly the shape that corrupted real data the first time this ran:
+    # a naive parser that only strips the FIRST marker leaves the SECOND
+    # chunk's "+HTTPREAD: DATA,15" header embedded as literal garbage
+    # instead of stripping it too.
+    chunk1 = '{"device": "boat-p2", "mode": "dock'
+    chunk2 = 'ed_off", "fw": "0.6.0"}'
+    raw = (
+        "OK\r\n\r\n+HTTPREAD: DATA,%d\r\n%s+HTTPREAD: DATA,%d\r\n%s\r\nOK\r\n"
+        % (len(chunk1), chunk1, len(chunk2), chunk2)
+    )
+    body2 = parse_http_read(raw)
+    check("http_read multi-chunk reassembles losslessly", body2 == chunk1 + chunk2)
+    check("http_read multi-chunk is valid JSON", body2.startswith('{"device"'))
+
+    # Three chunks, for good measure -- not just the two-chunk case.
+    parts = ["abc", "defgh", "ij"]
+    raw3 = "".join("+HTTPREAD: DATA,%d\r\n%s" % (len(p), p) for p in parts) + "\r\nOK\r\n"
+    body3 = parse_http_read(raw3)
+    check("http_read three chunks reassembles", body3 == "".join(parts))
 
     try:
         parse_http_read("no marker at all")

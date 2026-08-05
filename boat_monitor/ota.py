@@ -90,7 +90,7 @@ def apply_manifest(client, manifest):
         write_file(path, data)
 
 
-def _get_client(reset_modem=False, prefer_wifi=True):
+def _get_client(prefer_wifi=True):
     """Prefer Wi-Fi over cellular when prefer_wifi is True -- see module
     docstring for why this is only safe when BLE is NOT active (e.g. the
     boot-time OTA check). Callers that can run while BLE is connected --
@@ -116,7 +116,7 @@ def _get_client(reset_modem=False, prefer_wifi=True):
     from cellular import Sim7600Modem
 
     client = Sim7600Modem()
-    client.ensure_data(reset_modem=reset_modem)
+    client.ensure_data()  # always resets the modem first -- see cellular.py
     return client, False
 
 
@@ -133,12 +133,12 @@ def _close_client(client, used_wifi):
     client.close_data()  # cellular.py handles HTTPTERM/NETCLOSE (Phase 2.4 discipline)
 
 
-def update(reset_modem=False, reboot=False, prefer_wifi=True):
+def update(reboot=False, prefer_wifi=True):
     print("Boat Monitor OTA update")
     print("Current version:", current_version())
     print("Manifest:", ota_config.OTA_MANIFEST_URL)
 
-    client, used_wifi = _get_client(reset_modem, prefer_wifi=prefer_wifi)
+    client, used_wifi = _get_client(prefer_wifi=prefer_wifi)
     try:
         manifest = load_manifest(client)
         target_version = manifest.get("version", "unknown")
