@@ -33,6 +33,17 @@ connected and ready to physically power-cycle everything if the modem
 doesn't come back, BEFORE trusting it in the unattended automatic logging
 flow (auto_log.py) where nobody would be around to notice or recover it.
 
+CONFIRMED ON REAL HARDWARE: AT+CPOF returned OK (it genuinely powered the
+module off), and afterward plain AT got "(no response)" even after the
+normal reset() sequence -- FAIL. config.py's PIN_MODEM_RESET is a plain
+RESET line on this board, not the module's PWRKEY, and cannot wake it
+from a true power-off. Do NOT wire AT+CPOF-based power-down into
+auto_log.py without either rewiring to the module's actual PWRKEY pin, or
+accepting that a physical power cycle is needed every time. See
+modem_cfun_test.py instead for a safer middle ground (AT+CFUN=0/1) that
+stays UART-responsive the whole time -- no PWRKEY needed at all, though
+it saves less power than a true power-off would.
+
 Usage: run in Thonny. Watch for one of:
   "PASS: modem woke up after AT+CPOF"  -- safe to consider wiring this
       into the automatic logging flow for real power savings.

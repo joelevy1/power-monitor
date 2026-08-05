@@ -1,6 +1,6 @@
 {
-  "version": "1.0.2",
-  "notes": "Real hardware run of modem_power_cycle_test.py (1.0.1) found two bugs at once. (1) It used AT+CPOWD=1, which is WRONG for this module -- that's a SIMCom SIM800/900 series command; confirmed against this module's own official AT manual, the correct command for SIM7500/SIM7600 series is plain AT+CPOF. AT+CPOWD correctly returned ERROR on real hardware. (2) That exposed a real logic bug in the test itself: it never checked whether the power-down command actually returned OK before concluding anything about the wake sequence -- so it printed a false 'PASS' even though the modem never actually powered off at all (of course it still responded to AT afterward; it was never off). Fixed both: now sends AT+CPOF, and reports a distinct 'INCONCLUSIVE' result (instead of a false PASS) if the power-down command itself doesn't return OK, so a future run can't repeat this exact false-positive.",
+  "version": "1.0.3",
+  "notes": "Real hardware run of modem_power_cycle_test.py (1.0.2, with the corrected AT+CPOF command) gave a definitive answer this time: AT+CPOF returned OK (genuinely powered the module off), and afterward plain AT got '(no response)' even after the normal reset() sequence -- confirmed FAIL. config.py's PIN_MODEM_RESET is a plain RESET line on this board, not the module's PWRKEY, and cannot wake it from a true power-off; recovering required a physical power cycle. AT+CPOF-based power-down is therefore NOT safe to wire into the automatic logging flow without either rewiring to the module's actual PWRKEY pin, or accepting a physical power cycle every time. Added modem_cfun_test.py instead: tests AT+CFUN=0 (minimum functionality -- RF/network circuits off, but the module's own AT manual confirms it stays attached to the UART/AT interface the whole time, no PWRKEY needed at all) followed by AT+CFUN=1 to restore full functionality and re-register. Saves less power than a true power-off would (baseband + UART stay powered), but has none of AT+CPOF's wake-up risk on this board's wiring.",
   "files": [
     {
       "path": "version.py",
@@ -81,6 +81,10 @@
     {
       "path": "modem_power_cycle_test.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_power_cycle_test.py"
+    },
+    {
+      "path": "modem_cfun_test.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_cfun_test.py"
     }
   ]
 }
