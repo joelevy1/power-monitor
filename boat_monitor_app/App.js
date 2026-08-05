@@ -183,6 +183,9 @@ export default function App() {
       setCommandResultAt(new Date());
     }
     if (pendingCommand && !IN_PROGRESS_RESULTS.has(result)) {
+      const label = COMMAND_INFO[pendingCommand]?.label || pendingCommand;
+      const friendly = friendlyCommandResult(result);
+      setMessage(`${label} ${friendly.danger ? 'failed' : 'finished'} - see Last Result.`);
       setPendingCommand(null);
       setPendingSince(null);
     }
