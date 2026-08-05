@@ -158,20 +158,33 @@ def read_status(command_result=None):
 def ensure_wifi_off():
     """Pico W: CYW43439 cannot reliably advertise BLE while WiFi STA/AP is active
     (shared radio). Same fix applied on the Ballast Monitor Pico firmware.
+
+    If WiFi was actually active (e.g. left over from field_console.py in a
+    prior session that was only *soft*-rebooted, not power-cycled), give the
+    radio a moment to settle before any BLE HCI command runs — otherwise
+    ble.active(True) / gatts_register_services can raise OSError ETIMEDOUT
+    waiting on a co-processor that's still mid-transition. A soft reboot
+    (Ctrl-D in Thonny) does not reset this hardware state; only a real power
+    cycle reliably does, which is why this alone is a mitigation, not a fix.
     """
     try:
         import network
     except ImportError:
         return
 
+    disabled_any = False
     for label, iface in (("STA", network.STA_IF), ("AP", network.AP_IF)):
         try:
             wlan = network.WLAN(iface)
             if wlan.active():
                 wlan.active(False)
+                disabled_any = True
                 print("WiFi %s disabled for BLE" % label)
         except Exception as exc:
             print("WiFi %s off: %s" % (label, exc))
+
+    if disabled_any:
+        time.sleep_ms(250)
 
 
 def advertising_payload(name=None, service_uuid=None):
@@ -208,7 +221,18 @@ class BoatMonitorBle:
         ensure_wifi_off()
 
         self.ble = bluetooth.BLE()
-        self.ble.active(True)
+        try:
+            self.ble.active(True)
+        except OSError as exc:
+            print("ERROR: ble.active(True) failed:", exc)
+            print("Try a full power cycle (unplug ~10s) -- a soft reboot may not clear radio state.")
+            raise
+
+        if not self.ble.active():
+            print("ERROR: BLE radio did not activate (ble.active() is False)")
+            print("Try a full power cycle (unplug ~10s) -- a soft reboot may not clear radio state.")
+            raise OSError("BLE radio did not activate")
+
         self.ble.irq(self.irq)
         self.connections = set()
         self.command_result = None
@@ -221,7 +245,12 @@ class BoatMonitorBle:
             ),
         )
 
-        ((self.status_handle, self.command_handle),) = self.ble.gatts_register_services((service,))
+        try:
+            ((self.status_handle, self.command_handle),) = self.ble.gatts_register_services((service,))
+        except OSError as exc:
+            print("ERROR: gatts_register_services failed:", exc)
+            print("Try a full power cycle (unplug ~10s) -- a soft reboot may not clear radio state.")
+            raise
 
         try:
             self.payload = advertising_payload(service_uuid="7e400001-b5a3-f393-e0a9-e50e24dcca9e")
