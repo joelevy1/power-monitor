@@ -43,7 +43,7 @@ boat-monitor-sheets@your-project-id.iam.gserviceaccount.com
 ## 3. Create the spreadsheet and tabs
 
 1. [Google Sheets](https://sheets.google.com) → **Blank spreadsheet**
-2. Name it e.g. **Boat Monitor Logs**
+2. Name it **Boat Monitor** (sheets_bootstrap.py's Drive API fallback looks for this exact title when `GOOGLE_SHEETS_ID` isn't set)
 3. Add tabs (rename the default sheet and add others):
 
    | Tab name | Purpose |

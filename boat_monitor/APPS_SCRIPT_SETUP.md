@@ -23,7 +23,7 @@ run at the same time.
 
 ## 1. Deploy the Apps Script Web App
 
-1. Open your **"Boat Monitor Logs"** spreadsheet.
+1. Open your **"Boat Monitor"** spreadsheet.
 2. **Extensions → Apps Script**.
 3. Delete the default `Code.gs` contents and paste in
    [`boat_monitor/apps_script/Code.gs`](./apps_script/Code.gs) from this repo.

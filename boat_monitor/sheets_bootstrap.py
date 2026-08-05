@@ -3,7 +3,7 @@ Create boat-monitor sheet tabs and header rows (SHEETS_SETUP §3.3–3.4).
 
 Uses GOOGLE_SERVICE_ACCOUNT_JSON (file path or JSON string) and GOOGLE_SHEETS_ID.
 If GOOGLE_SHEETS_ID is missing, tries Drive API to find a spreadsheet named
-"Boat Monitor Logs" shared with the service account.
+"Boat Monitor" (SHEET_TITLE below) shared with the service account.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ SCOPES = (
     "https://www.googleapis.com/auth/drive.readonly",
 )
 
-SHEET_TITLE = "Boat Monitor Logs"
+SHEET_TITLE = "Boat Monitor"
 
 TABS = {
     "Power_Log": [
@@ -94,12 +94,14 @@ def _credentials_path():
 
 def _find_sheet_id_via_drive(creds):
     """Fallback when GOOGLE_SHEETS_ID isn't set: search Drive for a
-    spreadsheet named SHEET_TITLE ("Boat Monitor Logs") shared with this
+    spreadsheet named SHEET_TITLE ("Boat Monitor") shared with this
     service account. This module's docstring has promised this fallback
     from the start ("If GOOGLE_SHEETS_ID is missing, tries Drive API to
     find a spreadsheet named 'Boat Monitor Logs' shared with the service
     account") but _sheet_id() never actually implemented it -- it just
-    raised SystemExit unconditionally if the env var was missing.
+    raised SystemExit unconditionally if the env var was missing. (That
+    quoted title has since been corrected to "Boat Monitor" -- the
+    actual real-world spreadsheet's name, not "Boat Monitor Logs".)
     """
     from googleapiclient.discovery import build
 
