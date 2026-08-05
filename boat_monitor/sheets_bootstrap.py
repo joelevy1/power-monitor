@@ -14,7 +14,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-SCOPES = ("https://www.googleapis.com/auth/spreadsheets",)
+SCOPES = (
+    "https://www.googleapis.com/auth/spreadsheets",
+    # Read-only Drive access, used only by _find_sheet_id_via_drive()'s
+    # fallback below when GOOGLE_SHEETS_ID isn't set.
+    "https://www.googleapis.com/auth/drive.readonly",
+)
 
 SHEET_TITLE = "Boat Monitor Logs"
 
@@ -87,16 +92,63 @@ def _credentials_path():
     )
 
 
-def _sheet_id():
+def _find_sheet_id_via_drive(creds):
+    """Fallback when GOOGLE_SHEETS_ID isn't set: search Drive for a
+    spreadsheet named SHEET_TITLE ("Boat Monitor Logs") shared with this
+    service account. This module's docstring has promised this fallback
+    from the start ("If GOOGLE_SHEETS_ID is missing, tries Drive API to
+    find a spreadsheet named 'Boat Monitor Logs' shared with the service
+    account") but _sheet_id() never actually implemented it -- it just
+    raised SystemExit unconditionally if the env var was missing.
+    """
+    from googleapiclient.discovery import build
+
+    drive = build("drive", "v3", credentials=creds, cache_discovery=False)
+    query = (
+        "name = '%s' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
+        % SHEET_TITLE
+    )
+    response = drive.files().list(q=query, fields="files(id, name)", pageSize=10).execute()
+    files = response.get("files", [])
+
+    if not files:
+        raise SystemExit(
+            "No spreadsheet named '%s' found shared with this service account via Drive API. "
+            "Set environment or GitHub secret GOOGLE_SHEETS_ID to the spreadsheet ID (from the "
+            "URL between /d/ and /edit), or share a spreadsheet named '%s' with this service "
+            "account's email (the client_email field in its JSON key) so it can be found "
+            "automatically." % (SHEET_TITLE, SHEET_TITLE)
+        )
+    if len(files) > 1:
+        raise SystemExit(
+            "Found %d spreadsheets named '%s' shared with this service account -- set "
+            "GOOGLE_SHEETS_ID explicitly to disambiguate. IDs: %s"
+            % (len(files), SHEET_TITLE, ", ".join(f["id"] for f in files))
+        )
+
+    print("Found spreadsheet '%s' via Drive API (no GOOGLE_SHEETS_ID set): %s" % (SHEET_TITLE, files[0]["id"]))
+    return files[0]["id"]
+
+
+def _sheet_id(creds=None):
     sheet_id = os.environ.get("GOOGLE_SHEETS_ID", "").strip()
     if not sheet_id:
         sheet_id = os.environ.get("YOUR_SPREADSHEET_ID", "").strip()
-    if not sheet_id:
-        raise SystemExit(
-            "Set environment or GitHub secret GOOGLE_SHEETS_ID to the spreadsheet ID "
-            "(from the URL between /d/ and /edit). Rename secret YOUR_SPREADSHEET_ID if needed."
-        )
-    return sheet_id
+    if sheet_id:
+        return sheet_id
+
+    if creds is not None:
+        try:
+            return _find_sheet_id_via_drive(creds)
+        except SystemExit:
+            raise
+        except Exception as exc:
+            print("Drive API lookup failed (falling back to the explicit-ID error below):", exc)
+
+    raise SystemExit(
+        "Set environment or GitHub secret GOOGLE_SHEETS_ID to the spreadsheet ID "
+        "(from the URL between /d/ and /edit). Rename secret YOUR_SPREADSHEET_ID if needed."
+    )
 
 
 def main():
@@ -108,7 +160,7 @@ def main():
     creds = service_account.Credentials.from_service_account_file(creds_path, scopes=SCOPES)
     sheets = build("sheets", "v4", credentials=creds, cache_discovery=False)
 
-    spreadsheet_id = _sheet_id()
+    spreadsheet_id = _sheet_id(creds)
     print("Using spreadsheet:", spreadsheet_id)
 
     meta = sheets.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
