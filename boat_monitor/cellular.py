@@ -202,6 +202,73 @@ class Sim7600Modem:
             print(text.strip() or "(no response)")
         return text
 
+    def read_http_data(self, expected_length, timeout_ms):
+        """Send/read AT+HTTPREAD without relying on read_until()'s
+        "\\r\\nOK\\r\\n" stop-token match at all.
+
+        On real hardware, that pattern-matching approach cut a real
+        response short mid-chunk at least twice, at different byte
+        offsets each time -- and the actual JSON payload from GitHub
+        contains zero \\r bytes (confirmed directly), which rules out a
+        coincidental match inside the real data. Something about the AT
+        protocol framing itself appears to produce a false-positive match
+        occasionally. Rather than depend on figuring out exactly why,
+        this reads raw bytes and tracks how many bytes of ACTUAL chunk
+        data ("+HTTPREAD: DATA,<n>" payloads) have arrived, stopping only
+        once that total reaches expected_length (or on \\r\\nERROR\\r\\n,
+        or timeout) -- never based on an OK/ERROR text match that could
+        be a false positive partway through real data.
+        """
+        cmd = "AT+HTTPREAD=0,%d" % expected_length
+        print(">>>", cmd)
+        self.flush()
+        self.uart.write((cmd + "\r\n").encode())
+
+        marker = b"+HTTPREAD: DATA,"
+        start = time.ticks_ms()
+        buf = b""
+        accounted_for = 0
+        scan_pos = 0
+
+        while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            if self.uart.any():
+                buf += self.uart.read()
+
+                while True:
+                    idx = buf.find(marker, scan_pos)
+                    if idx < 0:
+                        break
+                    header_start = idx + len(marker)
+                    newline_idx = buf.find(b"\n", header_start)
+                    if newline_idx < 0:
+                        break  # header not fully arrived yet
+                    try:
+                        chunk_len = int(buf[header_start:newline_idx].strip())
+                    except ValueError:
+                        break
+                    data_start = newline_idx + 1
+                    if len(buf) < data_start + chunk_len:
+                        break  # this chunk's data hasn't fully arrived yet
+                    accounted_for += chunk_len
+                    scan_pos = data_start + chunk_len
+
+                if accounted_for >= expected_length:
+                    # Briefly drain any trailing "+HTTPREAD: 0\r\n\r\nOK\r\n"
+                    # terminator, then stop -- we have everything we need.
+                    time.sleep(0.2)
+                    if self.uart.any():
+                        buf += self.uart.read()
+                    break
+
+                if b"\r\nERROR\r\n" in buf:
+                    break
+
+            time.sleep(0.01)
+
+        text = buf.decode("utf-8", "ignore")
+        print(text.strip() or "(no response)")
+        return text
+
     def check_alive(self):
         """Verify the modem responds to a basic AT at all, instead of
         silently continuing through the rest of the sequence regardless.
@@ -335,11 +402,7 @@ class Sim7600Modem:
             self.at("AT+HTTPTERM", 3000)
             raise CellularError("empty HTTP response for %s" % url)
 
-        raw = self.at(
-            "AT+HTTPREAD=0,%d" % length,
-            max(10000, length * 4),
-            expect=("\r\nOK\r\n", "\r\nERROR\r\n"),
-        )
+        raw = self.read_http_data(length, max(10000, length * 4))
         self.at("AT+HTTPTERM", 3000)
         return parse_http_read(raw, expected_length=length)
 
@@ -380,10 +443,6 @@ class Sim7600Modem:
             self.at("AT+HTTPTERM", 3000)
             return ""
 
-        raw = self.at(
-            "AT+HTTPREAD=0,%d" % length,
-            max(10000, length * 4),
-            expect=("\r\nOK\r\n", "\r\nERROR\r\n"),
-        )
+        raw = self.read_http_data(length, max(10000, length * 4))
         self.at("AT+HTTPTERM", 3000)
         return parse_http_read(raw, expected_length=length)
