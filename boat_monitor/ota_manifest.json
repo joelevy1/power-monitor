@@ -1,6 +1,6 @@
 {
-  "version": "0.5.1",
-  "notes": "Add BLE command 'log'/'log_now' to post one Power_Log row over cellular on demand -- for testing/using Sheets logging once mounted on the boat with no laptop attached (BLE from the phone is the only way to trigger anything there). Forces prefer_wifi=False since BLE is active during this command; Wi-Fi and BLE share one radio and would drop the connection you used to trigger it. Also fixes the existing 'ota' BLE command, which was about to inherit that same Wi-Fi-vs-BLE conflict now that ota.py prefers Wi-Fi by default -- it now also forces prefer_wifi=False. See APPS_SCRIPT_SETUP.md for the three distinct testing/operation modes (bench test, BLE Log Now, and not-yet-built automatic periodic logging).",
+  "version": "0.5.2",
+  "notes": "Same Log Now / Wi-Fi-conflict fix as the BLE command, applied to the Wi-Fi field console (field_console.py) too: new /log page posts one Power_Log row over cellular (prefer_wifi=False -- the console's own Wi-Fi AP is already using the radio, so trying Wi-Fi STA here risks dropping the very AP connection you're viewing the page over). Also fixes the console's pre-existing /ota page, which had the same latent conflict now that ota.py prefers Wi-Fi by default. /log reuses ble_service.read_status() instead of duplicating INA260/INA219 reads.",
   "files": [
     {
       "path": "version.py",

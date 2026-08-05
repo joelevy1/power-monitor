@@ -318,7 +318,7 @@ def status_html():
     reg_cls = "good" if MODEM["registered"] == "registered" else "warn"
     body = """
 <h1>Boat Monitor</h1>
-<p><a href="/">Refresh</a> | <a href="/update">Update</a> | <a href="/ota">OTA from GitHub</a> | <a href="/reboot">Reboot</a></p>
+<p><a href="/">Refresh</a> | <a href="/log">Log Now</a> | <a href="/update">Update</a> | <a href="/ota">OTA from GitHub</a> | <a href="/reboot">Reboot</a></p>
 <div class="card"><h2>Power / Sensors</h2><p>%s</p><p>%s</p><p>%s</p><p>TPS STAT=%d, VSNS=%d</p></div>
 <div class="card"><h2>Inputs</h2><ul>%s</ul></div>
 <div class="card"><h2>Cell / GPS</h2><p>LTE: <span class="%s">%s</span></p><p>Signal: %s</p><p>Operator: %s</p><p>IP: %s</p><p>%s</p></div>
@@ -372,11 +372,48 @@ def ota_html():
     try:
         import ota
 
-        changed = ota.update()
+        # prefer_wifi=False: this page is being served BY the Pico's own
+        # Wi-Fi access point (start_ap() below) -- the Wi-Fi radio is
+        # already busy as an AP. Also connecting it as a Wi-Fi client
+        # (STA) to reach GitHub risks disrupting the very AP connection
+        # you're using to view this page right now. Cellular uses separate
+        # UART hardware and has no such conflict -- same reasoning as the
+        # BLE "ota" command in ble_service.py.
+        changed = ota.update(prefer_wifi=False)
         msg = "OTA update applied. Reboot when ready." if changed else "Already current."
     except Exception as e:
         msg = "OTA failed: %s" % e
     return page("OTA", "<h1>OTA from GitHub</h1><p><a href='/'>Back</a></p><div class='card'><pre>%s</pre></div>" % safe(msg))
+
+
+def log_html():
+    try:
+        import sheets_log
+        from ble_service import read_status
+
+        status = read_status()
+        # prefer_wifi=False for the same reason as ota_html() above -- the
+        # Wi-Fi radio here is already busy serving this page as an AP.
+        logger = sheets_log.SheetsLogger(prefer_wifi=False)
+        logger.ensure_data()
+        try:
+            result = logger.log_power(
+                device=status["device"],
+                mode=status["mode"],
+                engine=status["engine"],
+                house=status["house"],
+                v50=status["v50"],
+                note="wifi_console_log_now",
+            )
+            if result.get("ok"):
+                msg = "Logged (row %s)." % result.get("row")
+            else:
+                msg = "Log failed: %s" % result.get("error", result)
+        finally:
+            logger.close_data()
+    except Exception as e:
+        msg = "Log failed: %s" % e
+    return page("Log Now", "<h1>Log Now</h1><p><a href='/'>Back</a></p><div class='card'><pre>%s</pre></div>" % safe(msg))
 
 
 def http_response(html):
@@ -436,6 +473,8 @@ def serve():
                 html = save_pasted(body)
             elif path.startswith("/ota"):
                 html = ota_html()
+            elif path.startswith("/log"):
+                html = log_html()
             elif path.startswith("/reboot"):
                 cl.send(http_response(page("Reboot", "<h1>Rebooting...</h1>")).encode())
                 cl.close()
