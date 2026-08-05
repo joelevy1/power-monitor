@@ -19,13 +19,69 @@ export function isBoatMonitor(device) {
   return Array.isArray(uuids) && uuids.some((id) => String(id).toLowerCase() === SERVICE_UUID);
 }
 
+// Hermes (React Native's JS engine) does not implement the Web APIs
+// TextDecoder/TextEncoder, so decode/encode UTF-8 manually against the raw
+// bytes base64-js already gives us instead of adding a polyfill dependency.
+function utf8BytesToString(bytes) {
+  let result = '';
+  let i = 0;
+  while (i < bytes.length) {
+    const b1 = bytes[i++];
+    if (b1 < 0x80) {
+      result += String.fromCharCode(b1);
+    } else if (b1 < 0xe0 && i < bytes.length) {
+      const b2 = bytes[i++];
+      result += String.fromCharCode(((b1 & 0x1f) << 6) | (b2 & 0x3f));
+    } else if (b1 < 0xf0 && i + 1 < bytes.length) {
+      const b2 = bytes[i++];
+      const b3 = bytes[i++];
+      result += String.fromCharCode(((b1 & 0x0f) << 12) | ((b2 & 0x3f) << 6) | (b3 & 0x3f));
+    } else if (i + 2 < bytes.length) {
+      const b2 = bytes[i++];
+      const b3 = bytes[i++];
+      const b4 = bytes[i++];
+      const codepoint =
+        ((b1 & 0x07) << 18) | ((b2 & 0x3f) << 12) | ((b3 & 0x3f) << 6) | (b4 & 0x3f);
+      result += String.fromCodePoint(codepoint);
+    } else {
+      // Truncated/invalid sequence at the end of the buffer — skip it rather
+      // than throw, so a partial BLE read never crashes the decode step.
+      break;
+    }
+  }
+  return result;
+}
+
+function stringToUtf8Bytes(str) {
+  const bytes = [];
+  for (let i = 0; i < str.length; i++) {
+    let code = str.codePointAt(i);
+    if (code > 0xffff) i++; // consume the low surrogate of the pair
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    } else {
+      bytes.push(
+        0xf0 | (code >> 18),
+        0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f),
+      );
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
 export function decodeBleValue(value) {
   if (!value) return '';
-  return new TextDecoder().decode(decode(value));
+  return utf8BytesToString(decode(value));
 }
 
 export function encodeBleCommand(cmd) {
-  const bytes = new TextEncoder().encode(JSON.stringify({ cmd }));
+  const bytes = stringToUtf8Bytes(JSON.stringify({ cmd }));
   return encode(bytes);
 }
 
