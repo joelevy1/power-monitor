@@ -10,6 +10,15 @@ account and does the Sheets write for it.
 Do this **after** `SHEETS_SETUP.md`'s steps 1–4 (spreadsheet created, tabs +
 headers via `sheets_bootstrap.py`).
 
+`sheets_log.py` prefers **Wi-Fi** over cellular when a known network is
+configured (see `wifi_uplink.py`) — no cellular data usage, no modem needed.
+Configure networks in `wifi_credentials.py` (copy from
+`wifi_credentials.example.py`, gitignored, e.g. your marina's Wi-Fi and your
+home Wi-Fi for bench testing) — same file/setup as OTA's Wi-Fi-first
+behavior in `OTA_UPDATE.md`. **Only run `sheets_log_test.py`/`ota.py` when
+BLE is NOT active** — Wi-Fi and BLE share one radio on the Pico W and cannot
+run at the same time.
+
 ---
 
 ## 1. Deploy the Apps Script Web App
@@ -66,7 +75,26 @@ Check the spreadsheet — two new test rows should be there. If you get
 `bad token`, double check the Script property matches `secrets.py` exactly
 (no extra whitespace).
 
+## 3b. (Optional) Set up Wi-Fi-first for the Pico
+
+Copy `wifi_credentials.example.py` as `wifi_credentials.py` (Pico
+filesystem, gitignored) and fill in real networks, tried in order:
+
+```python
+WIFI_NETWORKS = [
+    ("Seattle Boat", "the-marina-wifi-password"),
+    ("YourHomeSSID", "your-home-wifi-password"),
+]
+```
+
+With this in place, `sheets_log_test.py` and `ota.update()` will connect to
+whichever of these is in range instead of using cellular at all.
+
 ## 4. Test one real cellular POST from the Pico (Phase 2.9)
+
+If no Wi-Fi network is configured/in range, `sheets_log_test.py` falls back
+to cellular automatically — this section is for testing that path
+specifically.
 
 With the SIM7600 modem wired and powered, in Thonny:
 

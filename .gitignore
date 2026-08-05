@@ -3,6 +3,8 @@
 *.env.local
 secrets.py
 boat_monitor/secrets.py
+wifi_credentials.py
+boat_monitor/wifi_credentials.py
 local_config.py
 boat_monitor/local_config.py
 device_secrets.py

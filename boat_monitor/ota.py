@@ -1,14 +1,23 @@
 """
-Boat Monitor P2 - manifest-driven OTA updater for MicroPython / SIM7600.
+Boat Monitor P2 - manifest-driven OTA updater. Prefers Wi-Fi (wifi_uplink.py)
+over the cellular SIM7600 modem when a known network is configured and
+reachable -- no cellular data usage, no modem needed, and much faster.
+Falls back to cellular automatically if Wi-Fi isn't configured or fails to
+connect.
 
 Run manually from the Pico:
 
     import ota
     ota.update()
 
-The updater downloads ota_manifest.json over the cellular modem, then fetches
-each listed file from GitHub raw URLs. Files are written as .new first, then the
-previous copy is kept as .bak where possible.
+Safe to prefer Wi-Fi here specifically because main.py runs this OTA check
+BEFORE BLE ever starts -- Wi-Fi and BLE share one radio on the Pico W and
+cannot run at the same time (see ensure_wifi_off() in ble_service.py). Do
+not call ota.update()/check() while BLE is active.
+
+The updater downloads ota_manifest.json, then fetches each listed file from
+GitHub raw URLs. Files are written as .new first, then the previous copy is
+kept as .bak where possible.
 """
 
 import time
@@ -204,42 +213,87 @@ def apply_manifest(client, manifest):
         write_file(path, data)
 
 
+def _get_client(reset_modem=False):
+    """Prefer Wi-Fi over cellular -- see module docstring for why this is
+    safe here specifically (OTA runs before BLE starts). Returns
+    (client, used_wifi); used_wifi tells the caller which teardown to run.
+    """
+    try:
+        import wifi_uplink
+
+        ssid = wifi_uplink.connect(timeout_s=15)
+        if ssid:
+            print("OTA: using Wi-Fi (%s)" % ssid)
+            return wifi_uplink.WifiHttp(), True
+    except Exception as exc:
+        print("OTA: Wi-Fi attempt failed, falling back to cellular:", exc)
+
+    print("OTA: using cellular")
+    client = Sim7600Http()
+    if reset_modem:
+        client.reset()
+    client.ensure_data()
+    return client, False
+
+
+def _close_client(client, used_wifi):
+    if used_wifi:
+        try:
+            import wifi_uplink
+
+            wifi_uplink.disconnect()
+        except Exception as exc:
+            print("OTA: wifi_uplink.disconnect() warning:", exc)
+        return
+
+    # Cellular teardown (Phase 2.4 discipline: always tear down every run).
+    try:
+        client.at("AT+HTTPTERM", 3000)
+    except Exception:
+        pass
+    try:
+        client.at("AT+NETCLOSE", 10000)
+    except Exception:
+        pass
+
+
 def update(reset_modem=False, reboot=False):
     print("Boat Monitor OTA update")
     print("Current version:", current_version())
     print("Manifest:", ota_config.OTA_MANIFEST_URL)
 
-    client = Sim7600Http()
-    if reset_modem:
-        client.reset()
+    client, used_wifi = _get_client(reset_modem)
+    try:
+        manifest = load_manifest(client)
+        target_version = manifest.get("version", "unknown")
+        print("Target version:", target_version)
 
-    client.ensure_data()
-    manifest = load_manifest(client)
-    target_version = manifest.get("version", "unknown")
-    print("Target version:", target_version)
+        if target_version == current_version():
+            print("Already at target version.")
+            return False
 
-    if target_version == current_version():
-        print("Already at target version.")
-        return False
+        apply_manifest(client, manifest)
+        print("Update complete.")
+        print("Reboot required to run new files.")
 
-    apply_manifest(client, manifest)
-    print("Update complete.")
-    print("Reboot required to run new files.")
+        if reboot:
+            import machine
 
-    if reboot:
-        import machine
+            time.sleep(1)
+            machine.reset()
 
-        time.sleep(1)
-        machine.reset()
-
-    return True
+        return True
+    finally:
+        _close_client(client, used_wifi)
 
 
 def check():
-    client = Sim7600Http()
-    client.ensure_data()
-    manifest = load_manifest(client)
-    print("Current:", current_version())
-    print("Available:", manifest.get("version", "unknown"))
-    print("Notes:", manifest.get("notes", ""))
-    return manifest
+    client, used_wifi = _get_client()
+    try:
+        manifest = load_manifest(client)
+        print("Current:", current_version())
+        print("Available:", manifest.get("version", "unknown"))
+        print("Notes:", manifest.get("notes", ""))
+        return manifest
+    finally:
+        _close_client(client, used_wifi)

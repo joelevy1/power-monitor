@@ -1,6 +1,6 @@
 {
-  "version": "0.4.0",
-  "notes": "Add Phase 2/3 tooling: gps.py (SIM7600 AT+CGPS helper, refactored from field_console.py's tested parser) and sheets_log.py (log Power_Log/GPS_Log/Bilge_Log/Events rows over cellular via the new Apps Script Web App receiver in boat_monitor/apps_script/Code.gs -- lighter than signing a Google service-account JWT on MicroPython). Nothing in main.py's boot flow changed; these are opt-in modules for bench testing via sheets_log_test.py. See APPS_SCRIPT_SETUP.md.",
+  "version": "0.5.0",
+  "notes": "Add wifi_uplink.py: Wi-Fi STA uplink (multiple saved networks, tried in priority order from wifi_credentials.py) tried before cellular for internet access. Wired into ota.py (OTA checks) and sheets_log.py (Sheets logging), both falling back to cellular automatically if Wi-Fi isn't configured or fails to connect. Safe because both only run before BLE starts (main.py's boot flow) or as standalone bench tests -- Wi-Fi and BLE share one radio on the Pico W and cannot run at the same time. See OTA_UPDATE.md / APPS_SCRIPT_SETUP.md.",
   "files": [
     {
       "path": "version.py",
@@ -57,6 +57,10 @@
     {
       "path": "sheets_log_test.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log_test.py"
+    },
+    {
+      "path": "wifi_uplink.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
     }
   ]
 }

@@ -1,7 +1,10 @@
 # Boat Monitor P2 OTA updates
 
-The Pico can update its MicroPython files from GitHub over the SIM7600 cellular
-modem using `ota.py`.
+The Pico can update its MicroPython files from GitHub. It prefers **Wi-Fi**
+(via `wifi_uplink.py`, if a known network is configured and reachable — no
+cellular data usage, no modem needed) and falls back to the SIM7600 **cellular**
+modem otherwise. See `APPS_SCRIPT_SETUP.md` for the same Wi-Fi-first pattern
+applied to Sheets logging.
 
 ## One-time setup on Pico
 
@@ -14,6 +17,13 @@ Copy these files to the Pico:
 - `ota.py`
 - `ota_config.py`
 - `version.py`
+- `wifi_uplink.py`
+
+Optional (needed for Wi-Fi-first OTA/Sheets logging — copy
+`wifi_credentials.example.py` as `wifi_credentials.py`, fill in your real
+SSIDs/passwords; gitignored, never commit it):
+
+- `wifi_credentials.py`
 
 Optional debug/service files:
 
@@ -21,11 +31,26 @@ Optional debug/service files:
 - `modem_check.py`
 - `ble_probe.py`
 - `ble_status.py`
+- `gps.py`
+- `sheets_log.py`
 
 ## Default boot behavior (0.3.0+)
 
-- Normal boot starts the **BLE** service (`BoatMonitor` advertisement).
-- Use the iOS app or send a BLE command `wifi` to reboot into the **Wi‑Fi** field console (`wifi_mode.txt` one-shot flag).
+- Boot first runs an OTA check (`ota_config.AUTO_OTA_ON_BOOT`), **before** BLE
+  starts — this is the only place Wi-Fi is safe to try automatically, since
+  Wi-Fi and BLE share one radio on the Pico W and cannot run at the same time
+  (see `ensure_wifi_off()` in `ble_service.py`). If no configured Wi-Fi
+  network is in range, this adds up to ~15s per network before falling back
+  to cellular (or skipping OTA entirely if cellular isn't available either)
+  — tune `timeout_s` in `wifi_uplink.connect()` calls, or set
+  `AUTO_OTA_ON_BOOT = False` in `ota_config.py`, if boot speed matters more
+  than automatic update checks.
+- Normal boot then starts the **BLE** service (`BoatMonitor` advertisement).
+- Use the iOS app or send a BLE command `wifi` to reboot into the **Wi‑Fi
+  access point** field console (`wifi_mode.txt` one-shot flag) — this is a
+  *different* Wi-Fi mode (the Pico becomes its own AP) than the Wi-Fi *client*
+  mode `wifi_uplink.py` uses to reach the internet; both still can't run
+  alongside BLE.
 - If BLE fails to start, `main.py` falls back to the Wi‑Fi field console.
 
 ## Manual OTA from the Pico REPL

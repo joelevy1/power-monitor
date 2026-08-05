@@ -1,0 +1,250 @@
+"""
+Boat Monitor P2 - Wi-Fi STA uplink, tried before cellular for internet
+access (OTA checks in ota.py, Sheets logging in sheets_log.py).
+
+IMPORTANT hardware constraint: Wi-Fi and BLE share one radio on the Pico W
+(CYW43439) and cannot run at the same time -- this is why ble_service.py
+has ensure_wifi_off() before it enables BLE. Only call connect() here when
+BLE is NOT active. main.py's boot flow already satisfies this for OTA (the
+boot-time update check runs before ble_service.main() ever starts). Do not
+call this while a phone is connected over BLE without stopping BLE first.
+
+Configure known networks, tried in order, in wifi_credentials.py (copy from
+wifi_credentials.example.py -- gitignored, real passwords never committed):
+
+    WIFI_NETWORKS = [("Seattle Boat", "..."), ("HomeSSID", "...")]
+
+Usage:
+    import wifi_uplink
+    ssid = wifi_uplink.connect(timeout_s=15)   # None if nothing connected
+    if ssid:
+        http = wifi_uplink.WifiHttp()
+        status, body = http.http_get("https://raw.githubusercontent.com/...")
+        wifi_uplink.disconnect()
+
+No external dependencies (no urequests/mip install) -- HTTP/HTTPS requests
+are built by hand over a raw socket, using MicroPython's built-in ssl
+module for TLS. This is the least-tested part of this codebase's networking
+code (no way to run MicroPython here to verify it) -- bench-test with
+wifi_uplink_test.py before relying on it.
+"""
+
+import time
+
+
+class WifiError(Exception):
+    pass
+
+
+def _wlan():
+    import network
+
+    return network.WLAN(network.STA_IF)
+
+
+def _load_networks():
+    try:
+        import wifi_credentials
+
+        return list(getattr(wifi_credentials, "WIFI_NETWORKS", []))
+    except ImportError:
+        return []
+
+
+def connect(timeout_s=15):
+    """Try each configured network in wifi_credentials.py, in order, with
+    up to timeout_s seconds per network. Returns the SSID that connected,
+    or None if none did (including if none are configured).
+    """
+    networks = _load_networks()
+    if not networks:
+        print("wifi_uplink: no networks configured (see wifi_credentials.example.py)")
+        return None
+
+    wlan = _wlan()
+    wlan.active(True)
+
+    for ssid, password in networks:
+        if wlan.isconnected():
+            wlan.disconnect()
+            time.sleep(0.2)
+
+        print("wifi_uplink: trying", ssid)
+        try:
+            wlan.connect(ssid, password)
+        except OSError as exc:
+            print("wifi_uplink: connect() raised for %s: %s" % (ssid, exc))
+            continue
+
+        start = time.ticks_ms()
+        while time.ticks_diff(time.ticks_ms(), start) < timeout_s * 1000:
+            if wlan.isconnected():
+                print("wifi_uplink: connected to", ssid, wlan.ifconfig())
+                return ssid
+            # status() < 0 means the connect attempt already failed (wrong
+            # password, not found, etc) -- no point waiting out the timeout.
+            if hasattr(wlan, "status") and wlan.status() < 0:
+                print("wifi_uplink: %s failed early (status %s)" % (ssid, wlan.status()))
+                break
+            time.sleep(0.5)
+        else:
+            print("wifi_uplink: timed out connecting to", ssid)
+
+    wlan.active(False)
+    return None
+
+
+def disconnect():
+    wlan = _wlan()
+    try:
+        if wlan.isconnected():
+            wlan.disconnect()
+    except OSError:
+        pass
+    wlan.active(False)
+
+
+def is_connected():
+    try:
+        return _wlan().isconnected()
+    except Exception:
+        return False
+
+
+def split_url(url):
+    """Parse a URL into (host, port, path, is_https). Pure/no imports
+    beyond stdlib, so it's unit-testable on a PC -- see
+    test_wifi_uplink_parser.py.
+    """
+    if url.startswith("https://"):
+        is_https = True
+        rest = url[len("https://"):]
+        default_port = 443
+    elif url.startswith("http://"):
+        is_https = False
+        rest = url[len("http://"):]
+        default_port = 80
+    else:
+        raise ValueError("URL must start with http:// or https://")
+
+    if "/" in rest:
+        host_port, path = rest.split("/", 1)
+        path = "/" + path
+    else:
+        host_port, path = rest, "/"
+
+    if ":" in host_port:
+        host, port_text = host_port.split(":", 1)
+        port = int(port_text)
+    else:
+        host, port = host_port, default_port
+
+    if not host:
+        raise ValueError("URL missing host: %s" % url)
+
+    return host, port, path, is_https
+
+
+class WifiHttp:
+    """Minimal HTTP/HTTPS client over a raw socket, no urequests needed.
+
+    Exposes http_get(url) -> text (same shape as ota.py's Sim7600Http, so
+    ota.load_manifest()/apply_manifest() can use either interchangeably),
+    plus http_post_json() for sheets_log.py.
+    """
+
+    def _request(self, method, url, body=None, headers=None, timeout_s=20):
+        import socket
+
+        host, port, path, is_https = split_url(url)
+
+        headers = dict(headers or {})
+        headers.setdefault("Host", host)
+        headers.setdefault("Connection", "close")
+        headers.setdefault("User-Agent", "boat-monitor-pico")
+
+        body_bytes = b""
+        if body is not None:
+            body_bytes = body if isinstance(body, bytes) else body.encode()
+            headers.setdefault("Content-Length", str(len(body_bytes)))
+
+        request_lines = ["%s %s HTTP/1.1" % (method, path)]
+        for key, value in headers.items():
+            request_lines.append("%s: %s" % (key, value))
+        request_text = "\r\n".join(request_lines) + "\r\n\r\n"
+
+        addr = socket.getaddrinfo(host, port)[0][-1]
+        sock = socket.socket()
+        sock.settimeout(timeout_s)
+        try:
+            sock.connect(addr)
+            if is_https:
+                try:
+                    import ussl as ssl
+                except ImportError:
+                    import ssl
+                try:
+                    sock = ssl.wrap_socket(sock, server_hostname=host)
+                except TypeError:
+                    # Some MicroPython builds don't support server_hostname
+                    # (no SNI) -- try without it; may fail against hosts
+                    # that route purely by SNI.
+                    sock = ssl.wrap_socket(sock)
+
+            sock.write(request_text.encode())
+            if body_bytes:
+                sock.write(body_bytes)
+
+            response = b""
+            while True:
+                try:
+                    chunk = sock.recv(1024)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                response += chunk
+        finally:
+            sock.close()
+
+        return self._parse_response(response)
+
+    def _parse_response(self, response):
+        header_end = response.find(b"\r\n\r\n")
+        if header_end < 0:
+            raise WifiError("malformed HTTP response (no header terminator)")
+
+        header_text = response[:header_end].decode("utf-8", "ignore")
+        status_line = header_text.split("\r\n", 1)[0]
+        try:
+            status = int(status_line.split(" ")[1])
+        except (IndexError, ValueError):
+            raise WifiError("could not parse HTTP status line: %s" % status_line)
+
+        body = response[header_end + 4:]
+
+        # Not de-chunking Transfer-Encoding: chunked -- GitHub raw content
+        # and Apps Script /exec responses both send Content-Length, which
+        # is all this client targets. If a server sends chunked encoding
+        # instead, the body will include chunk-size markers; not handled.
+        return status, body.decode("utf-8", "ignore")
+
+    def http_get(self, url, timeout_s=20):
+        """Matches Sim7600Http.http_get()'s signature/return shape (raises
+        WifiError on non-200 or malformed response, returns body text on
+        success) so ota.py's load_manifest()/apply_manifest() work with
+        either client unchanged.
+        """
+        status, body = self._request("GET", url, timeout_s=timeout_s)
+        if status != 200:
+            raise WifiError("HTTP status %s for %s" % (status, url))
+        return body
+
+    def http_post_json(self, url, body_text, timeout_s=20):
+        headers = {"Content-Type": "application/json"}
+        status, body = self._request(
+            "POST", url, body=body_text, headers=headers, timeout_s=timeout_s
+        )
+        if status != 200:
+            raise WifiError("HTTP status %s posting to %s" % (status, url))
+        return body
