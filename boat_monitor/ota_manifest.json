@@ -1,6 +1,6 @@
 {
   "version": "0.3.1",
-  "notes": "Fix BLE advertising overflow (34 bytes > 31-byte limit) that dropped the device name/UUID from the air, causing app scans to time out even though generic BLE scanners (e.g. LightBlue) could still see and connect to the device.",
+  "notes": "Fix BLE advertising overflow (34 bytes > 31-byte limit) that dropped the device name/UUID from the air, causing app scans to time out even though generic BLE scanners (e.g. LightBlue) could still see and connect to the device. Also ports two hardening patterns from the working Ballast Monitor Pico firmware: disable WiFi before enabling BLE (shared CYW43439 radio), and non-fatal gap_advertise error handling so a radio hiccup doesn't silently fall back to WiFi mode.",
   "files": [
     {
       "path": "version.py",

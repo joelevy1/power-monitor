@@ -155,40 +155,58 @@ def read_status(command_result=None):
     return status
 
 
-def _append_ad(payload, adv_type, value):
-    payload.extend(struct.pack("BB", len(value) + 1, adv_type))
-    payload.extend(value)
+def ensure_wifi_off():
+    """Pico W: CYW43439 cannot reliably advertise BLE while WiFi STA/AP is active
+    (shared radio). Same fix applied on the Ballast Monitor Pico firmware.
+    """
+    try:
+        import network
+    except ImportError:
+        return
+
+    for label, iface in (("STA", network.STA_IF), ("AP", network.AP_IF)):
+        try:
+            wlan = network.WLAN(iface)
+            if wlan.active():
+                wlan.active(False)
+                print("WiFi %s disabled for BLE" % label)
+        except Exception as exc:
+            print("WiFi %s off: %s" % (label, exc))
 
 
-def adv_payload(service_uuid=None):
-    """Primary advertising packet: flags + service UUID only.
+def advertising_payload(name=None, service_uuid=None):
+    """Build one AD packet (max 31 bytes). Raises ValueError if too long.
 
     Legacy BLE advertising PDUs are capped at 31 bytes. Flags (3) + a full
     128-bit service UUID (18) = 21 bytes, leaving no room for the device
-    name in the same packet (name would push the total to 34 bytes, which
-    gets truncated/rejected and breaks central-side name/UUID matching —
-    see resp_payload() for where the name goes instead).
+    name in the same packet — name (13 bytes) would push the total to 34
+    bytes, which silently breaks central-side name/UUID matching (generic
+    scanners like LightBlue still show the device since they don't filter
+    by name/UUID, which is why they can "see" a device the app can't find).
+    Pass name and service_uuid in *separate* calls — one for adv_data
+    (service_uuid), one for resp_data (name) — see BoatMonitorBle.__init__.
     """
     payload = bytearray()
-    _append_ad(payload, 0x01, b"\x06")
+
+    def append(adv_type, value):
+        payload.extend(struct.pack("BB", len(value) + 1, adv_type))
+        payload.extend(value)
+
+    append(0x01, b"\x06")
     if service_uuid:
-        _append_ad(payload, 0x07, bytes(bluetooth.UUID(service_uuid)))
-    return payload
+        append(0x07, bytes(bluetooth.UUID(service_uuid)))
+    if name:
+        append(0x09, name.encode())
 
-
-def resp_payload(name):
-    """Scan-response packet: device name only (13 bytes for "BoatMonitor").
-
-    Active scanners (including iOS CoreBluetooth / react-native-ble-plx)
-    request this automatically and merge it with the advertising packet.
-    """
-    payload = bytearray()
-    _append_ad(payload, 0x09, name.encode())
+    if len(payload) > 31:
+        raise ValueError("adv payload %d bytes > 31" % len(payload))
     return payload
 
 
 class BoatMonitorBle:
     def __init__(self):
+        ensure_wifi_off()
+
         self.ble = bluetooth.BLE()
         self.ble.active(True)
         self.ble.irq(self.irq)
@@ -204,8 +222,14 @@ class BoatMonitorBle:
         )
 
         ((self.status_handle, self.command_handle),) = self.ble.gatts_register_services((service,))
-        self.payload = adv_payload("7e400001-b5a3-f393-e0a9-e50e24dcca9e")
-        self.scan_resp_payload = resp_payload("BoatMonitor")
+
+        try:
+            self.payload = advertising_payload(service_uuid="7e400001-b5a3-f393-e0a9-e50e24dcca9e")
+            self.scan_resp_payload = advertising_payload(name="BoatMonitor")
+        except ValueError as exc:
+            print("ERROR: advertising payload:", exc)
+            raise
+
         print(
             "BLE adv payload: %d bytes, scan response: %d bytes (limit 31 each)"
             % (len(self.payload), len(self.scan_resp_payload))
@@ -231,8 +255,14 @@ class BoatMonitorBle:
                 self.handle_command(raw.decode("utf-8", "ignore").strip())
 
     def advertise(self):
+        try:
+            self.ble.gap_advertise(500000, adv_data=self.payload, resp_data=self.scan_resp_payload)
+        except OSError as exc:
+            # Don't let a transient radio error crash the whole service — main.py's
+            # blanket except would fall back to WiFi mode with no clear diagnostic.
+            print("ERROR: gap_advertise failed:", exc)
+            return
         print("BLE advertising as BoatMonitor")
-        self.ble.gap_advertise(500000, adv_data=self.payload, resp_data=self.scan_resp_payload)
 
     def update_status(self):
         data = json.dumps(read_status(self.command_result)).encode()
