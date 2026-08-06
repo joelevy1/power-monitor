@@ -126,9 +126,9 @@ def _get_client(prefer_wifi=True):
     """
     if prefer_wifi:
         try:
-            import wifi_networks
+            import wifi_uplink
 
-            nets = wifi_networks.load_networks()
+            nets = wifi_uplink.load_networks()
             if not nets:
                 raise OtaError(
                     "no Wi-Fi networks on Pico — save wifi_known_networks.py from GitHub "
@@ -153,9 +153,9 @@ def _get_client(prefer_wifi=True):
             print("OTA: Wi-Fi attempt failed:", exc)
 
         try:
-            import wifi_networks
+            import wifi_uplink
 
-            if wifi_networks.load_networks():
+            if wifi_uplink.load_networks():
                 raise OtaError("Wi-Fi configured but no network connected (modem fallback disabled)")
         except OtaError:
             raise

@@ -240,9 +240,9 @@ def log_power_and_gps(
 
 def _wifi_uplink_configured():
     try:
-        import wifi_networks
+        import wifi_uplink
 
-        return bool(wifi_networks.load_networks())
+        return bool(wifi_uplink.load_networks())
     except Exception:
         return False
 

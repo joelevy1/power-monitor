@@ -41,13 +41,46 @@ def _wlan():
     return network.WLAN(network.STA_IF)
 
 
-def _load_networks():
+def load_networks():
+    """(ssid, password) list — works with only wifi_known_networks.py on the Pico."""
     try:
         import wifi_networks
 
-        return wifi_networks.load_networks()
+        nets = wifi_networks.load_networks()
+        if nets:
+            return nets
     except ImportError:
-        return []
+        pass
+
+    result = []
+    seen = set()
+
+    def add(entries):
+        for ssid, password in entries or []:
+            if not ssid or not password or ssid in seen:
+                continue
+            seen.add(ssid)
+            result.append((ssid, password))
+
+    try:
+        import wifi_credentials
+
+        add(getattr(wifi_credentials, "WIFI_NETWORKS", []))
+    except ImportError:
+        pass
+
+    try:
+        import wifi_known_networks
+
+        add(getattr(wifi_known_networks, "WIFI_NETWORKS", []))
+    except ImportError:
+        pass
+
+    return result
+
+
+def _load_networks():
+    return load_networks()
 
 
 def connect(timeout_s=15):

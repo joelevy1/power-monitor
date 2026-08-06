@@ -105,10 +105,9 @@ class SheetsLogger:
             pass
 
         if self.prefer_wifi:
-            import wifi_networks
             import wifi_uplink
 
-            nets = wifi_networks.load_networks()
+            nets = wifi_uplink.load_networks()
             if not nets:
                 msg = (
                     "no Wi-Fi networks on Pico — need wifi_known_networks.py (OTA) "
