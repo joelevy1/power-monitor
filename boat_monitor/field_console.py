@@ -5,6 +5,11 @@ import machine
 from machine import I2C, Pin, UART
 import config as cfg
 
+try:
+    import _thread
+except Exception:
+    _thread = None
+
 AP_NAME = "BoatMonitor"
 AP_PASSWORD = "boatmonitor"
 
@@ -197,6 +202,130 @@ MODEM = {
     "lon": None,
 }
 
+JOB = {
+    "kind": "",
+    "label": "",
+    "state": "idle",
+    "started_ms": 0,
+    "finished_ms": 0,
+    "result": "",
+    "error": "",
+}
+JOB_LOCK = _thread.allocate_lock() if _thread else None
+
+VERSION_CACHE = {
+    "checked_ms": 0,
+    "current": "",
+    "latest": "",
+    "notes": "",
+    "error": "",
+}
+
+
+def _job_snapshot():
+    if JOB_LOCK:
+        JOB_LOCK.acquire()
+    try:
+        return dict(JOB)
+    finally:
+        if JOB_LOCK:
+            JOB_LOCK.release()
+
+
+def _set_job(**kwargs):
+    if JOB_LOCK:
+        JOB_LOCK.acquire()
+    try:
+        for key, value in kwargs.items():
+            JOB[key] = value
+    finally:
+        if JOB_LOCK:
+            JOB_LOCK.release()
+
+
+def _job_running():
+    return _job_snapshot().get("state") == "running"
+
+
+def _elapsed_s(start_ms, end_ms=0):
+    if not start_ms:
+        return 0
+    end_ms = end_ms or time.ticks_ms()
+    return max(0, int(time.ticks_diff(end_ms, start_ms) / 1000))
+
+
+def current_fw():
+    try:
+        import version
+
+        return getattr(version, "VERSION", "unknown")
+    except Exception:
+        return "unknown"
+
+
+def start_job(kind, label, func):
+    snap = _job_snapshot()
+    if snap.get("state") == "running":
+        return False, "%s is already running (%ds)." % (
+            snap.get("label") or "A command",
+            _elapsed_s(snap.get("started_ms", 0)),
+        )
+
+    started_ms = time.ticks_ms()
+    _set_job(
+        kind=kind,
+        label=label,
+        state="running",
+        started_ms=started_ms,
+        finished_ms=0,
+        result="",
+        error="",
+    )
+
+    def run():
+        try:
+            result = func()
+            _set_job(state="done", finished_ms=time.ticks_ms(), result=str(result), error="")
+        except Exception as exc:
+            _set_job(state="error", finished_ms=time.ticks_ms(), error=str(exc), result="")
+
+    if _thread:
+        _thread.start_new_thread(run, ())
+        return True, "%s started. This page will refresh while it runs." % label
+
+    # Desktop fallback; Pico W firmware has _thread, but this keeps the page usable if it is absent.
+    run()
+    return True, "%s finished." % label
+
+
+def job_status_html():
+    snap = _job_snapshot()
+    state = snap.get("state", "idle")
+    if state == "idle":
+        return "<div class='card'><h2>Command Status</h2><p>No command running.</p></div>"
+
+    label = safe(snap.get("label") or "Command")
+    if state == "running":
+        return (
+            "<div class='card'><h2>Command Status</h2>"
+            "<p><span class='warn'>%s running...</span> %ds elapsed.</p>"
+            "<p class='small'>Log and OTA use the cellular modem, so 10-90 seconds is normal. "
+            "This page refreshes automatically and the modem status check is paused while the command runs.</p>"
+            "</div>"
+        ) % (label, _elapsed_s(snap.get("started_ms", 0)))
+
+    elapsed = _elapsed_s(snap.get("started_ms", 0), snap.get("finished_ms", 0))
+    if state == "done":
+        return (
+            "<div class='card'><h2>Command Status</h2>"
+            "<p><span class='good'>%s complete</span> in %ds.</p><pre>%s</pre></div>"
+        ) % (label, elapsed, safe(snap.get("result", "")))
+
+    return (
+        "<div class='card'><h2>Command Status</h2>"
+        "<p><span class='on'>%s failed</span> after %ds.</p><pre>%s</pre></div>"
+    ) % (label, elapsed, safe(snap.get("error", "")))
+
 
 def update_modem_cache():
     now = time.ticks_ms()
@@ -252,8 +381,15 @@ def update_modem_cache():
             MODEM["gps_status"] = "GPS on, searching for fix" if MODEM["gps_started"] else "GPS not started"
 
 
-def page(title, body, refresh=False):
-    refresh_tag = '<meta http-equiv="refresh" content="10">' if refresh else ""
+def page(title, body, refresh=False, refresh_url=None):
+    if refresh:
+        seconds = 10 if refresh is True else int(refresh)
+        if refresh_url:
+            refresh_tag = '<meta http-equiv="refresh" content="%d; url=%s">' % (seconds, refresh_url)
+        else:
+            refresh_tag = '<meta http-equiv="refresh" content="%d">' % seconds
+    else:
+        refresh_tag = ""
     return """<!doctype html>
 <html>
 <head>
@@ -282,7 +418,9 @@ pre { white-space:pre-wrap; }
 
 
 def status_html():
-    update_modem_cache()
+    running = _job_running()
+    if not running:
+        update_modem_cache()
 
     engine = format_ina(*read_ina260_values("Engine", cfg.I2C_ENGINE_SDA, cfg.I2C_ENGINE_SCL, 0, cfg.INA260_ENGINE_ADDR))
     house = format_ina(*read_ina260_values("House", cfg.I2C_HOUSE_SDA, cfg.I2C_HOUSE_SCL, 1, cfg.INA260_HOUSE_ADDR))
@@ -316,14 +454,41 @@ def status_html():
         )
 
     reg_cls = "good" if MODEM["registered"] == "registered" else "warn"
+    current = current_fw()
+    latest = VERSION_CACHE.get("latest") or ""
+    version_error = VERSION_CACHE.get("error") or ""
+    if latest:
+        if latest != current:
+            version_html = (
+                "<p>Pico firmware: <b>%s</b></p>"
+                "<p>GitHub firmware: <span class='warn'>%s available</span></p>"
+                "<p><a href='/ota'>OTA from GitHub</a></p>"
+            ) % (safe(current), safe(latest))
+        else:
+            version_html = (
+                "<p>Pico firmware: <b>%s</b></p>"
+                "<p>GitHub firmware: <span class='good'>current (%s)</span></p>"
+            ) % (safe(current), safe(latest))
+    elif version_error:
+        version_html = (
+            "<p>Pico firmware: <b>%s</b></p><p>GitHub firmware: <span class='on'>check failed</span></p>"
+            "<pre>%s</pre>"
+        ) % (safe(current), safe(version_error))
+    else:
+        version_html = "<p>Pico firmware: <b>%s</b></p><p>GitHub firmware: not checked yet.</p>" % safe(current)
+
     body = """
 <h1>Boat Monitor</h1>
-<p><a href="/">Refresh</a> | <a href="/log">Log Now</a> | <a href="/update">Update</a> | <a href="/ota">OTA from GitHub</a> | <a href="/reboot">Reboot</a></p>
+<p><a href="/">Refresh</a> | <a href="/log">Log Now</a> | <a href="/ota-check">Check GitHub Version</a> | <a href="/ota">OTA from GitHub</a> | <a href="/update">Update Files</a> | <a href="/reboot">Reboot</a></p>
+%s
+<div class="card"><h2>Firmware</h2>%s<p class="small">"Update Files" is the manual paste editor. "OTA from GitHub" downloads the manifest and files from GitHub over cellular.</p></div>
 <div class="card"><h2>Power / Sensors</h2><p>%s</p><p>%s</p><p>%s</p><p>TPS STAT=%d, VSNS=%d</p></div>
 <div class="card"><h2>Inputs</h2><ul>%s</ul></div>
 <div class="card"><h2>Cell / GPS</h2><p>LTE: <span class="%s">%s</span></p><p>Signal: %s</p><p>Operator: %s</p><p>IP: %s</p><p>%s</p></div>
-<div class="card"><p>Note: solar charging current currently reads negative on Engine/House INAs.</p><p class="small">Auto-refresh every 10 seconds.</p></div>
+<div class="card"><p>Note: solar charging current currently reads negative on Engine/House INAs.</p><p class="small">Auto-refresh every %d seconds.%s</p></div>
 """ % (
+        job_status_html(),
+        version_html,
         safe(engine),
         safe(house),
         safe(v50),
@@ -336,8 +501,10 @@ def status_html():
         safe(MODEM["operator"]),
         safe(MODEM["ip"]),
         gps_html,
+        3 if running else 10,
+        " Modem status is paused while a command is running." if running else "",
     )
-    return page("Boat Monitor", body, refresh=True)
+    return page("Boat Monitor", body, refresh=3 if running else 10)
 
 
 def update_html(message=""):
@@ -369,7 +536,7 @@ def save_pasted(body):
 
 
 def ota_html():
-    try:
+    def run_ota():
         import ota
 
         # prefer_wifi=False: this page is being served BY the Pico's own
@@ -380,14 +547,55 @@ def ota_html():
         # UART hardware and has no such conflict -- same reasoning as the
         # BLE "ota" command in ble_service.py.
         changed = ota.update(prefer_wifi=False)
-        msg = "OTA update applied. Reboot when ready." if changed else "Already current."
-    except Exception as e:
-        msg = "OTA failed: %s" % e
-    return page("OTA", "<h1>OTA from GitHub</h1><p><a href='/'>Back</a></p><div class='card'><pre>%s</pre></div>" % safe(msg))
+        return "OTA update applied. Reboot when ready." if changed else "Already current."
+
+    started, msg = start_job("ota", "OTA from GitHub", run_ota)
+    body = "<h1>OTA from GitHub</h1><p><a href='/'>Status</a></p><div class='card'><p>%s</p></div>%s" % (
+        safe(msg),
+        job_status_html(),
+    )
+    refresh = started or _job_running()
+    return page("OTA", body, refresh=3 if refresh else False, refresh_url="/" if refresh else None)
+
+
+def ota_check_html():
+    def run_check():
+        try:
+            import ota
+
+            manifest = ota.check(prefer_wifi=False)
+            current = ota.current_version()
+            latest = manifest.get("version", "unknown")
+            notes = manifest.get("notes", "")
+            VERSION_CACHE["checked_ms"] = time.ticks_ms()
+            VERSION_CACHE["current"] = current
+            VERSION_CACHE["latest"] = latest
+            VERSION_CACHE["notes"] = notes
+            VERSION_CACHE["error"] = ""
+            if latest == current:
+                status = "Already current."
+            else:
+                status = "Update available."
+            return "Current: %s\nGitHub: %s\nStatus: %s\n\nNotes:\n%s" % (current, latest, status, notes)
+        except Exception as exc:
+            VERSION_CACHE["checked_ms"] = time.ticks_ms()
+            VERSION_CACHE["current"] = current_fw()
+            VERSION_CACHE["latest"] = ""
+            VERSION_CACHE["notes"] = ""
+            VERSION_CACHE["error"] = str(exc)
+            raise
+
+    started, msg = start_job("ota_check", "Check GitHub Version", run_check)
+    body = "<h1>Check GitHub Version</h1><p><a href='/'>Status</a></p><div class='card'><p>%s</p></div>%s" % (
+        safe(msg),
+        job_status_html(),
+    )
+    refresh = started or _job_running()
+    return page("Check GitHub Version", body, refresh=3 if refresh else False, refresh_url="/" if refresh else None)
 
 
 def log_html():
-    try:
+    def run_log():
         # prefer_wifi=False handled inside log_power_and_gps() for the
         # same reason as ota_html() above -- the Wi-Fi radio here is
         # already busy serving this page as an AP. Shared with
@@ -396,10 +604,15 @@ def log_html():
         # separate (near-identical) copy of this logic.
         from ble_service import log_power_and_gps
 
-        msg = "Logged: %s" % log_power_and_gps(note="wifi_console_log_now")
-    except Exception as e:
-        msg = "Log failed: %s" % e
-    return page("Log Now", "<h1>Log Now</h1><p><a href='/'>Back</a></p><div class='card'><pre>%s</pre></div>" % safe(msg))
+        return "Logged: %s" % log_power_and_gps(note="wifi_console_log_now")
+
+    started, msg = start_job("log", "Log Now", run_log)
+    body = "<h1>Log Now</h1><p><a href='/'>Status</a></p><div class='card'><p>%s</p></div>%s" % (
+        safe(msg),
+        job_status_html(),
+    )
+    refresh = started or _job_running()
+    return page("Log Now", body, refresh=3 if refresh else False, refresh_url="/" if refresh else None)
 
 
 def http_response(html):
@@ -505,6 +718,8 @@ def serve():
                 html = update_html()
             elif path.startswith("/save") and method == "POST":
                 html = save_pasted(body)
+            elif path.startswith("/ota-check"):
+                html = ota_check_html()
             elif path.startswith("/ota"):
                 html = ota_html()
             elif path.startswith("/log"):

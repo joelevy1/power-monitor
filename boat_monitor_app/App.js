@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -36,6 +37,9 @@ const LIVE_RSSI_POLL_MS = 2000;
 // AP up and serving".
 const WIFI_CONSOLE_URL = 'http://192.168.4.1/';
 const WIFI_CHECK_TIMEOUT_MS = 4000;
+const OTA_MANIFEST_URL =
+  'https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_manifest.json';
+const FIRMWARE_CHECK_TIMEOUT_MS = 8000;
 
 function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
@@ -150,11 +154,15 @@ export default function App() {
   const [signalStrength, setSignalStrength] = useState(null);
   const [wifiConsoleStatus, setWifiConsoleStatus] = useState('idle'); // idle | checking | reachable | unreachable
   const [wifiConsoleError, setWifiConsoleError] = useState(null);
+  const [latestFirmware, setLatestFirmware] = useState(null);
+  const [firmwareCheckStatus, setFirmwareCheckStatus] = useState('idle'); // idle | checking | ok | error
+  const [firmwareCheckError, setFirmwareCheckError] = useState(null);
   const [pendingCommand, setPendingCommand] = useState(null);
   const [pendingSince, setPendingSince] = useState(null);
   const [pendingElapsedS, setPendingElapsedS] = useState(0);
   const [commandResultAt, setCommandResultAt] = useState(null);
   const lastCommandResultRef = useRef(null);
+  const lastFirmwareCheckRef = useRef(null);
 
   // Ticking display while a command is pending -- without this, pressing
   // a button that takes 10-90s (a real cellular round-trip) just shows a
@@ -190,6 +198,30 @@ export default function App() {
       setPendingSince(null);
     }
   }, [status?.command_result, pendingCommand]);
+
+  async function checkFirmwareUpdate() {
+    setFirmwareCheckStatus('checking');
+    setFirmwareCheckError(null);
+    try {
+      const res = await fetchWithTimeout(OTA_MANIFEST_URL, { method: 'GET' }, FIRMWARE_CHECK_TIMEOUT_MS);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const manifest = await res.json();
+      const version = String(manifest?.version || '').trim();
+      if (!version) throw new Error('manifest missing version');
+      setLatestFirmware(version);
+      setFirmwareCheckStatus('ok');
+    } catch (error) {
+      setFirmwareCheckStatus('error');
+      setFirmwareCheckError(error?.message || String(error));
+    }
+  }
+
+  useEffect(() => {
+    const fw = status?.fw;
+    if (!fw || fw === 'unknown' || lastFirmwareCheckRef.current === fw) return;
+    lastFirmwareCheckRef.current = fw;
+    checkFirmwareUpdate();
+  }, [status?.fw]);
 
   // Passive BLE scan on the home screen: shows whether the Pico is
   // broadcasting nearby and its signal strength before you ever tap
@@ -273,6 +305,14 @@ export default function App() {
     } catch (error) {
       setWifiConsoleStatus('unreachable');
       setWifiConsoleError(error?.message || String(error));
+    }
+  }
+
+  async function openWifiConsole() {
+    try {
+      await Linking.openURL(WIFI_CONSOLE_URL);
+    } catch (error) {
+      Alert.alert('Could not open Wi-Fi console', error?.message || String(error));
     }
   }
 
@@ -414,6 +454,26 @@ export default function App() {
   const activeRssi = connected ? signalStrength : scanRssi;
   const bleQuality = signalQualityFor(activeRssi);
   const bleBroadcasting = connected || Number.isFinite(scanRssi);
+  const wifiConsoleText =
+    wifiConsoleStatus === 'checking'
+      ? 'Checking...'
+      : wifiConsoleStatus === 'reachable'
+        ? 'Open 192.168.4.1'
+        : wifiConsoleStatus === 'unreachable'
+          ? `Not reachable${wifiConsoleError ? ` (${wifiConsoleError})` : ''}`
+          : 'Not checked yet';
+  const picoFirmware = status?.fw || null;
+  const firmwareUpdateNeeded = !!latestFirmware && !!picoFirmware && picoFirmware !== 'unknown' && latestFirmware !== picoFirmware;
+  const firmwareText =
+    firmwareCheckStatus === 'checking'
+      ? 'Checking GitHub...'
+      : firmwareCheckStatus === 'error'
+        ? `Check failed${firmwareCheckError ? ` (${firmwareCheckError})` : ''}`
+        : latestFirmware
+          ? firmwareUpdateNeeded
+            ? `Update available: ${latestFirmware}`
+            : `Current (${latestFirmware})`
+          : 'Not checked yet';
 
   return (
     <View style={styles.container}>
@@ -454,16 +514,9 @@ export default function App() {
           <StatusRow label="RSSI" value={Number.isFinite(activeRssi) ? `${activeRssi} dBm` : '--'} />
           <StatusRow
             label="Wi-Fi console"
-            value={
-              wifiConsoleStatus === 'checking'
-                ? 'Checking...'
-                : wifiConsoleStatus === 'reachable'
-                  ? 'Reachable (192.168.4.1)'
-                  : wifiConsoleStatus === 'unreachable'
-                    ? `Not reachable${wifiConsoleError ? ` (${wifiConsoleError})` : ''}`
-                    : 'Not checked yet'
-            }
+            value={wifiConsoleText}
             danger={wifiConsoleStatus === 'unreachable'}
+            onPress={wifiConsoleStatus === 'reachable' ? openWifiConsole : null}
           />
           <TouchableOpacity
             style={[styles.secondaryButton, styles.checkWifiButton]}
@@ -489,6 +542,20 @@ export default function App() {
           <Text style={styles.cardTitle}>Status</Text>
           <StatusRow label="Mode" value={mode} danger={mode === 'switch_on_key_off' || mode === 'float_alert'} />
           <StatusRow label="Pico firmware" value={status?.fw || '--'} />
+          <StatusRow label="GitHub firmware" value={firmwareText} danger={firmwareUpdateNeeded || firmwareCheckStatus === 'error'} />
+          {picoFirmware ? (
+            <TouchableOpacity
+              style={[styles.secondaryButton, styles.checkWifiButton]}
+              onPress={checkFirmwareUpdate}
+              disabled={firmwareCheckStatus === 'checking'}
+            >
+              {firmwareCheckStatus === 'checking' ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Check GitHub Version</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
           <StatusRow label="Last updated" value={fmtTime(lastUpdated)} />
           <StatusRow label="Engine" value={`${fmtMetric(status?.engine, 'v')} V  ${fmtMetric(status?.engine, 'a', 3)} A`} />
           <StatusRow label="House" value={`${fmtMetric(status?.house, 'v')} V  ${fmtMetric(status?.house, 'a', 3)} A`} />
@@ -564,11 +631,18 @@ export default function App() {
   );
 }
 
-function StatusRow({ label, value, danger }) {
+function StatusRow({ label, value, danger, onPress }) {
+  const valueStyle = [styles.rowValue, danger ? styles.danger : null, onPress ? styles.linkValue : null];
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, danger ? styles.danger : null]}>{value}</Text>
+      {onPress ? (
+        <TouchableOpacity style={styles.rowValueWrap} onPress={onPress}>
+          <Text style={valueStyle}>{value}</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={valueStyle}>{value}</Text>
+      )}
     </View>
   );
 }
@@ -705,6 +779,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'right',
     flexShrink: 1,
+  },
+  rowValueWrap: {
+    flexShrink: 1,
+  },
+  linkValue: {
+    color: '#7dd3fc',
+    textDecorationLine: 'underline',
   },
   danger: {
     color: '#fca5a5',
