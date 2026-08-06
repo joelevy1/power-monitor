@@ -263,13 +263,15 @@ class SheetsLogger:
                 on_progress("logging_gps")
             gps_result = self.log_gps_now(device, timeout_s=gps_timeout_s, note=status_note)
             gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
-            if isinstance(gps_result, dict) and gps_result.get("commands"):
-                last_response = gps_result
+            # Do not apply sheet OTA/reboot from GPS-only when Power_Log failed — that
+            # caused a reboot with no voltage row (seen 2026-08-06) and left the
+            # device silent. Non-destructive settings still require a good power POST.
+            if power_outcome == "ok" and isinstance(gps_result, dict) and gps_result.get("commands"):
                 remote_actions = self._apply_remote_from_response(gps_result, device)
         except Exception as exc:
             gps_outcome = "failed: %s" % exc
 
-        self._last_remote_actions = remote_actions
+        self._last_remote_actions = remote_actions if power_outcome == "ok" else []
         return "power: %s, gps: %s" % (power_outcome, gps_outcome)
 
     def log_gps_now(self, device, timeout_s=20, poll_interval_s=2, note=""):
