@@ -605,25 +605,34 @@ export default function App() {
         <Text style={styles.title}>Boat Monitor</Text>
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.primaryButton} onPress={connected ? disconnect : connect} disabled={scanning}>
-            {scanning ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>{connected ? 'Disconnect' : 'Connect BLE'}</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => sendCommand('refresh')}
-            disabled={!connected || !!pendingCommand}
-          >
-            {pendingCommand === 'refresh' ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Refresh</Text>
-            )}
-          </TouchableOpacity>
+        <View style={styles.topConnectRow}>
+          <View style={styles.buttonRowInner}>
+            <TouchableOpacity style={styles.primaryButton} onPress={connected ? disconnect : connect} disabled={scanning}>
+              {scanning ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>{connected ? 'Disconnect' : 'Connect BLE'}</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => sendCommand('refresh')}
+              disabled={!connected || !!pendingCommand}
+            >
+              {pendingCommand === 'refresh' ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Refresh</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+          <View style={styles.topSignalBlock}>
+            <Text style={styles.signalBarsCompact}>{bleBroadcasting ? bleQuality.bars : '○○○○○'}</Text>
+            <Text style={styles.signalRssiCompact}>
+              {Number.isFinite(activeRssi) ? `${activeRssi}` : '—'}
+            </Text>
+            <Text style={styles.signalCaptionInline}>{bleBroadcasting ? bleQuality.text : 'No BLE'}</Text>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -638,9 +647,8 @@ export default function App() {
                 </Text>
                 {pendingStage ? <Text style={styles.stageText}>{pendingStage}</Text> : null}
                 <Text style={styles.hint}>
-                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. Log Now is slow because the Pico
-                  resets the cellular modem, registers on the network, posts to Sheets, then tries GPS — not because the
-                  sheet write itself is heavy.
+                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. Log Now uses cellular while BLE
+                  stays connected; automatic logs prefer Wi-Fi when no phone is connected.
                 </Text>
               </View>
             </View>
@@ -664,44 +672,25 @@ export default function App() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Signal</Text>
-          <StatusRow
-            label="Bluetooth"
-            value={bleBroadcasting ? `${bleQuality.bars}  ${bleQuality.text}` : 'Not detected nearby'}
-            danger={!bleBroadcasting}
-          />
-          <StatusRow label="RSSI" value={Number.isFinite(activeRssi) ? `${activeRssi} dBm` : '--'} />
-          <StatusRow
-            label="Wi-Fi console"
-            value={wifiConsoleText}
-            danger={wifiConsoleStatus === 'unreachable'}
-            onPress={wifiConsoleStatus === 'reachable' ? openWifiConsole : null}
-          />
-          <TouchableOpacity
-            style={[styles.secondaryButton, styles.checkWifiButton]}
-            onPress={checkWifiConsole}
-            disabled={wifiConsoleStatus === 'checking'}
-          >
-            {wifiConsoleStatus === 'checking' ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Check Wi-Fi Console</Text>
-            )}
-          </TouchableOpacity>
+          <Text style={styles.cardTitle}>Service Commands</Text>
+          <View style={styles.buttonRowWrap}>
+            <ServiceButton cmd="log" label="Log Now" style={styles.secondaryButton} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="signal" label="Check Signal" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="gps" label="Check GPS" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="wifi" label="Start Wi-Fi" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="reboot" label="Reboot" style={[styles.dangerButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+          </View>
           <Text style={styles.hint}>
-            Bluetooth updates automatically -- broadcasting nearby even before you connect, live
-            signal once connected. iOS does not let apps scan for nearby Wi-Fi networks, so the
-            Wi-Fi console check only works after you have joined the "BoatMonitor" Wi-Fi network
-            yourself in iOS Settings (Start Wi-Fi command, or automatic BLE fallback) -- it then
-            confirms the console at 192.168.4.1 is actually responding.
+            Log Now posts over cellular while you are connected over BLE ({COMMAND_INFO.log.hint}). Check Signal and GPS
+            are quick modem diagnostics. Reboot to update appears in Firmware below when GitHub is newer.
           </Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Status</Text>
-          <StatusRow label="Mode" value={mode} danger={mode === 'switch_on_key_off' || mode === 'float_alert'} />
+          <Text style={styles.cardTitle}>Firmware</Text>
           <StatusRow label="Pico firmware" value={status?.fw || '--'} />
           <StatusRow label="GitHub firmware" value={firmwareText} danger={firmwareUpdateNeeded || firmwareCheckStatus === 'error'} />
+          <StatusRow label="Last BLE status" value={fmtTime(lastUpdated)} />
           {picoFirmware ? (
             <TouchableOpacity
               style={[styles.secondaryButton, styles.checkWifiButton]}
@@ -724,14 +713,16 @@ export default function App() {
               <Text style={styles.buttonText}>Reboot to Update Pico</Text>
             </TouchableOpacity>
           ) : null}
-          <StatusRow label="Last updated" value={fmtTime(lastUpdated)} />
-          <StatusRow label="Engine" value={`${fmtMetric(status?.engine, 'v')} V  ${fmtMetric(status?.engine, 'a', 3)} A`} />
-          <StatusRow label="House" value={`${fmtMetric(status?.house, 'v')} V  ${fmtMetric(status?.house, 'a', 3)} A`} />
-          <StatusRow label="V50" value={`${fmtMetric(status?.v50, 'v')} V`} />
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Inputs</Text>
+          <Text style={styles.cardTitle}>Boat Status</Text>
+          <StatusRow label="Mode" value={mode} danger={mode === 'switch_on_key_off' || mode === 'float_alert'} />
+          <StatusRow label="Engine" value={`${fmtMetric(status?.engine, 'v')} V  ${fmtMetric(status?.engine, 'a', 3)} A`} />
+          <StatusRow label="House" value={`${fmtMetric(status?.house, 'v')} V  ${fmtMetric(status?.house, 'a', 3)} A`} />
+          <StatusRow label="V50" value={`${fmtMetric(status?.v50, 'v')} V`} />
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>Inputs</Text>
           <StatusRow label="Switch" value={inputs.switch ? 'ON' : 'off'} danger={inputs.switch && !inputs.key} />
           <StatusRow label="Key" value={inputs.key ? 'ON' : 'off'} />
           <StatusRow label="Mid bilge" value={inputs.mid_bilge ? 'ON' : 'off'} danger={inputs.mid_bilge} />
@@ -740,24 +731,28 @@ export default function App() {
           <StatusRow label="Aft float" value={inputs.aft_float ? 'ON' : 'off'} danger={inputs.aft_float} />
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Service Commands</Text>
-          <View style={styles.buttonRowWrap}>
-            <ServiceButton cmd="log" label="Log Now" style={styles.secondaryButton} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="signal" label="Check Signal" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="gps" label="Check GPS" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="wifi" label="Start Wi-Fi" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="reboot" label="Reboot" style={[styles.dangerButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-          </View>
+        <View style={[styles.card, styles.cardMuted]}>
+          <Text style={styles.cardTitle}>Wi-Fi console (optional)</Text>
+          <StatusRow
+            label="Console"
+            value={wifiConsoleText}
+            danger={wifiConsoleStatus === 'unreachable'}
+            onPress={wifiConsoleStatus === 'reachable' ? openWifiConsole : null}
+          />
+          <TouchableOpacity
+            style={[styles.secondaryButton, styles.checkWifiButton]}
+            onPress={checkWifiConsole}
+            disabled={wifiConsoleStatus === 'checking'}
+          >
+            {wifiConsoleStatus === 'checking' ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Check Wi-Fi Console</Text>
+            )}
+          </TouchableOpacity>
           <Text style={styles.hint}>
-            Log Now posts Power_Log and GPS_Log rows over cellular right now (bypasses Wi-Fi so BLE
-            stays connected, {COMMAND_INFO.log.hint}). Check Signal reports modem/SIM/network
-            registration + signal strength without opening a full data session ({COMMAND_INFO.signal.hint}).
-            Check GPS asks the SIM7600 GPS for a fix and shows a Maps link when available
-            ({COMMAND_INFO.gps.hint}). Reboot to update only appears above when the GitHub version is newer
-            than the Pico version. Start Wi-Fi and Reboot both {COMMAND_INFO.reboot.hint.toLowerCase()} -- that disconnect is
-            expected, not a failure. See "Command Status" above for the outcome of each, including while
-            it's still running.
+            Rarely needed — BLE is the normal path. This only works after you join the BoatMonitor Wi-Fi network in iOS
+            Settings and confirms 192.168.4.1 responds.
           </Text>
         </View>
 
@@ -841,6 +836,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
   },
+  signalBarsCompact: {
+    color: '#7dd3fc',
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  signalRssiCompact: {
+    color: '#cbd5e1',
+    fontSize: 10,
+  },
   title: {
     color: '#f8fafc',
     fontSize: 20,
@@ -857,6 +861,27 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     marginBottom: 14,
+  },
+  topConnectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  buttonRowInner: {
+    flex: 1,
+    flexDirection: 'row',
+    marginRight: 10,
+  },
+  topSignalBlock: {
+    alignItems: 'center',
+    minWidth: 72,
+    paddingTop: 2,
+  },
+  signalCaptionInline: {
+    color: '#64748b',
+    fontSize: 9,
+    marginTop: 2,
+    textAlign: 'center',
   },
   buttonRowWrap: {
     flexDirection: 'row',
@@ -898,6 +923,21 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     marginBottom: 14,
+  },
+  cardMuted: {
+    opacity: 0.92,
+  },
+  subsectionDivider: {
+    marginTop: 8,
+    marginBottom: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#334155',
+  },
+  subsectionTitle: {
+    color: '#94a3b8',
+    fontSize: 14,
+    ...FW600,
+    marginBottom: 4,
   },
   cardTitle: {
     color: '#f8fafc',

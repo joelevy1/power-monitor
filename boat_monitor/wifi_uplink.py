@@ -43,12 +43,35 @@ def _wlan():
 
 
 def _load_networks():
+    networks = []
+    seen = set()
+
+    def add(entries):
+        for item in entries or []:
+            if not item or len(item) < 2:
+                continue
+            ssid = str(item[0] or "").strip()
+            password = item[1]
+            if not ssid or not password or ssid in seen:
+                continue
+            networks.append((ssid, password))
+            seen.add(ssid)
+
     try:
         import wifi_credentials
 
-        return list(getattr(wifi_credentials, "WIFI_NETWORKS", []))
+        add(getattr(wifi_credentials, "WIFI_NETWORKS", []))
     except ImportError:
-        return []
+        pass
+
+    try:
+        import wifi_known_networks
+
+        add(getattr(wifi_known_networks, "WIFI_NETWORKS", []))
+    except ImportError:
+        pass
+
+    return networks
 
 
 def connect(timeout_s=15):

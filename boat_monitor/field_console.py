@@ -674,7 +674,7 @@ def log_html():
         # separate (near-identical) copy of this logic.
         from ble_service import log_power_and_gps
 
-        return "Logged: %s" % log_power_and_gps(note="wifi_console_log_now")
+        return "Logged: %s" % log_power_and_gps(note="wifi_console_log_now", prefer_wifi=True)
 
     started, msg = start_job("log", "Log Now", run_log)
     body = "<h1>Log Now</h1><p><a href='/'>Status</a></p><div class='card'><p>%s</p></div>%s" % (

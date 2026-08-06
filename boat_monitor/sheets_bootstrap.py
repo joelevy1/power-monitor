@@ -38,6 +38,8 @@ TABS = {
         "house_v",
         "house_a",
         "v50_v",
+        "fw",
+        "uplink",
         "note",
     ],
     "GPS_Log": ["timestamp_utc", "device", "lat", "lon", "maps_link", "status", "note"],
