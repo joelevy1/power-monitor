@@ -1,6 +1,6 @@
 {
-  "version": "1.1.13",
-  "notes": "Remote OTA fix: cmd_ota/min_fw now reboot for boot-time OTA (reliable without app). Note tag=remote4-e2e.",
+  "version": "1.1.14",
+  "notes": "Remote OTA verify: auto_log note tag=remote5-e2e.",
   "files": [
     {
       "path": "version.py",
