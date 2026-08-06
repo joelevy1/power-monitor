@@ -56,7 +56,7 @@ const COMMAND_INFO = {
   log: { label: 'Log Now', hint: '~10-90s (cellular)' },
   signal: { label: 'Check Signal', hint: '~5-20s (modem/SIM/network registration, no data session)' },
   gps: { label: 'Check GPS', hint: '~5-30s (GPS fix check, no internet data session)' },
-  ota: { label: 'OTA Check', hint: '~10-90s+ (cellular; reboots if updated)' },
+  ota: { label: 'OTA Check', hint: 'reboots, then checks GitHub before BLE starts' },
   wifi: { label: 'Start Wi-Fi', hint: 'reboots immediately -- BLE will disconnect' },
   reboot: { label: 'Reboot', hint: 'reboots immediately -- BLE will disconnect' },
 };
@@ -77,7 +77,7 @@ const IN_PROGRESS_RESULTS = new Set([
 
 // These intentionally reboot the Pico -- BLE disconnecting shortly after
 // sending them is EXPECTED (a successful outcome), not a failure/hang.
-const RESET_COMMANDS = new Set(['reboot', 'wifi']);
+const RESET_COMMANDS = new Set(['reboot', 'wifi', 'ota']);
 
 // Expands the compact command_result strings ble_service.py sends into a
 // clearer sentence + icon. Covers every shape handle_command()/
@@ -151,6 +151,9 @@ function friendlyCommandResult(result) {
   if (result === 'ota_current') return { icon: '✅', text: 'Already on the latest firmware.', danger: false };
   if (result === 'ota_updated') {
     return { icon: '✅', text: 'Firmware updated — Pico is rebooting now.', danger: false };
+  }
+  if (result === 'ota_rebooting') {
+    return { icon: '⏳', text: 'Rebooting to run OTA before BLE starts...', danger: false };
   }
   if (result === 'rebooting') return { icon: '⏳', text: 'Rebooting...', danger: false };
   if (result === 'starting_wifi') return { icon: '⏳', text: 'Switching to Wi-Fi mode...', danger: false };

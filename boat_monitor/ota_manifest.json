@@ -1,90 +1,18 @@
 {
-  "version": "1.1.3",
-  "notes": "Add a separate BLE Check GPS command that reports GPS fix/no-fix and returns a Google Maps link when a fix is available. Clarify Check Signal and Log Now app results so cellular registration, Google Sheets/internet confirmation, and GPS outcomes are distinct. Also formats Google Sheets timestamp columns for Pacific-time display.",
+  "version": "1.1.4",
+  "notes": "Use boot-time OTA for app-triggered updates to avoid BLE-session heap exhaustion, add Check GPS results/maps links, improve command status text, and keep the Wi-Fi console/status updates from 1.1.3. The manifest is incremental and writes version.py last so partial updates do not falsely report success.",
   "files": [
     {
-      "path": "version.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
-    },
-    {
-      "path": "config.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/config.py"
-    },
-    {
-      "path": "main.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
+      "path": "ble_service.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
     },
     {
       "path": "field_console.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/field_console.py"
     },
     {
-      "path": "ota.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
-    },
-    {
-      "path": "ota_config.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_config.py"
-    },
-    {
-      "path": "bench_test.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/bench_test.py"
-    },
-    {
-      "path": "modem_check.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_check.py"
-    },
-    {
-      "path": "ble_probe.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_probe.py"
-    },
-    {
-      "path": "ble_status.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_status.py"
-    },
-    {
-      "path": "ble_service.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
-    },
-    {
-      "path": "gps.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/gps.py"
-    },
-    {
-      "path": "sheets_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
-    },
-    {
-      "path": "sheets_log_test.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log_test.py"
-    },
-    {
-      "path": "wifi_uplink.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
-    },
-    {
-      "path": "cellular.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular.py"
-    },
-    {
-      "path": "cellular_test.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular_test.py"
-    },
-    {
-      "path": "gps_test.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/gps_test.py"
-    },
-    {
-      "path": "auto_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/auto_log.py"
-    },
-    {
-      "path": "modem_power_cycle_test.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_power_cycle_test.py"
-    },
-    {
-      "path": "modem_cfun_test.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_cfun_test.py"
+      "path": "version.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
     }
   ]
 }

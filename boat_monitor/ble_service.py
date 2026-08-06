@@ -445,21 +445,14 @@ class BoatMonitorBle:
             time.sleep(0.5)
             machine.reset()
         elif cmd in ("ota", "ota_check"):
-            self.command_result = "ota_started"
+            # Do not run the full downloader while BLE is active. The BLE
+            # service and status JSON already consume enough heap that large
+            # OTA files can fail with MemoryError. Reboot instead and let
+            # main.py's AUTO_OTA_ON_BOOT run the update before BLE starts.
+            self.command_result = "ota_rebooting"
             self.update_status()
-            try:
-                import ota
-
-                # prefer_wifi=False: BLE is connected right now (that's how
-                # this command arrived) -- Wi-Fi and BLE share one radio and
-                # cannot run at the same time, so trying Wi-Fi here would
-                # kill this very connection. Cellular uses separate UART
-                # hardware and is safe to run alongside BLE.
-                changed = ota.update(reboot=True, prefer_wifi=False)
-                self.command_result = "ota_updated" if changed else "ota_current"
-            except Exception as exc:
-                self.command_result = "ota_failed: %s" % exc
-            self.update_status()
+            time.sleep(0.5)
+            machine.reset()
         elif cmd in ("log", "log_now"):
             self.command_result = "logging"
             self.update_status()
