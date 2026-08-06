@@ -112,10 +112,16 @@ def run_actions(actions, prefer_wifi=False):
 
     for action in actions:
         if action == "ota":
-            print("remote_control: running OTA from sheet command")
-            import ota
+            # Full OTA download while ble_service.main() is running often fails
+            # (MemoryError or long hangs) because BLE and cellular compete for heap
+            # and the log handler blocks status updates. Boot-time OTA in main.py
+            # runs before BLE starts and is the reliable path for sheet/cmd_ota.
+            print("remote_control: reboot for boot-time OTA (AUTO_OTA_ON_BOOT)")
+            import machine
+            import time
 
-            ota.update(reboot=True, prefer_wifi=prefer_wifi)
+            time.sleep(0.5)
+            machine.reset()
             return
         if action == "reboot":
             print("remote_control: reboot from sheet command")
