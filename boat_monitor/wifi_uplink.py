@@ -9,10 +9,9 @@ BLE is NOT active. main.py's boot flow already satisfies this for OTA (the
 boot-time update check runs before ble_service.main() ever starts). Do not
 call this while a phone is connected over BLE without stopping BLE first.
 
-Configure known networks, tried in order, in wifi_credentials.py (copy from
-wifi_credentials.example.py -- gitignored, real passwords never committed):
-
-    WIFI_NETWORKS = [("Seattle Boat", "..."), ("HomeSSID", "...")]
+Configure known networks (see wifi_known_networks.py in GitHub and Config tab
+`wifi_networks` on the sheet). Local overrides: wifi_credentials.py (copy from
+wifi_credentials.example.py -- gitignored).
 
 Usage:
     import wifi_uplink
@@ -43,35 +42,12 @@ def _wlan():
 
 
 def _load_networks():
-    networks = []
-    seen = set()
-
-    def add(entries):
-        for item in entries or []:
-            if not item or len(item) < 2:
-                continue
-            ssid = str(item[0] or "").strip()
-            password = item[1]
-            if not ssid or not password or ssid in seen:
-                continue
-            networks.append((ssid, password))
-            seen.add(ssid)
-
     try:
-        import wifi_credentials
+        import wifi_networks
 
-        add(getattr(wifi_credentials, "WIFI_NETWORKS", []))
+        return wifi_networks.load_networks()
     except ImportError:
-        pass
-
-    try:
-        import wifi_known_networks
-
-        add(getattr(wifi_known_networks, "WIFI_NETWORKS", []))
-    except ImportError:
-        pass
-
-    return networks
+        return []
 
 
 def connect(timeout_s=15):

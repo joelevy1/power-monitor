@@ -61,6 +61,17 @@ def apply_commands_payload(payload, device_id=""):
     except Exception as exc:
         print("remote_control: interval override failed:", exc)
 
+    wifi_text = settings.get("wifi_networks")
+    if wifi_text is not None and str(wifi_text).strip() != "":
+        try:
+            import wifi_networks
+
+            nets = wifi_networks.parse_wifi_networks_text(wifi_text)
+            if wifi_networks.save_sheet_networks(nets):
+                applied.append("wifi_networks=%d" % len(nets))
+        except Exception as exc:
+            print("remote_control: wifi_networks failed:", exc)
+
     actions = []
     for name in one_shots:
         key = str(name or "").strip().lower()
