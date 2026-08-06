@@ -49,10 +49,25 @@ if wifi_requested:
             print("BLE service also failed:", exc2)
 else:
     try:
-        print("Starting BLE service")
-        import ble_service
+        import ble_policy
 
-        ble_service.main()
+        if ble_policy.ble_wanted():
+            print("Starting BLE service (switch/key on or USB host)")
+            import ble_service
+
+            ble_service.main()
+        else:
+            print("Starting standby monitor (BLE off)")
+            import standby_monitor
+
+            standby_monitor.main()
     except Exception as exc:
-        print("BLE service failed, falling back to Wi-Fi:", exc)
-        import field_console
+        print("Primary service failed:", exc)
+        try:
+            print("Falling back to BLE service")
+            import ble_service
+
+            ble_service.main()
+        except Exception as exc2:
+            print("BLE service also failed:", exc2)
+            import field_console

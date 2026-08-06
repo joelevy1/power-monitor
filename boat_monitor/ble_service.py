@@ -17,6 +17,7 @@ except ImportError:
     version = None
 
 import auto_log
+import ble_policy
 import config as cfg
 
 
@@ -597,6 +598,11 @@ class BoatMonitorBle:
 
     def run(self):
         while True:
+            if not ble_policy.ble_wanted():
+                print("BLE no longer needed — rebooting to standby (BLE off)")
+                time.sleep(0.3)
+                machine.reset()
+
             status = self.update_status()
             self._maybe_auto_log(status["mode"])
             time.sleep(2)
