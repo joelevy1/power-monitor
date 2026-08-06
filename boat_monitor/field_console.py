@@ -191,6 +191,7 @@ MODEM = {
     "last_basic_ms": -999999,
     "last_gps_ms": -999999,
     "last_gps_start_ms": -999999,
+    "last_updated_ms": 0,
     "gps_started": False,
     "gps_status": "not started",
     "csq": "unknown",
@@ -212,6 +213,14 @@ JOB = {
     "error": "",
 }
 JOB_LOCK = _thread.allocate_lock() if _thread else None
+MODEM_LOCK = _thread.allocate_lock() if _thread else None
+_modem_worker_started = False
+
+# Background modem polling (see start_modem_background()) -- keep HTTP fast.
+MODEM_BASIC_INTERVAL_MS = 45000
+MODEM_GPS_POLL_INTERVAL_MS = 20000
+MODEM_GPS_RESTART_INTERVAL_MS = 300000
+STATUS_PAGE_REFRESH_S = 30
 
 VERSION_CACHE = {
     "checked_ms": 0,
@@ -328,13 +337,16 @@ def job_status_html():
 
 
 def update_modem_cache():
+    """Refresh MODEM dict from AT commands. Slow (seconds). Never call from the
+    HTTP handler for '/' -- use the background worker instead."""
     now = time.ticks_ms()
 
-    if time.ticks_diff(now, MODEM["last_basic_ms"]) > 30000:
+    if time.ticks_diff(now, MODEM["last_basic_ms"]) > MODEM_BASIC_INTERVAL_MS:
         MODEM["last_basic_ms"] = now
         at = modem_send("AT", 1200)
         if "OK" not in at:
             MODEM["registered"] = "modem not responding"
+            MODEM["last_updated_ms"] = now
             return
 
         csq = modem_send("AT+CSQ", 1500)
@@ -358,7 +370,7 @@ def update_modem_cache():
                     lines.append(line)
             MODEM["ip"] = lines[0] if lines else "none"
 
-    if MODEM["lat"] is None and time.ticks_diff(now, MODEM["last_gps_start_ms"]) > 60000:
+    if MODEM["lat"] is None and time.ticks_diff(now, MODEM["last_gps_start_ms"]) > MODEM_GPS_RESTART_INTERVAL_MS:
         MODEM["last_gps_start_ms"] = now
         MODEM["gps_status"] = "restarting GPS"
         modem_send("AT+CGPS=0", 3000)
@@ -368,7 +380,7 @@ def update_modem_cache():
         MODEM["gps_status"] = "GPS on, searching for fix" if MODEM["gps_started"] else "GPS start failed"
         MODEM["gps_raw"] = "GPS start: " + (resp or "no response")
 
-    if time.ticks_diff(now, MODEM["last_gps_ms"]) > 5000:
+    if time.ticks_diff(now, MODEM["last_gps_ms"]) > MODEM_GPS_POLL_INTERVAL_MS:
         MODEM["last_gps_ms"] = now
         gps = modem_send("AT+CGPSINFO", 5000)
         lat, lon, raw = parse_cgpsinfo(gps)
@@ -379,6 +391,43 @@ def update_modem_cache():
             MODEM["gps_status"] = "GPS fix acquired"
         else:
             MODEM["gps_status"] = "GPS on, searching for fix" if MODEM["gps_started"] else "GPS not started"
+
+    MODEM["last_updated_ms"] = time.ticks_ms()
+
+
+def _modem_snapshot():
+    if MODEM_LOCK:
+        MODEM_LOCK.acquire()
+    try:
+        return dict(MODEM)
+    finally:
+        if MODEM_LOCK:
+            MODEM_LOCK.release()
+
+
+def _modem_worker():
+    while True:
+        if not _job_running():
+            try:
+                if MODEM_LOCK:
+                    MODEM_LOCK.acquire()
+                try:
+                    update_modem_cache()
+                finally:
+                    if MODEM_LOCK:
+                        MODEM_LOCK.release()
+            except Exception as exc:
+                print("modem worker:", exc)
+        time.sleep(2)
+
+
+def start_modem_background():
+    global _modem_worker_started
+    if _modem_worker_started or not _thread:
+        return
+    _modem_worker_started = True
+    _thread.start_new_thread(_modem_worker, ())
+    print("Modem status: background updates (HTTP stays fast)")
 
 
 def page(title, body, refresh=False, refresh_url=None):
@@ -417,11 +466,18 @@ pre { white-space:pre-wrap; }
 """ % (refresh_tag, safe(title), body)
 
 
-def status_html():
+def status_html(blocking_modem_poll=False):
     running = _job_running()
-    if not running:
-        update_modem_cache()
+    if blocking_modem_poll and not running:
+        if MODEM_LOCK:
+            MODEM_LOCK.acquire()
+        try:
+            update_modem_cache()
+        finally:
+            if MODEM_LOCK:
+                MODEM_LOCK.release()
 
+    modem = _modem_snapshot()
     engine = format_ina(*read_ina260_values("Engine", cfg.I2C_ENGINE_SDA, cfg.I2C_ENGINE_SCL, 0, cfg.INA260_ENGINE_ADDR))
     house = format_ina(*read_ina260_values("House", cfg.I2C_HOUSE_SDA, cfg.I2C_HOUSE_SCL, 1, cfg.INA260_HOUSE_ADDR))
     v50 = read_v50()
@@ -439,21 +495,35 @@ def status_html():
             raw,
         )
 
-    if MODEM["lat"] is not None and MODEM["lon"] is not None:
-        maps = "https://www.google.com/maps?q=%.7f,%.7f" % (MODEM["lat"], MODEM["lon"])
+    if modem.get("lat") is not None and modem.get("lon") is not None:
+        maps = "https://www.google.com/maps?q=%.7f,%.7f" % (modem["lat"], modem["lon"])
         gps_html = "<span class='good'>GPS fix</span>: %.7f, %.7f<br><span>Status: %s</span><br><a href='%s'>Open in Google Maps</a>" % (
-            MODEM["lat"],
-            MODEM["lon"],
-            safe(MODEM["gps_status"]),
+            modem["lat"],
+            modem["lon"],
+            safe(modem.get("gps_status", "")),
             maps,
         )
     else:
         gps_html = "<span class='warn'>No GPS fix yet</span><br><span>Status: %s</span><br><span class='small'>%s</span>" % (
-            safe(MODEM["gps_status"]),
-            safe(MODEM["gps_raw"]),
+            safe(modem.get("gps_status", "")),
+            safe(modem.get("gps_raw", "")),
         )
 
-    reg_cls = "good" if MODEM["registered"] == "registered" else "warn"
+    reg_cls = "good" if modem.get("registered") == "registered" else "warn"
+    modem_age_s = 0
+    if modem.get("last_updated_ms"):
+        modem_age_s = max(0, int(time.ticks_diff(time.ticks_ms(), modem["last_updated_ms"]) / 1000))
+    modem_note = (
+        " Modem/GPS polled in background (~%ds refresh)."
+        % (MODEM_BASIC_INTERVAL_MS // 1000)
+    )
+    if modem_age_s == 0 and not blocking_modem_poll:
+        modem_note += " First poll may take a few seconds after Wi-Fi starts."
+    elif modem_age_s:
+        modem_note += " Last modem poll %ds ago." % modem_age_s
+    if running:
+        modem_note = " Modem status is paused while a command is running."
+    modem_note += ' <a href="/modem-poll">Poll modem now</a> (slow).'
     current = current_fw()
     latest = VERSION_CACHE.get("latest") or ""
     version_error = VERSION_CACHE.get("error") or ""
@@ -484,8 +554,8 @@ def status_html():
 <div class="card"><h2>Firmware</h2>%s<p class="small">"Update Files" is the manual paste editor. "OTA from GitHub" downloads the manifest and files from GitHub over cellular.</p></div>
 <div class="card"><h2>Power / Sensors</h2><p>%s</p><p>%s</p><p>%s</p><p>TPS STAT=%d, VSNS=%d</p></div>
 <div class="card"><h2>Inputs</h2><ul>%s</ul></div>
-<div class="card"><h2>Cell / GPS</h2><p>LTE: <span class="%s">%s</span></p><p>Signal: %s</p><p>Operator: %s</p><p>IP: %s</p><p>%s</p></div>
-<div class="card"><p>Note: solar charging current currently reads negative on Engine/House INAs.</p><p class="small">Auto-refresh every %d seconds.%s</p></div>
+<div class="card"><h2>Cell / GPS</h2><p>LTE: <span class="%s">%s</span></p><p>Signal: %s</p><p>Operator: %s</p><p>IP: %s</p><p>%s</p><p class="small">%s</p></div>
+<div class="card"><p>Note: solar charging current currently reads negative on Engine/House INAs.</p><p class="small">Auto-refresh every %d seconds (power/sensors only; modem is not polled on each load).</p></div>
 """ % (
         job_status_html(),
         version_html,
@@ -496,15 +566,15 @@ def status_html():
         vsns,
         optos,
         reg_cls,
-        safe(MODEM["registered"]),
-        safe(MODEM["csq"]),
-        safe(MODEM["operator"]),
-        safe(MODEM["ip"]),
+        safe(modem.get("registered", "")),
+        safe(modem.get("csq", "")),
+        safe(modem.get("operator", "")),
+        safe(modem.get("ip", "")),
         gps_html,
-        3 if running else 10,
-        " Modem status is paused while a command is running." if running else "",
+        safe(modem_note),
+        5 if running else STATUS_PAGE_REFRESH_S,
     )
-    return page("Boat Monitor", body, refresh=3 if running else 10)
+    return page("Boat Monitor", body, refresh=5 if running else STATUS_PAGE_REFRESH_S)
 
 
 def update_html(message=""):
@@ -738,6 +808,8 @@ def handle_request(method, path, body):
         return "REBOOT"
     elif path == "/":
         html = status_html()
+    elif path == "/modem-poll":
+        html = status_html(blocking_modem_poll=True)
     else:
         html = page(
             "Not found",
@@ -749,6 +821,7 @@ def handle_request(method, path, body):
 
 def serve():
     start_ap()
+    start_modem_background()
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("0.0.0.0", 80))
