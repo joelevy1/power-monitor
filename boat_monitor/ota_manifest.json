@@ -1,6 +1,6 @@
 {
-  "version": "1.1.14",
-  "notes": "Remote OTA verify: auto_log note tag=remote5-e2e.",
+  "version": "1.1.15",
+  "notes": "Second remote OTA verify: auto_log note tag=remote6-e2e.",
   "files": [
     {
       "path": "version.py",
