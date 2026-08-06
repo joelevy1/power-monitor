@@ -211,6 +211,36 @@ def log_power_and_gps(note):
         logger.close_data()
 
 
+def check_gps_fix(timeout_s=30, poll_interval_s=2):
+    """Check the SIM7600 GPS receiver for a fix without opening cellular data.
+
+    This is intentionally separate from the "signal" command: signal checks
+    modem/SIM/network registration and CSQ; GPS checks AT+CGPSINFO and, on a
+    fix, returns coordinates plus a Maps URL for the app to open.
+    """
+    from cellular import Sim7600Modem
+    from gps import Gps
+    from sheets_log import maps_link_url
+
+    modem = Sim7600Modem()
+    modem.check_alive()
+    gps = Gps(uart=modem.uart)
+    if not gps.on():
+        raise OSError("GPS did not start")
+
+    try:
+        fix = gps.read(timeout_s=timeout_s, poll_interval_s=poll_interval_s)
+    finally:
+        gps.off()
+
+    if fix.get("ok"):
+        lat = fix.get("lat")
+        lon = fix.get("lon")
+        return "gps: fix (lat: %.7f, lon: %.7f, maps: %s)" % (lat, lon, maps_link_url(lat, lon))
+
+    return "gps: no_fix (%s)" % (fix.get("error") or fix.get("raw") or "no fix")
+
+
 def ensure_wifi_off():
     """Pico W: CYW43439 cannot reliably advertise BLE while WiFi STA/AP is active
     (shared radio). Same fix applied on the Ballast Monitor Pico firmware.
@@ -468,6 +498,14 @@ class BoatMonitorBle:
                     modem.close_data()
             except Exception as exc:
                 self.command_result = "signal_failed: %s" % exc
+            self.update_status()
+        elif cmd in ("gps", "check_gps", "gps_status"):
+            self.command_result = "checking_gps"
+            self.update_status()
+            try:
+                self.command_result = check_gps_fix()
+            except Exception as exc:
+                self.command_result = "gps_failed: %s" % exc
             self.update_status()
         else:
             self.command_result = "unknown_command: %s" % cmd

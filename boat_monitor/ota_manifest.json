@@ -1,6 +1,6 @@
 {
-  "version": "1.1.2",
-  "notes": "Improve the Wi-Fi console: Log Now, Check GitHub Version, and OTA from GitHub now run as background jobs with a live status card instead of leaving the browser waiting on a long cellular request. The console also shows Pico firmware versus the GitHub OTA manifest and clarifies manual Update Files versus OTA from GitHub.",
+  "version": "1.1.3",
+  "notes": "Add a separate BLE Check GPS command that reports GPS fix/no-fix and returns a Google Maps link when a fix is available. Clarify Check Signal and Log Now app results so cellular registration, Google Sheets/internet confirmation, and GPS outcomes are distinct. Also formats Google Sheets timestamp columns for Pacific-time display.",
   "files": [
     {
       "path": "version.py",

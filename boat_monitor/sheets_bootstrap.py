@@ -22,6 +22,8 @@ SCOPES = (
 )
 
 SHEET_TITLE = "Boat Monitor"
+SHEET_TIME_ZONE = "America/Los_Angeles"
+TIMESTAMP_NUMBER_FORMAT = "mmm d, yyyy h:mm AM/PM"
 
 TABS = {
     "Power_Log": [
@@ -153,6 +155,49 @@ def _sheet_id(creds=None):
     )
 
 
+def _format_timestamp_columns(sheets, spreadsheet_id, existing):
+    requests = [
+        {
+            "updateSpreadsheetProperties": {
+                "properties": {"timeZone": SHEET_TIME_ZONE},
+                "fields": "timeZone",
+            }
+        }
+    ]
+
+    for title, headers in TABS.items():
+        if "timestamp_utc" not in headers:
+            continue
+        sheet_id = existing.get(title)
+        if sheet_id is None:
+            continue
+        col = headers.index("timestamp_utc")
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 1,
+                        "startColumnIndex": col,
+                        "endColumnIndex": col + 1,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "numberFormat": {
+                                "type": "DATE_TIME",
+                                "pattern": TIMESTAMP_NUMBER_FORMAT,
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.numberFormat",
+                }
+            }
+        )
+
+    sheets.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests}).execute()
+    print("OK: spreadsheet timezone set to %s and timestamp columns formatted" % SHEET_TIME_ZONE)
+
+
 def main():
     creds_path = _credentials_path()
 
@@ -190,6 +235,7 @@ def main():
     ).execute()
 
     print("OK: header rows written on:", ", ".join(TABS.keys()))
+    _format_timestamp_columns(sheets, spreadsheet_id, existing)
     print("Set GitHub secret GOOGLE_SHEETS_ID to:", spreadsheet_id)
     return 0
 

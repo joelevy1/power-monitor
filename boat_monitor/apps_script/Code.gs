@@ -23,7 +23,8 @@
  * (see sheets_bootstrap.py's TABS for the header lists already in use).
  * Unmatched headers are left blank; unmatched data keys are ignored.
  * "timestamp_utc" is filled in automatically if the tab has that header
- * and the caller didn't supply one.
+ * and the caller didn't supply one. Timestamp cells are written as Date
+ * values so the spreadsheet can format/display them in Pacific time.
  */
 
 function doPost(e) {
@@ -80,8 +81,8 @@ function handlePost_(e) {
   var lastCol = sheet.getLastColumn();
   var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
 
-  if (!data.timestamp_utc && headers.indexOf('timestamp_utc') !== -1) {
-    data.timestamp_utc = new Date().toISOString();
+  if (headers.indexOf('timestamp_utc') !== -1) {
+    data.timestamp_utc = data.timestamp_utc ? parseTimestamp_(data.timestamp_utc) : new Date();
   }
 
   var row = headers.map(function (header) {
@@ -91,4 +92,19 @@ function handlePost_(e) {
   sheet.appendRow(row);
 
   return { ok: true, tab: tabName, row: sheet.getLastRow() };
+}
+
+function parseTimestamp_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    var parsed = new Date(value);
+    if (!isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return value;
 }

@@ -54,7 +54,8 @@ function fetchWithTimeout(url, options, timeoutMs) {
 const COMMAND_INFO = {
   refresh: { label: 'Refresh', hint: 'instant' },
   log: { label: 'Log Now', hint: '~10-90s (cellular)' },
-  signal: { label: 'Check Signal', hint: '~5-20s (cellular, no data session)' },
+  signal: { label: 'Check Signal', hint: '~5-20s (modem/SIM/network registration, no data session)' },
+  gps: { label: 'Check GPS', hint: '~5-30s (GPS fix check, no internet data session)' },
   ota: { label: 'OTA Check', hint: '~10-90s+ (cellular; reboots if updated)' },
   wifi: { label: 'Start Wi-Fi', hint: 'reboots immediately -- BLE will disconnect' },
   reboot: { label: 'Reboot', hint: 'reboots immediately -- BLE will disconnect' },
@@ -65,7 +66,14 @@ const COMMAND_INFO = {
 // multi-second) work finishes. Anything else is a final result -- used to
 // know when a pending command has actually resolved instead of just
 // showing "Sent command: X" forever with no further feedback.
-const IN_PROGRESS_RESULTS = new Set(['logging', 'checking_signal', 'ota_started', 'starting_wifi', 'rebooting']);
+const IN_PROGRESS_RESULTS = new Set([
+  'logging',
+  'checking_signal',
+  'checking_gps',
+  'ota_started',
+  'starting_wifi',
+  'rebooting',
+]);
 
 // These intentionally reboot the Pico -- BLE disconnecting shortly after
 // sending them is EXPECTED (a successful outcome), not a failure/hang.
@@ -75,8 +83,9 @@ const RESET_COMMANDS = new Set(['reboot', 'wifi']);
 // clearer sentence + icon. Covers every shape handle_command()/
 // _maybe_auto_log() actually produce (refreshed, rebooting, starting_wifi,
 // ota_current/updated/failed, logged/auto_logged (power: ..., gps: ...),
-// log_failed, signal: ...(...), signal_failed, unknown_command) -- falls
-// back to showing the raw text with a generic icon for anything else.
+// log_failed, signal: ...(...), gps: fix/no_fix (...), *_failed,
+// unknown_command) -- falls back to showing the raw text with a generic icon
+// for anything else.
 function friendlyCommandResult(result) {
   if (!result) return { icon: '⚪', text: 'No command sent yet.', danger: false };
 
@@ -93,12 +102,14 @@ function friendlyCommandResult(result) {
     const gpsOk = parts.gps === 'ok';
     const gpsNoFix = parts.gps === 'no_fix';
     const gpsText = gpsOk
-      ? 'GPS logged a fix'
+      ? 'GPS logged a fix.'
       : gpsNoFix
-        ? 'GPS: no fix (normal without a GPS antenna)'
+        ? 'GPS: no fix (normal without a GPS antenna).'
         : `GPS: ${parts.gps || 'unknown'}`;
-    const powerText = powerOk ? 'Power logged' : `Power: ${parts.power || 'unknown'}`;
-    return { icon: powerOk ? '✅' : '⚠️', text: `${powerText}. ${gpsText}.`, danger: !powerOk };
+    const powerText = powerOk
+      ? 'Cellular internet and Google Sheets confirmed. Power logged.'
+      : `Power: ${parts.power || 'unknown'}.`;
+    return { icon: powerOk ? '✅' : '⚠️', text: `${powerText} ${gpsText}`, danger: !powerOk };
   };
 
   let match = result.match(/^logged \((.*)\)$/);
@@ -110,8 +121,31 @@ function friendlyCommandResult(result) {
     return { ...inner, text: `Automatic log — ${inner.text}` };
   }
 
+  let gpsMatch = result.match(/^gps:\s*fix\s*\(lat:\s*([^,]+),\s*lon:\s*([^,]+),\s*maps:\s*(.*?)\)$/);
+  if (gpsMatch) {
+    const lat = gpsMatch[1].trim();
+    const lon = gpsMatch[2].trim();
+    const link = gpsMatch[3].trim();
+    return { icon: '✅', text: `GPS fix confirmed: ${lat}, ${lon}.`, link, danger: false };
+  }
+
+  gpsMatch = result.match(/^gps:\s*no_fix\s*\((.*)\)$/);
+  if (gpsMatch) {
+    return { icon: '⚠️', text: `GPS checked, but no fix yet: ${gpsMatch[1]}.`, danger: false };
+  }
+
   if (result.startsWith('signal: ')) {
-    return { icon: '✅', text: result.replace(/^signal:\s*/, 'Cellular signal: '), danger: false };
+    const match = result.match(/^signal:\s*(.*?)\s*\((.*?)\)$/);
+    const signal = match ? match[1] : result.replace(/^signal:\s*/, '');
+    const registration = match ? match[2] : 'unknown registration';
+    const registered = registration === 'registered';
+    return {
+      icon: registered ? '✅' : '⚠️',
+      text: registered
+        ? `Cell modem/SIM registered. Signal: ${signal}. Internet data was not opened by this check.`
+        : `Cell modem responded, but network is ${registration}. Signal: ${signal}. Internet data was not opened.`,
+      danger: !registered,
+    };
   }
   if (result === 'refreshed') return { icon: '✅', text: 'Status refreshed.', danger: false };
   if (result === 'ota_current') return { icon: '✅', text: 'Already on the latest firmware.', danger: false };
@@ -129,6 +163,9 @@ function friendlyCommandResult(result) {
   }
   if (result.startsWith('signal_failed:')) {
     return { icon: '❌', text: result.replace(/^signal_failed:\s*/, 'Signal check failed: '), danger: true };
+  }
+  if (result.startsWith('gps_failed:')) {
+    return { icon: '❌', text: result.replace(/^gps_failed:\s*/, 'GPS check failed: '), danger: true };
   }
   if (result.startsWith('auto_log_failed:')) {
     return { icon: '❌', text: result.replace(/^auto_log_failed:\s*/, 'Automatic log failed: '), danger: true };
@@ -588,9 +625,16 @@ export default function App() {
               </Text>
             </View>
           ) : (
-            <Text style={[styles.resultText, friendlyResult.danger ? styles.danger : styles.resultOk]}>
-              {friendlyResult.icon} {friendlyResult.text}
-            </Text>
+            <View>
+              <Text style={[styles.resultText, friendlyResult.danger ? styles.danger : styles.resultOk]}>
+                {friendlyResult.icon} {friendlyResult.text}
+              </Text>
+              {friendlyResult.link ? (
+                <TouchableOpacity onPress={() => Linking.openURL(friendlyResult.link)}>
+                  <Text style={[styles.resultText, styles.linkValue]}>Open in Google Maps</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           )}
           <Text style={styles.hint}>
             {pendingCommand
@@ -599,7 +643,7 @@ export default function App() {
                 'finishes.'
               : commandResultAt
                 ? `Outcome of the last command, received at ${fmtTime(commandResultAt)}.`
-                : "This is the outcome of the last command sent below (e.g. Log Now, OTA, Check Signal) -- same " +
+                : "This is the outcome of the last command sent below (e.g. Log Now, Check Signal, Check GPS, OTA) -- same " +
                   "information Thonny's console would show, surfaced here so a laptop isn't needed."}
           </Text>
         </View>
@@ -619,15 +663,17 @@ export default function App() {
           <View style={styles.buttonRowWrap}>
             <ServiceButton cmd="log" label="Log Now" style={styles.secondaryButton} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
             <ServiceButton cmd="signal" label="Check Signal" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+            <ServiceButton cmd="gps" label="Check GPS" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
             <ServiceButton cmd="wifi" label="Start Wi-Fi" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
             <ServiceButton cmd="ota" label="OTA" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
             <ServiceButton cmd="reboot" label="Reboot" style={[styles.dangerButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
           </View>
           <Text style={styles.hint}>
             Log Now posts Power_Log and GPS_Log rows over cellular right now (bypasses Wi-Fi so BLE
-            stays connected, {COMMAND_INFO.log.hint}). Check Signal reports cellular registration +
-            signal strength without opening a full data session ({COMMAND_INFO.signal.hint}). Start
-            Wi-Fi and Reboot both {COMMAND_INFO.reboot.hint.toLowerCase()} -- that disconnect is
+            stays connected, {COMMAND_INFO.log.hint}). Check Signal reports modem/SIM/network
+            registration + signal strength without opening a full data session ({COMMAND_INFO.signal.hint}).
+            Check GPS asks the SIM7600 GPS for a fix and shows a Maps link when available
+            ({COMMAND_INFO.gps.hint}). Start Wi-Fi and Reboot both {COMMAND_INFO.reboot.hint.toLowerCase()} -- that disconnect is
             expected, not a failure. See "Last Result" above for the outcome of each, including while
             it's still running.
           </Text>
