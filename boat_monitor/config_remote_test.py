@@ -66,8 +66,8 @@ def upsert_config_rows(sheets, spreadsheet_id, rows):
 
 
 def main():
-    target_fw = os.environ.get("REMOTE_TEST_FW", "1.1.11")
-    interval_s = os.environ.get("REMOTE_TEST_INTERVAL_S", "480")
+    target_fw = os.environ.get("REMOTE_TEST_FW", "1.1.12")
+    interval_s = os.environ.get("REMOTE_TEST_INTERVAL_S", "360")
 
     creds_path = _credentials_path()
     if not creds_path:
