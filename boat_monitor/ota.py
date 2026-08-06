@@ -126,6 +126,20 @@ def _get_client(prefer_wifi=True):
     """
     if prefer_wifi:
         try:
+            import wifi_networks
+
+            nets = wifi_networks.load_networks()
+            if not nets:
+                raise OtaError(
+                    "no Wi-Fi networks on Pico — save wifi_known_networks.py from GitHub "
+                    "(boat_monitor/) or copy wifi_credentials.example.py to wifi_credentials.py"
+                )
+        except OtaError:
+            raise
+        except Exception:
+            pass
+
+        try:
             import wifi_uplink
 
             ssid = wifi_uplink.connect(timeout_s=15)
@@ -136,9 +150,8 @@ def _get_client(prefer_wifi=True):
                 print("OTA: using Wi-Fi (%s)" % ssid)
                 return wifi_uplink.WifiHttp(), True
         except Exception as exc:
-            print("OTA: Wi-Fi attempt failed, falling back to cellular:", exc)
+            print("OTA: Wi-Fi attempt failed:", exc)
 
-    if prefer_wifi:
         try:
             import wifi_networks
 
@@ -148,6 +161,9 @@ def _get_client(prefer_wifi=True):
             raise
         except Exception:
             pass
+
+    if prefer_wifi:
+        raise OtaError("Wi-Fi OTA failed and cellular fallback is disabled when prefer_wifi=True")
 
     print("OTA: using cellular")
     from cellular import Sim7600Modem

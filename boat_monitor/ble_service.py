@@ -205,6 +205,17 @@ def log_power_and_gps(
         finally:
             logger.close_data()
 
+    if prefer_wifi and not _wifi_uplink_configured():
+        msg = "power: failed: no Wi-Fi networks on Pico, gps: skipped"
+        print("log_power_and_gps:", msg)
+        try:
+            import diag_log
+
+            diag_log.log(msg)
+        except Exception:
+            pass
+        return msg
+
     use_wifi = prefer_wifi and _wifi_uplink_configured()
     if use_wifi and ble_monitor is not None and ble_monitor.connections:
         use_wifi = False
@@ -212,7 +223,7 @@ def log_power_and_gps(
     if use_wifi and ble_monitor is not None:
         summary, actions = _wifi_handoff_log(ble_monitor, lambda: _run(True))
     else:
-        summary, actions = _run(use_wifi and ble_monitor is None)
+        summary, actions = _run(prefer_wifi if ble_monitor is None else use_wifi)
 
     if actions:
         try:

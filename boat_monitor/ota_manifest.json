@@ -1,10 +1,30 @@
 {
-  "version": "1.1.26",
-  "notes": "USB/Thonny no longer forces BLE; bench USB uses standby Wi-Fi log + boot OTA.",
+  "version": "1.1.27",
+  "notes": "OTA ships wifi_known_networks.py; no cellular fallback when Wi-Fi list empty.",
   "files": [
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
+    },
+    {
+      "path": "wifi_known_networks.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_known_networks.py"
+    },
+    {
+      "path": "wifi_networks.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_networks.py"
+    },
+    {
+      "path": "wifi_uplink.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
+    },
+    {
+      "path": "ota.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+    },
+    {
+      "path": "sheets_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
     },
     {
       "path": "ble_policy.py",
@@ -17,18 +37,6 @@
     {
       "path": "standby_monitor.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
-    },
-    {
-      "path": "ota.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
-    },
-    {
-      "path": "wifi_uplink.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
-    },
-    {
-      "path": "sheets_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
     },
     {
       "path": "diag_log.py",

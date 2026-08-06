@@ -57,7 +57,10 @@ def connect(timeout_s=15):
     """
     networks = _load_networks()
     if not networks:
-        print("wifi_uplink: no networks configured (see wifi_credentials.example.py)")
+        print(
+            "wifi_uplink: no networks configured "
+            "(wifi_credentials.py, wifi_sheet.json, or wifi_known_networks.py)"
+        )
         return None
 
     try:

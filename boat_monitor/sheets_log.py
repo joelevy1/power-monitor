@@ -105,9 +105,24 @@ class SheetsLogger:
             pass
 
         if self.prefer_wifi:
-            try:
-                import wifi_uplink
+            import wifi_networks
+            import wifi_uplink
 
+            nets = wifi_networks.load_networks()
+            if not nets:
+                msg = (
+                    "no Wi-Fi networks on Pico — need wifi_known_networks.py (OTA) "
+                    "or wifi_credentials.py; see wifi_credentials.example.py"
+                )
+                print("SheetsLogger:", msg)
+                try:
+                    import diag_log
+
+                    diag_log.log("ensure_data FAIL %s" % msg)
+                except Exception:
+                    pass
+                raise SheetsLogError(msg)
+            try:
                 ssid = wifi_uplink.connect(timeout_s=15)
                 if ssid:
                     print("SheetsLogger: using Wi-Fi (%s)" % ssid)
@@ -121,13 +136,21 @@ class SheetsLogger:
                     self._data_open = True
                     return
             except Exception as exc:
-                print("SheetsLogger: Wi-Fi attempt failed, falling back to cellular:", exc)
+                print("SheetsLogger: Wi-Fi connect failed:", exc)
                 try:
                     import diag_log
 
                     diag_log.log("ensure_data wifi failed %s" % exc)
                 except Exception:
                     pass
+            msg = "Wi-Fi configured (%d network(s)) but could not connect" % len(nets)
+            try:
+                import diag_log
+
+                diag_log.log("ensure_data FAIL %s" % msg)
+            except Exception:
+                pass
+            raise SheetsLogError(msg)
 
         try:
             import diag_log
