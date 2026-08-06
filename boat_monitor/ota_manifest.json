@@ -1,6 +1,6 @@
 {
-  "version": "1.1.11",
-  "notes": "Remote test 3: note tag=remote3; verify OTA 1.1.10+ -> 1.1.11 via Config cmd_ota.",
+  "version": "1.1.12",
+  "notes": "E2E remote OTA test (no app): auto_log note tag=remote4-e2e. Trigger via Config cmd_ota + min_fw_version on next auto-log only.",
   "files": [
     {
       "path": "version.py",
