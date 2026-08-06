@@ -31,8 +31,9 @@
  * Saving Code.gs alone does NOT update the live /exec URL the Pico uses.
  */
 
-var RECEIVER_VERSION = 2;
+var RECEIVER_VERSION = 3;
 var TIMESTAMP_DISPLAY_FORMAT = 'mmm d, yyyy h:mm AM/PM';
+var CONFIG_TAB = 'Config';
 
 function doPost(e) {
   var result;
@@ -112,7 +113,74 @@ function handlePost_(e) {
     tsCell.setNumberFormat(TIMESTAMP_DISPLAY_FORMAT);
   }
 
-  return { ok: true, tab: tabName, row: rowNum, receiver_version: RECEIVER_VERSION };
+  var deviceId = data.device ? String(data.device) : '';
+  var commands = readConfigCommands_(deviceId);
+
+  return {
+    ok: true,
+    tab: tabName,
+    row: rowNum,
+    receiver_version: RECEIVER_VERSION,
+    commands: commands,
+  };
+}
+
+function truthy_(value) {
+  if (value === true || value === 1) {
+    return true;
+  }
+  var text = String(value || '').trim().toLowerCase();
+  return text === '1' || text === 'true' || text === 'yes' || text === 'on';
+}
+
+/**
+ * Read the Config tab (key | value | updated_utc | note).
+ * Persistent keys (interval_*, min_fw_version, ...) are returned in settings.
+ * One-shot keys cmd_* (or boat-p2:cmd_ota) clear the value cell when consumed.
+ */
+function readConfigCommands_(deviceId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var config = ss.getSheetByName(CONFIG_TAB);
+  if (!config || config.getLastRow() < 2) {
+    return { settings: {}, one_shots: [] };
+  }
+
+  var rows = config.getRange(2, 1, config.getLastRow(), 2).getValues();
+  var settings = {};
+  var oneShots = [];
+  var clearRows = [];
+
+  for (var i = 0; i < rows.length; i++) {
+    var rawKey = String(rows[i][0] || '').trim();
+    var value = rows[i][1];
+    if (!rawKey) {
+      continue;
+    }
+
+    var key = rawKey;
+    if (rawKey.indexOf(':') !== -1) {
+      if (!deviceId || rawKey.indexOf(deviceId + ':') !== 0) {
+        continue;
+      }
+      key = rawKey.substring(deviceId.length + 1);
+    }
+
+    if (key.indexOf('cmd_') === 0) {
+      if (truthy_(value)) {
+        oneShots.push(key.substring(4));
+        clearRows.push(i + 2);
+      }
+      continue;
+    }
+
+    settings[key] = value;
+  }
+
+  for (var c = 0; c < clearRows.length; c++) {
+    config.getRange(clearRows[c], 2).setValue('');
+  }
+
+  return { settings: settings, one_shots: oneShots };
 }
 
 function parseTimestamp_(value) {
