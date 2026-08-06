@@ -106,11 +106,25 @@ def _get_client(prefer_wifi=True):
             import wifi_uplink
 
             ssid = wifi_uplink.connect(timeout_s=15)
+            if not ssid:
+                time.sleep(2)
+                ssid = wifi_uplink.connect(timeout_s=15)
             if ssid:
                 print("OTA: using Wi-Fi (%s)" % ssid)
                 return wifi_uplink.WifiHttp(), True
         except Exception as exc:
             print("OTA: Wi-Fi attempt failed, falling back to cellular:", exc)
+
+    if prefer_wifi:
+        try:
+            import wifi_networks
+
+            if wifi_networks.load_networks():
+                raise OtaError("Wi-Fi configured but no network connected (modem fallback disabled)")
+        except OtaError:
+            raise
+        except Exception:
+            pass
 
     print("OTA: using cellular")
     from cellular import Sim7600Modem

@@ -14,7 +14,7 @@ from ble_service import log_power_and_gps, read_status
 
 def main():
     print("standby_monitor: BLE off — Wi-Fi-first auto-log")
-    # First auto-log soon after boot (don't wait a full docked interval).
+    auto_log.load_persisted_overrides()
     interval_s = auto_log.interval_for_mode("docked_off")
     last_auto_log_ms = time.ticks_add(time.ticks_ms(), -int(interval_s * 1000))
     last_auto_log_mode = None
@@ -39,6 +39,10 @@ def main():
             try:
                 summary = log_power_and_gps(note="auto_log", prefer_wifi=True, ble_monitor=None)
                 print("standby_monitor: auto-log result:", summary)
+                print(
+                    "standby_monitor: next auto-log in ~%ds (mode=%s)"
+                    % (auto_log.interval_for_mode(mode), mode)
+                )
             except Exception as exc:
                 print("standby_monitor: auto-log failed:", exc)
 

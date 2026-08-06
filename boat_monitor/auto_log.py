@@ -43,6 +43,7 @@ ENGINE_ON_MODE = "key_on"
 
 _OVERRIDE_ENGINE_ON_S = None
 _OVERRIDE_ENGINE_OFF_S = None
+_OVERRIDE_FILE = "auto_log_override.json"
 
 
 def set_interval_overrides(engine_on_s=None, engine_off_s=None):
@@ -52,6 +53,43 @@ def set_interval_overrides(engine_on_s=None, engine_off_s=None):
         _OVERRIDE_ENGINE_ON_S = max(60, int(engine_on_s))
     if engine_off_s is not None:
         _OVERRIDE_ENGINE_OFF_S = max(60, int(engine_off_s))
+    persist_interval_overrides()
+
+
+def persist_interval_overrides():
+    try:
+        import ujson as json
+    except ImportError:
+        import json
+    if _OVERRIDE_ENGINE_ON_S is None and _OVERRIDE_ENGINE_OFF_S is None:
+        return
+    data = {}
+    if _OVERRIDE_ENGINE_ON_S is not None:
+        data["interval_engine_on_s"] = _OVERRIDE_ENGINE_ON_S
+    if _OVERRIDE_ENGINE_OFF_S is not None:
+        data["interval_engine_off_s"] = _OVERRIDE_ENGINE_OFF_S
+    try:
+        with open(_OVERRIDE_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as exc:
+        print("auto_log: persist overrides failed:", exc)
+
+
+def load_persisted_overrides():
+    global _OVERRIDE_ENGINE_ON_S, _OVERRIDE_ENGINE_OFF_S
+    try:
+        import ujson as json
+    except ImportError:
+        import json
+    try:
+        with open(_OVERRIDE_FILE, "r") as f:
+            data = json.load(f)
+    except Exception:
+        return
+    if data.get("interval_engine_on_s") is not None:
+        _OVERRIDE_ENGINE_ON_S = max(60, int(data["interval_engine_on_s"]))
+    if data.get("interval_engine_off_s") is not None:
+        _OVERRIDE_ENGINE_OFF_S = max(60, int(data["interval_engine_off_s"]))
 
 
 def interval_for_mode(mode):

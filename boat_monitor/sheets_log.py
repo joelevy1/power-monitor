@@ -297,10 +297,16 @@ class SheetsLogger:
         best-effort attempt, not a guarantee of a fix.
         """
         if self._cellular is None:
-            from cellular import Sim7600Modem
+            from cellular import CellularError, Sim7600Modem
 
-            self._cellular = Sim7600Modem()
-            self._cellular.check_alive()
+            try:
+                self._cellular = Sim7600Modem()
+                self._cellular.check_alive()
+            except CellularError as exc:
+                print("SheetsLogger: GPS skipped —", exc)
+                return self.log_gps(
+                    device, None, None, status="no_fix", note=note or "modem unavailable"
+                )
 
         from gps import Gps
 
