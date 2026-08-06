@@ -53,7 +53,7 @@ function fetchWithTimeout(url, options, timeoutMs) {
 // registration + HTTPS), not app slowness -- see cellular.py/auto_log.py.
 const COMMAND_INFO = {
   refresh: { label: 'Refresh', hint: 'instant' },
-  log: { label: 'Log Now', hint: '~15-45s (modem setup + Sheets + quick GPS try)' },
+  log: { label: 'Log Now', hint: '~15-45s over cellular (BLE stays connected)' },
   signal: { label: 'Check Signal', hint: '~5-20s (modem/SIM/network registration, no data session)' },
   gps: { label: 'Check GPS', hint: '~5-30s (GPS fix check, no internet data session)' },
   ota: { label: 'OTA Check', hint: 'reboots, then checks GitHub before BLE starts' },
@@ -141,7 +141,7 @@ function friendlyCommandResult(result) {
         ? 'GPS: no fix (normal without a GPS antenna).'
         : `GPS: ${parts.gps || 'unknown'}`;
     const powerText = powerOk
-      ? 'Cellular internet and Google Sheets confirmed. Power logged.'
+      ? 'Internet and Google Sheets confirmed. Power logged (see Power_Log uplink on sheet).'
       : `Power: ${parts.power || 'unknown'}.`;
     return { icon: powerOk ? '✅' : '⚠️', text: `${powerText} ${gpsText}`, danger: !powerOk };
   };
@@ -647,8 +647,9 @@ export default function App() {
                 </Text>
                 {pendingStage ? <Text style={styles.stageText}>{pendingStage}</Text> : null}
                 <Text style={styles.hint}>
-                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. Log Now uses cellular while BLE
-                  stays connected; automatic logs prefer Wi-Fi when no phone is connected.
+                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. While you are connected over BLE,
+                  Log Now uses cellular. When the phone is away, the Pico logs on its own (standby) and prefers Wi-Fi
+                  (marina/home SSIDs), then cellular if Wi-Fi cannot connect.
                 </Text>
               </View>
             </View>
@@ -672,6 +673,23 @@ export default function App() {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.cardTitle}>Logging & connectivity</Text>
+          <Text style={styles.bodyText}>
+            Automatic logging (switch/key off, no app) runs in standby: Wi-Fi first when known networks are configured
+            (GitHub list, Google Sheet Config, or local credentials), then the cell modem if Wi-Fi is unavailable. Boot
+            firmware updates use the same order.
+          </Text>
+          <Text style={[styles.bodyText, styles.bodyGap]}>
+            While you are connected in this app, Log Now intentionally uses cellular so BLE and Wi-Fi do not fight over
+            the same radio. Check the sheet Power_Log column uplink for Levy-Guest, Seattle Boat, or cellular.
+          </Text>
+          <Text style={[styles.bodyText, styles.bodyGap]}>
+            USB to a laptop does not require the cell modem at home. Turn the battery switch or key on when you need this
+            app over BLE at the boat.
+          </Text>
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>Service Commands</Text>
           <View style={styles.buttonRowWrap}>
             <ServiceButton cmd="log" label="Log Now" style={styles.secondaryButton} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
@@ -681,8 +699,8 @@ export default function App() {
             <ServiceButton cmd="reboot" label="Reboot" style={[styles.dangerButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
           </View>
           <Text style={styles.hint}>
-            Log Now posts over cellular while you are connected over BLE ({COMMAND_INFO.log.hint}). Check Signal and GPS
-            are quick modem diagnostics. Reboot to update appears in Firmware below when GitHub is newer.
+            Log Now uses cellular while BLE is connected ({COMMAND_INFO.log.hint}). Check Signal and GPS are modem-only
+            diagnostics. Reboot to update appears under Firmware when GitHub is newer.
           </Text>
         </View>
 
@@ -751,8 +769,8 @@ export default function App() {
             )}
           </TouchableOpacity>
           <Text style={styles.hint}>
-            Rarely needed — BLE is the normal path. This only works after you join the BoatMonitor Wi-Fi network in iOS
-            Settings and confirms 192.168.4.1 responds.
+            Optional field tool: join the BoatMonitor Wi-Fi AP in iOS Settings, then check console reachability. Normal
+            operation uses BLE (app) or automatic Wi-Fi/cellular logging — not this AP.
           </Text>
         </View>
 
@@ -1007,6 +1025,14 @@ const styles = StyleSheet.create({
   hint: {
     color: '#64748b',
     fontSize: 11,
+    marginTop: 10,
+  },
+  bodyText: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  bodyGap: {
     marginTop: 10,
   },
   buildLabel: {
