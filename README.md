@@ -26,6 +26,7 @@ Core files to copy to Pico:
 - `boat_monitor/config.py`
 - `boat_monitor/main.py`
 - `boat_monitor/field_console.py`
+- `boat_monitor/FIELD_CONSOLE_DEBUG.md` — Wi-Fi console troubleshooting (AP up, page won't load)
 - `boat_monitor/ota.py`
 - `boat_monitor/ota_config.py`
 - `boat_monitor/version.py`

@@ -1,14 +1,10 @@
 {
-  "version": "1.1.5",
-  "notes": "Fix app command-status race (ignore stale BLE results when a new command starts), show live log stages including when Power_Log is already saved, and shorten manual Log Now GPS wait to 10s.",
+  "version": "1.1.6",
+  "notes": "Wi-Fi console: /ping health check, fast replies for iOS captive-portal probes, only / runs full modem status (fixes AP-up-but-page-won't-load), request logging on USB serial.",
   "files": [
     {
-      "path": "ble_service.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
-    },
-    {
-      "path": "sheets_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+      "path": "field_console.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/field_console.py"
     },
     {
       "path": "version.py",
