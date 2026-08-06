@@ -1,6 +1,6 @@
 {
-  "version": "1.1.10",
-  "notes": "Remote test 2: note tag=remote2; use Config cmd_ota + interval 420s to verify full remote update.",
+  "version": "1.1.11",
+  "notes": "Remote test 3: note tag=remote3; verify OTA 1.1.10+ -> 1.1.11 via Config cmd_ota.",
   "files": [
     {
       "path": "version.py",
