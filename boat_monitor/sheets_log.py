@@ -161,6 +161,15 @@ class SheetsLogger:
         except Exception:
             return {"raw": response_text}
 
+    def _apply_remote_from_response(self, response, device_id):
+        try:
+            from remote_control import apply_from_log_response
+
+            return apply_from_log_response(response, device_id=device_id)
+        except Exception as exc:
+            print("SheetsLogger: remote_control:", exc)
+            return []
+
     def log_power(self, device, mode, engine, house, v50, note=""):
         return self.log_row(
             "Power_Log",
@@ -199,8 +208,10 @@ class SheetsLogger:
             on_progress("logging_power")
         status_note = note
         power_outcome = "ok"
+        last_response = None
+        remote_actions = []
         try:
-            self.log_power(
+            last_response = self.log_power(
                 device=device,
                 mode=mode,
                 engine=engine,
@@ -208,6 +219,7 @@ class SheetsLogger:
                 v50=v50,
                 note=status_note,
             )
+            remote_actions = self._apply_remote_from_response(last_response, device)
         except Exception as exc:
             power_outcome = "failed: %s" % exc
 
@@ -220,9 +232,13 @@ class SheetsLogger:
                 on_progress("logging_gps")
             gps_result = self.log_gps_now(device, timeout_s=gps_timeout_s, note=status_note)
             gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
+            if isinstance(gps_result, dict) and gps_result.get("commands"):
+                last_response = gps_result
+                remote_actions = self._apply_remote_from_response(gps_result, device)
         except Exception as exc:
             gps_outcome = "failed: %s" % exc
 
+        self._last_remote_actions = remote_actions
         return "power: %s, gps: %s" % (power_outcome, gps_outcome)
 
     def log_gps_now(self, device, timeout_s=20, poll_interval_s=2, note=""):

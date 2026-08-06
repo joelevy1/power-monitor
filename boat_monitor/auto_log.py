@@ -49,9 +49,27 @@ INTERVAL_ENGINE_OFF_S = 300  # 5 minutes (TEMPORARY -- see comment above; normal
 
 ENGINE_ON_MODE = "key_on"
 
+_OVERRIDE_ENGINE_ON_S = None
+_OVERRIDE_ENGINE_OFF_S = None
+
+
+def set_interval_overrides(engine_on_s=None, engine_off_s=None):
+    """Runtime overrides from the sheet Config tab (remote_control.py)."""
+    global _OVERRIDE_ENGINE_ON_S, _OVERRIDE_ENGINE_OFF_S
+    if engine_on_s is not None:
+        _OVERRIDE_ENGINE_ON_S = max(60, int(engine_on_s))
+    if engine_off_s is not None:
+        _OVERRIDE_ENGINE_OFF_S = max(60, int(engine_off_s))
+
 
 def interval_for_mode(mode):
-    return INTERVAL_ENGINE_ON_S if mode == ENGINE_ON_MODE else INTERVAL_ENGINE_OFF_S
+    if mode == ENGINE_ON_MODE:
+        if _OVERRIDE_ENGINE_ON_S is not None:
+            return _OVERRIDE_ENGINE_ON_S
+        return INTERVAL_ENGINE_ON_S
+    if _OVERRIDE_ENGINE_OFF_S is not None:
+        return _OVERRIDE_ENGINE_OFF_S
+    return INTERVAL_ENGINE_OFF_S
 
 
 def should_log_now(mode, elapsed_s, last_mode=None):

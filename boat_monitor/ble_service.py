@@ -185,9 +185,10 @@ def log_power_and_gps(note, on_progress=None, gps_timeout_s=20):
     # call site is Wi-Fi-AP-served, where the Wi-Fi radio is already busy
     # as an AP -- same reasoning applies there too.
     logger = sheets_log.SheetsLogger(prefer_wifi=False)
+    actions = []
     try:
         status = read_status()
-        return logger.log_power_and_gps(
+        summary = logger.log_power_and_gps(
             device=status["device"],
             mode=status["mode"],
             engine=status["engine"],
@@ -197,8 +198,14 @@ def log_power_and_gps(note, on_progress=None, gps_timeout_s=20):
             gps_timeout_s=gps_timeout_s,
             on_progress=on_progress,
         )
+        actions = getattr(logger, "_last_remote_actions", []) or []
+        return summary
     finally:
         logger.close_data()
+        if actions:
+            from remote_control import run_actions
+
+            run_actions(actions, prefer_wifi=False)
 
 
 def check_gps_fix(timeout_s=30, poll_interval_s=2):

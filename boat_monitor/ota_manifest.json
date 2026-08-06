@@ -1,14 +1,22 @@
 {
-  "version": "1.1.5",
-  "notes": "Fix app command-status race (ignore stale BLE results when a new command starts), show live log stages including when Power_Log is already saved, and shorten manual Log Now GPS wait to 10s.",
+  "version": "1.1.7",
+  "notes": "Remote control via Sheets Config tab on each log POST: interval overrides, cmd_ota/cmd_reboot, min_fw_version OTA. Requires Apps Script receiver v3 redeploy.",
   "files": [
     {
-      "path": "ble_service.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
+      "path": "remote_control.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_control.py"
+    },
+    {
+      "path": "auto_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/auto_log.py"
     },
     {
       "path": "sheets_log.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+    },
+    {
+      "path": "ble_service.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
     },
     {
       "path": "version.py",
