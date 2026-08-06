@@ -615,8 +615,42 @@ def log_html():
     return page("Log Now", body, refresh=3 if refresh else False, refresh_url="/" if refresh else None)
 
 
-def http_response(html):
-    return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n%s" % html
+def http_response(html, content_type="text/html"):
+    return "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nConnection: close\r\n\r\n%s" % (content_type, html)
+
+
+def http_response_bytes(status_line, headers, body=b""):
+    lines = [status_line]
+    for key, value in headers:
+        lines.append("%s: %s" % (key, value))
+    lines.append("Connection: close")
+    lines.append("")
+    head = "\r\n".join(lines).encode()
+    if body:
+        return head + b"\r\n" + body
+    return head + b"\r\n"
+
+
+def path_only(path):
+    return (path or "/").split("?", 1)[0] or "/"
+
+
+# iOS/Safari probe these while joined to a Wi-Fi AP with no internet. Our
+# server is single-threaded; treating every unknown URL like "/" used to run
+# update_modem_cache() (many AT commands) and could make http://192.168.4.1
+# look "dead" even though the AP was still up.
+CAPTIVE_PROBE_PATHS = frozenset(
+    (
+        "/generate_204",
+        "/hotspot-detect.html",
+        "/library/test/success.html",
+        "/success.txt",
+        "/canonical.html",
+        "/redirect",
+        "/ncsi.txt",
+        "/connecttest.txt",
+    )
+)
 
 
 def ensure_ble_off():
@@ -678,17 +712,58 @@ def start_ap():
     print("Config:", ap.ifconfig())
 
 
+CLIENT_SOCKET_TIMEOUT_S = 120
+
+
+def handle_request(method, path, body):
+    path = path_only(path)
+    if path == "/ping":
+        return http_response("ok\n", content_type="text/plain; charset=utf-8")
+    if path == "/favicon.ico":
+        return http_response_bytes("HTTP/1.1 404 Not Found", [("Content-Type", "text/plain")], b"")
+    if path in CAPTIVE_PROBE_PATHS:
+        return http_response_bytes("HTTP/1.1 204 No Content", [("Content-Type", "text/plain")], b"")
+
+    if path.startswith("/update"):
+        html = update_html()
+    elif path.startswith("/save") and method == "POST":
+        html = save_pasted(body)
+    elif path.startswith("/ota-check"):
+        html = ota_check_html()
+    elif path.startswith("/ota"):
+        html = ota_html()
+    elif path.startswith("/log"):
+        html = log_html()
+    elif path == "/reboot":
+        return "REBOOT"
+    elif path == "/":
+        html = status_html()
+    else:
+        html = page(
+            "Not found",
+            "<h1>Boat Monitor</h1><p>Unknown path <code>%s</code>.</p><p><a href='/'>Open status</a> | "
+            "<a href='/ping'>Ping (health check)</a></p>" % safe(path),
+        )
+    return http_response(html)
+
+
 def serve():
     start_ap()
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("0.0.0.0", 80))
-    s.listen(1)
-    print("Web server listening")
+    s.listen(5)
+    print("Web server listening (try http://192.168.4.1/ping first)")
 
     while True:
-        cl, addr = s.accept()
         try:
+            cl, addr = s.accept()
+        except Exception as exc:
+            print("accept failed:", exc)
+            time.sleep(0.5)
+            continue
+        try:
+            cl.settimeout(CLIENT_SOCKET_TIMEOUT_S)
             req = b""
             while b"\r\n\r\n" not in req:
                 chunk = cl.recv(1024)
@@ -713,32 +788,27 @@ def serve():
                     break
                 body_bytes += chunk
             body = body_bytes.decode("utf-8", "ignore")
+            print("HTTP", method, path_only(path), "from", addr)
 
-            if path.startswith("/update"):
-                html = update_html()
-            elif path.startswith("/save") and method == "POST":
-                html = save_pasted(body)
-            elif path.startswith("/ota-check"):
-                html = ota_check_html()
-            elif path.startswith("/ota"):
-                html = ota_html()
-            elif path.startswith("/log"):
-                html = log_html()
-            elif path.startswith("/reboot"):
+            resp = handle_request(method, path, body)
+            if resp == "REBOOT":
                 cl.send(http_response(page("Reboot", "<h1>Rebooting...</h1>")).encode())
                 cl.close()
                 time.sleep(1)
                 machine.reset()
                 continue
-            else:
-                html = status_html()
-            cl.send(http_response(html).encode())
+            payload = resp.encode() if isinstance(resp, str) else resp
+            cl.send(payload)
         except Exception as e:
+            print("HTTP error:", e)
             try:
                 cl.send(http_response(page("Error", "<pre>%s</pre>" % safe(e))).encode())
             except Exception:
                 pass
-        cl.close()
+        try:
+            cl.close()
+        except Exception:
+            pass
 
 
 serve()
