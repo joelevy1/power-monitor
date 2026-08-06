@@ -559,7 +559,7 @@ class BoatMonitorBle:
             import version
 
             fw = getattr(version, "VERSION", "?")
-            summary = self._log_power_and_gps(note="auto_log fw=%s tag=remote4-e2e" % fw)
+            summary = self._log_power_and_gps(note="auto_log fw=%s tag=remote5-e2e" % fw)
             self.command_result = "auto_logged (%s)" % summary
             print("Auto-log result:", summary)
         except Exception as exc:
