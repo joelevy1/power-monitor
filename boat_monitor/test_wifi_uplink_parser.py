@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from wifi_uplink import WifiHttp, split_url  # noqa: E402
+from wifi_uplink import WifiHttp, _decode_chunked, split_url  # noqa: E402
 
 
 def run():
@@ -102,6 +102,17 @@ def run():
         check("parse_response malformed response raises", False)
     except Exception:
         check("parse_response malformed response raises", True)
+
+    payload = b'{"ok": true, "tab": "x"}'
+    chunked = ("%x\r\n" % len(payload)).encode() + payload + b"\r\n0\r\n\r\n"
+    decoded = _decode_chunked(chunked)
+    check("chunked decode json", decoded == '{"ok": true, "tab": "x"}')
+
+    status, headers, body = http._parse_response(
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + chunked
+    )
+    check("parse_response chunked 200", status == 200)
+    check("parse_response chunked body", body == '{"ok": true, "tab": "x"}')
 
     print()
     if failures:

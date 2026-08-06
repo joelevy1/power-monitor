@@ -334,36 +334,48 @@ class SheetsLogger:
             on_progress("logging_power_ok")
 
         gps_outcome = "no_fix"
-        try:
-            if on_progress:
-                on_progress("logging_gps")
-            if self._wifi_ssid:
-                try:
-                    import diag_log
+        if power_outcome != "ok":
+            gps_outcome = "skipped_power_failed"
+            try:
+                import diag_log
 
-                    diag_log.log("log_gps skipped (wifi uplink, no modem GPS)")
-                except Exception:
-                    pass
-                gps_result = self.log_gps(
-                    device, None, None, status="no_fix", note=status_note or "wifi uplink"
-                )
-                gps_outcome = "skipped_wifi"
-            else:
-                try:
-                    import diag_log
+                diag_log.log("log_gps skipped (power log failed)")
+            except Exception:
+                pass
+        else:
+            try:
+                import gc
 
-                    diag_log.log("log_gps_now start timeout=%ss" % gps_timeout_s)
-                except Exception:
-                    pass
-                gps_result = self.log_gps_now(device, timeout_s=gps_timeout_s, note=status_note)
-                gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
-            # Do not apply sheet OTA/reboot from GPS-only when Power_Log failed — that
-            # caused a reboot with no voltage row (seen 2026-08-06) and left the
-            # device silent. Non-destructive settings still require a good power POST.
-            if power_outcome == "ok" and isinstance(gps_result, dict) and gps_result.get("commands"):
-                remote_actions = self._apply_remote_from_response(gps_result, device)
-        except Exception as exc:
-            gps_outcome = "failed: %s" % exc
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if on_progress:
+                    on_progress("logging_gps")
+                if self._wifi_ssid:
+                    try:
+                        import diag_log
+
+                        diag_log.log("log_gps skipped (wifi uplink, no modem GPS)")
+                    except Exception:
+                        pass
+                    gps_result = self.log_gps(
+                        device, None, None, status="no_fix", note=status_note or "wifi uplink"
+                    )
+                    gps_outcome = "skipped_wifi"
+                else:
+                    try:
+                        import diag_log
+
+                        diag_log.log("log_gps_now start timeout=%ss" % gps_timeout_s)
+                    except Exception:
+                        pass
+                    gps_result = self.log_gps_now(device, timeout_s=gps_timeout_s, note=status_note)
+                    gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
+                if isinstance(gps_result, dict) and gps_result.get("commands"):
+                    remote_actions = self._apply_remote_from_response(gps_result, device)
+            except Exception as exc:
+                gps_outcome = "failed: %s" % exc
 
         self._last_remote_actions = remote_actions if power_outcome == "ok" else []
         summary = "power: %s, gps: %s" % (power_outcome, gps_outcome)
