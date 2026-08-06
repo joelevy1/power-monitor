@@ -40,6 +40,29 @@ run at the same time.
 6. Click **Deploy**, authorize when prompted, then copy the **Web app URL**
    (ends in `/exec`).
 
+### Important: publishing updates later
+
+If you pull newer `Code.gs` from this repo (for example Pacific-time
+timestamps instead of raw `2026-08-06T01:30:36Z` text), **saving the
+file in the Apps Script editor is not enough**. The Pico still hits the
+**last deployed Web App version**.
+
+1. **Extensions → Apps Script** → paste the updated `Code.gs`.
+2. **Deploy → Manage deployments**.
+3. Click the **pencil** on the active Web app deployment.
+4. **Version:** choose **New version** (not "Head").
+5. **Deploy**.
+
+Verify from a PC:
+
+```bash
+curl -sL "$GOOGLE_APPS_SCRIPT_URL" | python3 -m json.tool
+```
+
+You want `"receiver_version": 2` (or higher). If that field is missing,
+the live deployment is still old and new log rows will keep ISO text
+timestamps until you redeploy.
+
 ## 2. Store the URL + token
 
 Add both to `boat_monitor/secrets.py` (gitignored — same file as the

@@ -55,8 +55,87 @@ def post_json(url, body):
         return json.loads(resp.read().decode())
 
 
+def get_json(url):
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())
+
+
+def verify_timestamp_cell(sheet_id, tab, row_num):
+    """Return True if the timestamp cell is a real Sheets date, not ISO text."""
+    try:
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+    except ImportError:
+        print("(skip timestamp cell check -- pip install -r boat_monitor/requirements-sheets.txt)")
+        return True
+
+    raw = (
+        os.environ.get("BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+        or os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    )
+    creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if not raw and not creds_path:
+        secrets = Path(__file__).resolve().parent / "secrets.py"
+        if secrets.is_file():
+            import importlib.util
+
+            spec = importlib.util.spec_from_file_location("boat_secrets", secrets)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            creds_path = getattr(mod, "GOOGLE_SERVICE_ACCOUNT_FILE", "") or creds_path
+
+    import tempfile
+
+    if raw.startswith("{"):
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        tmp.write(raw)
+        tmp.close()
+        creds_path = tmp.name
+    elif not creds_path or not Path(creds_path).is_file():
+        print("(skip timestamp cell check -- no service account for Sheets API)")
+        return True
+
+    creds = service_account.Credentials.from_service_account_file(
+        creds_path, scopes=("https://www.googleapis.com/auth/spreadsheets",)
+    )
+    svc = build("sheets", "v4", credentials=creds, cache_discovery=False)
+    cell = (
+        svc.spreadsheets()
+        .values()
+        .get(
+            spreadsheetId=sheet_id,
+            range="%s!A%d" % (tab, row_num),
+            valueRenderOption="UNFORMATTED_VALUE",
+        )
+        .execute()
+        .get("values", [[None]])[0][0]
+    )
+    if isinstance(cell, str) and ("T" in cell or cell.endswith("Z")):
+        return False
+    if isinstance(cell, (int, float)):
+        return True
+    return not isinstance(cell, str)
+
+
 def main():
     url, token = _load_config()
+
+    try:
+        info = get_json(url)
+        version = info.get("receiver_version")
+        if version is None:
+            print(
+                "WARNING: Live Apps Script deployment looks OLD (no receiver_version in GET). "
+                "Redeploy Code.gs: Deploy -> Manage deployments -> New version. "
+                "See APPS_SCRIPT_SETUP.md"
+            )
+        elif version < 2:
+            print("WARNING: receiver_version=%s; need >= 2 for Pacific date/time cells." % version)
+        else:
+            print("Apps Script receiver_version:", version)
+    except Exception as exc:
+        print("Could not GET Apps Script URL (continuing POST test):", exc)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -90,6 +169,7 @@ def main():
     ]
 
     ok = True
+    sheet_id = os.environ.get("GOOGLE_SHEETS_ID", "").strip()
     for tab, data in tests:
         body = {"tab": tab, "token": token, "data": data}
         try:
@@ -100,7 +180,17 @@ def main():
             continue
 
         if result.get("ok"):
-            print("OK: appended to %s (row %s)" % (tab, result.get("row")))
+            row = result.get("row")
+            print("OK: appended to %s (row %s)" % (tab, row))
+            if sheet_id and row:
+                if verify_timestamp_cell(sheet_id, tab, int(row)):
+                    print("  timestamp cell: OK (date value, not ISO text)")
+                else:
+                    print(
+                        "  timestamp cell: FAIL (still ISO text) -- redeploy Apps Script "
+                        "(Deploy -> Manage deployments -> New version). See APPS_SCRIPT_SETUP.md"
+                    )
+                    ok = False
         else:
             print("FAIL: %s -> %s" % (tab, result.get("error")))
             ok = False
@@ -109,7 +199,7 @@ def main():
         return 1
 
     print()
-    print("All rows posted -- check the spreadsheet to confirm they landed.")
+    print("All rows posted -- timestamps should show like 'Aug 5, 2026 8:26 PM' in the sheet.")
     return 0
 
 

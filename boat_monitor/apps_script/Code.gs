@@ -25,7 +25,14 @@
  * "timestamp_utc" is filled in automatically if the tab has that header
  * and the caller didn't supply one. Timestamp cells are written as Date
  * values so the spreadsheet can format/display them in Pacific time.
+ *
+ * After editing this file you MUST publish a new Web App version:
+ * Deploy -> Manage deployments -> pencil icon -> Version: New version -> Deploy.
+ * Saving Code.gs alone does NOT update the live /exec URL the Pico uses.
  */
+
+var RECEIVER_VERSION = 2;
+var TIMESTAMP_DISPLAY_FORMAT = 'mmm d, yyyy h:mm AM/PM';
 
 function doPost(e) {
   var result;
@@ -42,6 +49,7 @@ function doPost(e) {
 function doGet(e) {
   var body = {
     ok: true,
+    receiver_version: RECEIVER_VERSION,
     msg: 'Boat Monitor Sheets receiver is running. POST JSON to log a row.',
   };
   return ContentService
@@ -81,8 +89,14 @@ function handlePost_(e) {
   var lastCol = sheet.getLastColumn();
   var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
 
-  if (headers.indexOf('timestamp_utc') !== -1) {
-    data.timestamp_utc = data.timestamp_utc ? parseTimestamp_(data.timestamp_utc) : new Date();
+  var tsIndex = headers.indexOf('timestamp_utc');
+  var tsValue = null;
+  if (tsIndex !== -1) {
+    tsValue = data.timestamp_utc ? parseTimestamp_(data.timestamp_utc) : new Date();
+    if (!(tsValue instanceof Date) || isNaN(tsValue.getTime())) {
+      tsValue = new Date();
+    }
+    delete data.timestamp_utc;
   }
 
   var row = headers.map(function (header) {
@@ -90,8 +104,15 @@ function handlePost_(e) {
   });
 
   sheet.appendRow(row);
+  var rowNum = sheet.getLastRow();
 
-  return { ok: true, tab: tabName, row: sheet.getLastRow() };
+  if (tsIndex !== -1 && tsValue) {
+    var tsCell = sheet.getRange(rowNum, tsIndex + 1);
+    tsCell.setValue(tsValue);
+    tsCell.setNumberFormat(TIMESTAMP_DISPLAY_FORMAT);
+  }
+
+  return { ok: true, tab: tabName, row: rowNum, receiver_version: RECEIVER_VERSION };
 }
 
 function parseTimestamp_(value) {
