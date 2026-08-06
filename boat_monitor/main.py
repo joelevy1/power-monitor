@@ -51,7 +51,7 @@ else:
     try:
         import ble_policy
 
-        if ble_policy.ble_wanted():
+        if ble_policy.wait_for_ble_wanted(timeout_s=3.0):
             print("Starting BLE service (switch/key on or USB host)")
             import ble_service
 
