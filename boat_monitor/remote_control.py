@@ -121,6 +121,13 @@ def run_actions(actions, prefer_wifi=False):
     if not actions:
         return
 
+    try:
+        import diag_log
+
+        diag_log.log("run_actions %s prefer_wifi=%s" % (actions, prefer_wifi))
+    except Exception:
+        pass
+
     for action in actions:
         if action == "ota":
             # Full OTA download while ble_service.main() is running often fails
@@ -128,6 +135,12 @@ def run_actions(actions, prefer_wifi=False):
             # and the log handler blocks status updates. Boot-time OTA in main.py
             # runs before BLE starts and is the reliable path for sheet/cmd_ota.
             print("remote_control: reboot for boot-time OTA (AUTO_OTA_ON_BOOT)")
+            try:
+                import diag_log
+
+                diag_log.log("run_actions -> reboot for boot OTA")
+            except Exception:
+                pass
             import machine
             import time
 
@@ -136,6 +149,12 @@ def run_actions(actions, prefer_wifi=False):
             return
         if action == "reboot":
             print("remote_control: reboot from sheet command")
+            try:
+                import diag_log
+
+                diag_log.log("run_actions -> reboot from sheet")
+            except Exception:
+                pass
             import machine
             import time
 

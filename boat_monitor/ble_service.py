@@ -171,6 +171,16 @@ def log_power_and_gps(
     """
     import sheets_log
 
+    try:
+        import diag_log
+
+        diag_log.log(
+            "log_power_and_gps entry note=%s prefer_wifi=%s ble=%s"
+            % (note, prefer_wifi, ble_monitor is not None)
+        )
+    except Exception:
+        pass
+
     def _run(prefer):
         logger = sheets_log.SheetsLogger(prefer_wifi=prefer)
         actions = []
@@ -205,6 +215,12 @@ def log_power_and_gps(
         summary, actions = _run(use_wifi and ble_monitor is None)
 
     if actions:
+        try:
+            import diag_log
+
+            diag_log.log("log_power_and_gps remote actions %s" % actions)
+        except Exception:
+            pass
         from remote_control import run_actions
 
         run_actions(actions, prefer_wifi=False)

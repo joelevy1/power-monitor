@@ -97,6 +97,13 @@ class SheetsLogger:
         if self._data_open:
             return
 
+        try:
+            import diag_log
+
+            diag_log.log("ensure_data start prefer_wifi=%s" % self.prefer_wifi)
+        except Exception:
+            pass
+
         if self.prefer_wifi:
             try:
                 import wifi_uplink
@@ -104,11 +111,30 @@ class SheetsLogger:
                 ssid = wifi_uplink.connect(timeout_s=15)
                 if ssid:
                     print("SheetsLogger: using Wi-Fi (%s)" % ssid)
+                    try:
+                        import diag_log
+
+                        diag_log.log("ensure_data wifi ok ssid=%s" % ssid)
+                    except Exception:
+                        pass
                     self._wifi_ssid = ssid
                     self._data_open = True
                     return
             except Exception as exc:
                 print("SheetsLogger: Wi-Fi attempt failed, falling back to cellular:", exc)
+                try:
+                    import diag_log
+
+                    diag_log.log("ensure_data wifi failed %s" % exc)
+                except Exception:
+                    pass
+
+        try:
+            import diag_log
+
+            diag_log.log("ensure_data cellular start timeout=%ss" % registration_timeout_s)
+        except Exception:
+            pass
 
         from cellular import CellularError, Sim7600Modem
 
@@ -116,9 +142,21 @@ class SheetsLogger:
         try:
             self._cellular.ensure_data(registration_timeout_s=registration_timeout_s)
         except CellularError as exc:
+            try:
+                import diag_log
+
+                diag_log.log("ensure_data cellular FAIL %s" % exc)
+            except Exception:
+                pass
             raise SheetsLogError(str(exc))
         self._used_cellular = True
         self._data_open = True
+        try:
+            import diag_log
+
+            diag_log.log("ensure_data cellular ok")
+        except Exception:
+            pass
 
     def close_data(self):
         """Tear down whichever transport is open. Always call this when
@@ -151,12 +189,25 @@ class SheetsLogger:
         body = {"tab": tab, "token": self.token, "data": data}
         body_text = json.dumps(body)
 
+        try:
+            import diag_log
+
+            diag_log.log("log_row POST tab=%s via=%s" % (tab, self._wifi_ssid or "cellular"))
+        except Exception:
+            pass
+
         if self._wifi_ssid:
             import wifi_uplink
 
             try:
                 response_text = wifi_uplink.WifiHttp().http_post_json(self.url, body_text)
             except wifi_uplink.WifiError as exc:
+                try:
+                    import diag_log
+
+                    diag_log.log("log_row wifi POST FAIL %s" % exc)
+                except Exception:
+                    pass
                 raise SheetsLogError(str(exc))
         else:
             from cellular import CellularError
@@ -164,7 +215,20 @@ class SheetsLogger:
             try:
                 response_text = self._cellular.http_post_json(self.url, body_text.encode())
             except CellularError as exc:
+                try:
+                    import diag_log
+
+                    diag_log.log("log_row cellular POST FAIL %s" % exc)
+                except Exception:
+                    pass
                 raise SheetsLogError(str(exc))
+
+        try:
+            import diag_log
+
+            diag_log.log("log_row POST ok tab=%s len=%d" % (tab, len(response_text or "")))
+        except Exception:
+            pass
 
         try:
             return json.loads(response_text)
@@ -230,6 +294,12 @@ class SheetsLogger:
     ):
         """One Power_Log row plus a best-effort GPS_Log row. Optional on_progress
         stage strings let BLE/UI show progress while cellular work runs."""
+        try:
+            import diag_log
+
+            diag_log.log("log_power_and_gps start note=%s" % note)
+        except Exception:
+            pass
         if on_progress:
             on_progress("logging_modem")
         self.ensure_data()
@@ -239,6 +309,12 @@ class SheetsLogger:
         power_outcome = "ok"
         last_response = None
         remote_actions = []
+        try:
+            import diag_log
+
+            diag_log.log("log_power POST")
+        except Exception:
+            pass
         try:
             last_response = self.log_power(
                 device=device,
@@ -258,21 +334,58 @@ class SheetsLogger:
             on_progress("logging_power_ok")
 
         gps_outcome = "no_fix"
-        try:
-            if on_progress:
-                on_progress("logging_gps")
-            gps_result = self.log_gps_now(device, timeout_s=gps_timeout_s, note=status_note)
-            gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
-            # Do not apply sheet OTA/reboot from GPS-only when Power_Log failed — that
-            # caused a reboot with no voltage row (seen 2026-08-06) and left the
-            # device silent. Non-destructive settings still require a good power POST.
-            if power_outcome == "ok" and isinstance(gps_result, dict) and gps_result.get("commands"):
-                remote_actions = self._apply_remote_from_response(gps_result, device)
-        except Exception as exc:
-            gps_outcome = "failed: %s" % exc
+        if power_outcome != "ok":
+            gps_outcome = "skipped_power_failed"
+            try:
+                import diag_log
+
+                diag_log.log("log_gps skipped (power log failed)")
+            except Exception:
+                pass
+        else:
+            try:
+                import gc
+
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if on_progress:
+                    on_progress("logging_gps")
+                if self._wifi_ssid:
+                    try:
+                        import diag_log
+
+                        diag_log.log("log_gps skipped (wifi uplink, no modem GPS)")
+                    except Exception:
+                        pass
+                    gps_result = self.log_gps(
+                        device, None, None, status="no_fix", note=status_note or "wifi uplink"
+                    )
+                    gps_outcome = "skipped_wifi"
+                else:
+                    try:
+                        import diag_log
+
+                        diag_log.log("log_gps_now start timeout=%ss" % gps_timeout_s)
+                    except Exception:
+                        pass
+                    gps_result = self.log_gps_now(device, timeout_s=gps_timeout_s, note=status_note)
+                    gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
+                if isinstance(gps_result, dict) and gps_result.get("commands"):
+                    remote_actions = self._apply_remote_from_response(gps_result, device)
+            except Exception as exc:
+                gps_outcome = "failed: %s" % exc
 
         self._last_remote_actions = remote_actions if power_outcome == "ok" else []
-        return "power: %s, gps: %s" % (power_outcome, gps_outcome)
+        summary = "power: %s, gps: %s" % (power_outcome, gps_outcome)
+        try:
+            import diag_log
+
+            diag_log.log("log_power_and_gps done %s actions=%s" % (summary, remote_actions))
+        except Exception:
+            pass
+        return summary
 
     def log_gps_now(self, device, timeout_s=20, poll_interval_s=2, note=""):
         """Get one GPS fix attempt over the modem's UART and log it to

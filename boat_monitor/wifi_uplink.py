@@ -60,6 +60,13 @@ def connect(timeout_s=15):
         print("wifi_uplink: no networks configured (see wifi_credentials.example.py)")
         return None
 
+    try:
+        import diag_log
+
+        diag_log.log("wifi connect start networks=%d timeout=%ss" % (len(networks), timeout_s))
+    except Exception:
+        pass
+
     wlan = _wlan()
     wlan.active(True)
 
@@ -70,26 +77,62 @@ def connect(timeout_s=15):
 
         print("wifi_uplink: trying", ssid)
         try:
+            import diag_log
+
+            diag_log.log("wifi trying %s" % ssid)
+        except Exception:
+            pass
+        try:
             wlan.connect(ssid, password)
         except OSError as exc:
             print("wifi_uplink: connect() raised for %s: %s" % (ssid, exc))
+            try:
+                import diag_log
+
+                diag_log.log("wifi connect() error %s: %s" % (ssid, exc))
+            except Exception:
+                pass
             continue
 
         start = time.ticks_ms()
         while time.ticks_diff(time.ticks_ms(), start) < timeout_s * 1000:
             if wlan.isconnected():
                 print("wifi_uplink: connected to", ssid, wlan.ifconfig())
+                try:
+                    import diag_log
+
+                    diag_log.log("wifi connected %s ip=%s" % (ssid, wlan.ifconfig()[0]))
+                except Exception:
+                    pass
                 return ssid
             # status() < 0 means the connect attempt already failed (wrong
             # password, not found, etc) -- no point waiting out the timeout.
             if hasattr(wlan, "status") and wlan.status() < 0:
                 print("wifi_uplink: %s failed early (status %s)" % (ssid, wlan.status()))
+                try:
+                    import diag_log
+
+                    diag_log.log("wifi early fail %s status=%s" % (ssid, wlan.status()))
+                except Exception:
+                    pass
                 break
             time.sleep(0.5)
         else:
             print("wifi_uplink: timed out connecting to", ssid)
+            try:
+                import diag_log
+
+                diag_log.log("wifi timeout %s" % ssid)
+            except Exception:
+                pass
 
     wlan.active(False)
+    try:
+        import diag_log
+
+        diag_log.log("wifi connect failed (no network)")
+    except Exception:
+        pass
     return None
 
 
@@ -158,6 +201,33 @@ REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 MAX_REDIRECTS = 5
 
 
+def _cookie_from_set_cookie(set_cookie):
+    if not set_cookie:
+        return ""
+    # First name=value pair only (enough for Apps Script redirect session).
+    return set_cookie.split(";")[0].strip()
+
+
+def _decode_chunked(body_bytes):
+    out = b""
+    pos = 0
+    while pos < len(body_bytes):
+        line_end = body_bytes.find(b"\r\n", pos)
+        if line_end < 0:
+            break
+        size_line = body_bytes[pos:line_end].decode("utf-8", "ignore").split(";", 1)[0].strip()
+        try:
+            chunk_size = int(size_line, 16)
+        except ValueError:
+            break
+        pos = line_end + 2
+        if chunk_size == 0:
+            break
+        out += body_bytes[pos : pos + chunk_size]
+        pos += chunk_size + 2
+    return out.decode("utf-8", "ignore")
+
+
 class WifiHttp:
     """Minimal HTTP/HTTPS client over a raw socket, no urequests needed.
 
@@ -166,7 +236,16 @@ class WifiHttp:
     interchangeably), plus http_post_json() for sheets_log.py.
     """
 
-    def _request(self, method, url, body=None, headers=None, timeout_s=20, _redirect_count=0):
+    def _request(
+        self,
+        method,
+        url,
+        body=None,
+        headers=None,
+        timeout_s=20,
+        _redirect_count=0,
+        _cookie="",
+    ):
         import socket
 
         host, port, path, is_https = split_url(url)
@@ -175,6 +254,8 @@ class WifiHttp:
         headers.setdefault("Host", host)
         headers.setdefault("Connection", "close")
         headers.setdefault("User-Agent", "boat-monitor-pico")
+        if _cookie:
+            headers.setdefault("Cookie", _cookie)
 
         body_bytes = b""
         if body is not None:
@@ -199,9 +280,6 @@ class WifiHttp:
                 try:
                     sock = ssl.wrap_socket(sock, server_hostname=host)
                 except TypeError:
-                    # Some MicroPython builds don't support server_hostname
-                    # (no SNI) -- try without it; may fail against hosts
-                    # that route purely by SNI.
                     sock = ssl.wrap_socket(sock)
 
             sock.write(request_text.encode())
@@ -229,15 +307,14 @@ class WifiHttp:
             if not location:
                 raise WifiError("redirect (status %s) with no Location header from %s" % (status, url))
             print("wifi_uplink: following redirect ->", location)
-            # 301/302/303 downgrade to GET with no body, matching what
-            # browsers/urllib do (and what the redirect target expects --
-            # Apps Script's redirect serves the already-computed doPost()
-            # response on a plain GET). 307/308 must preserve the ORIGINAL
-            # request's method+body, not this redirect response's body.
+            next_cookie = _cookie
+            set_cookie = resp_headers.get("set-cookie")
+            if set_cookie:
+                next_cookie = _cookie_from_set_cookie(set_cookie)
             if status in (307, 308):
                 next_method, next_body, next_headers = method, body, headers
             else:
-                next_method, next_body, next_headers = "GET", None, None
+                next_method, next_body, next_headers = "GET", None, {}
             return self._request(
                 next_method,
                 location,
@@ -245,9 +322,10 @@ class WifiHttp:
                 headers=next_headers,
                 timeout_s=timeout_s,
                 _redirect_count=_redirect_count + 1,
+                _cookie=next_cookie,
             )
 
-        return status, response_body
+        return status, response_body, url
 
     def _parse_response(self, response):
         header_end = response.find(b"\r\n\r\n")
@@ -270,11 +348,20 @@ class WifiHttp:
 
         raw_body = response[header_end + 4:]
 
-        # Not de-chunking Transfer-Encoding: chunked -- GitHub raw content
-        # and Apps Script /exec responses both send Content-Length, which
-        # is all this client targets. If a server sends chunked encoding
-        # instead, the body will include chunk-size markers; not handled.
-        return status, resp_headers, raw_body.decode("utf-8", "ignore")
+        te = resp_headers.get("transfer-encoding", "").lower()
+        if "chunked" in te:
+            response_body = _decode_chunked(raw_body)
+        else:
+            cl = resp_headers.get("content-length")
+            if cl is not None:
+                try:
+                    n = int(cl)
+                    raw_body = raw_body[:n]
+                except ValueError:
+                    pass
+            response_body = raw_body.decode("utf-8", "ignore")
+
+        return status, resp_headers, response_body
 
     def http_get(self, url, timeout_s=20):
         """Matches cellular.Sim7600Modem.http_get()'s signature/return
@@ -282,16 +369,21 @@ class WifiHttp:
         on success) so ota.py's load_manifest()/apply_manifest() work with
         either client unchanged.
         """
-        status, body = self._request("GET", url, timeout_s=timeout_s)
+        status, body, final_url = self._request("GET", url, timeout_s=timeout_s)
         if status != 200:
-            raise WifiError("HTTP status %s for %s" % (status, url))
+            raise WifiError(
+                "HTTP status %s for %s body=%s" % (status, final_url, (body or "")[:120])
+            )
         return body
 
     def http_post_json(self, url, body_text, timeout_s=20):
         headers = {"Content-Type": "application/json"}
-        status, body = self._request(
+        status, body, final_url = self._request(
             "POST", url, body=body_text, headers=headers, timeout_s=timeout_s
         )
         if status != 200:
-            raise WifiError("HTTP status %s posting to %s" % (status, url))
+            raise WifiError(
+                "HTTP status %s after POST (final URL %s) body=%s"
+                % (status, final_url, (body or "")[:120])
+            )
         return body
