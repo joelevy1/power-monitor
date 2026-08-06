@@ -14,6 +14,6 @@
 # =============================================================================
 
 WIFI_NETWORKS = [
-    # ("Seattle Boat", "marina-wifi-password"),
-    # ("HomeNetwork", "home-wifi-password"),
+    ("Seattle Boat", "seaboats"),
+    ("Levy-Guest", "welcomehome"),
 ]
