@@ -142,8 +142,8 @@ function friendlyCommandResult(result) {
     return {
       icon: registered ? '✅' : '⚠️',
       text: registered
-        ? `Cell modem/SIM registered. Signal: ${signal}. Internet data was not opened by this check.`
-        : `Cell modem responded, but network is ${registration}. Signal: ${signal}. Internet data was not opened.`,
+        ? `Cell modem and SIM are registered on the network. Signal: ${signal}. This quick check does not test Google Sheets upload.`
+        : `Cell modem responded, but network is ${registration}. Signal: ${signal}. Use Log Now to test internet + Sheets after registration works.`,
       danger: !registered,
     };
   }
@@ -367,6 +367,18 @@ export default function App() {
     }
   }
 
+  function confirmRebootForUpdate() {
+    if (!firmwareUpdateNeeded) return;
+    Alert.alert(
+      'Reboot to update Pico?',
+      `Pico firmware is ${picoFirmware || 'unknown'} and GitHub has ${latestFirmware}. The Pico will disconnect, reboot, and run OTA before BLE starts.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reboot to Update', style: 'destructive', onPress: () => sendCommand('reboot') },
+      ],
+    );
+  }
+
   async function connect() {
     if (scanning) return;
     setScanning(true);
@@ -494,7 +506,7 @@ export default function App() {
       setMessage(
         RESET_COMMANDS.has(cmd)
           ? `${label} sent — Pico will reboot and disconnect shortly (expected).`
-          : `${label} sent — waiting for result...`,
+          : `${label} command sent to Pico.`,
       );
     } catch (error) {
       setPendingCommand(null);
@@ -537,8 +549,6 @@ export default function App() {
         <Text style={styles.title}>Boat Monitor</Text>
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.message}>{message}</Text>
-
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.primaryButton} onPress={connected ? disconnect : connect} disabled={scanning}>
             {scanning ? (
@@ -558,6 +568,41 @@ export default function App() {
               <Text style={styles.buttonText}>Refresh</Text>
             )}
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Command Status</Text>
+          <StatusRow label="App" value={message} danger={!connected && !scanning} />
+          {pendingCommand ? (
+            <View style={styles.pendingRow}>
+              <ActivityIndicator color="#7dd3fc" />
+              <View style={styles.pendingCopy}>
+                <Text style={styles.pendingText}>
+                  Waiting for {COMMAND_INFO[pendingCommand]?.label || pendingCommand} result... ({pendingElapsedS}s)
+                </Text>
+                <Text style={styles.hint}>
+                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. Buttons stay disabled until the Pico
+                  sends a final result or disconnects.
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View>
+              <Text style={[styles.resultText, friendlyResult.danger ? styles.danger : styles.resultOk]}>
+                {friendlyResult.icon} {friendlyResult.text}
+              </Text>
+              {friendlyResult.link ? (
+                <TouchableOpacity onPress={() => Linking.openURL(friendlyResult.link)}>
+                  <Text style={[styles.resultText, styles.linkValue]}>Open in Google Maps</Text>
+                </TouchableOpacity>
+              ) : null}
+              <Text style={styles.hint}>
+                {commandResultAt
+                  ? `Last final result received at ${fmtTime(commandResultAt)}.`
+                  : 'Send a service command below to see exactly what is running and how it finished.'}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -612,43 +657,19 @@ export default function App() {
               )}
             </TouchableOpacity>
           ) : null}
+          {firmwareUpdateNeeded ? (
+            <TouchableOpacity
+              style={[styles.dangerButton, styles.checkWifiButton]}
+              onPress={confirmRebootForUpdate}
+              disabled={!connected || !!pendingCommand}
+            >
+              <Text style={styles.buttonText}>Reboot to Update Pico</Text>
+            </TouchableOpacity>
+          ) : null}
           <StatusRow label="Last updated" value={fmtTime(lastUpdated)} />
           <StatusRow label="Engine" value={`${fmtMetric(status?.engine, 'v')} V  ${fmtMetric(status?.engine, 'a', 3)} A`} />
           <StatusRow label="House" value={`${fmtMetric(status?.house, 'v')} V  ${fmtMetric(status?.house, 'a', 3)} A`} />
           <StatusRow label="V50" value={`${fmtMetric(status?.v50, 'v')} V`} />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Last Result</Text>
-          {pendingCommand ? (
-            <View style={styles.pendingRow}>
-              <ActivityIndicator color="#7dd3fc" />
-              <Text style={styles.pendingText}>
-                Running {COMMAND_INFO[pendingCommand]?.label || pendingCommand}... ({pendingElapsedS}s)
-              </Text>
-            </View>
-          ) : (
-            <View>
-              <Text style={[styles.resultText, friendlyResult.danger ? styles.danger : styles.resultOk]}>
-                {friendlyResult.icon} {friendlyResult.text}
-              </Text>
-              {friendlyResult.link ? (
-                <TouchableOpacity onPress={() => Linking.openURL(friendlyResult.link)}>
-                  <Text style={[styles.resultText, styles.linkValue]}>Open in Google Maps</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          )}
-          <Text style={styles.hint}>
-            {pendingCommand
-              ? `Expected: ${COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. This is a real cellular ` +
-                'round-trip (modem reset + network registration), not a bug -- the button will re-enable once it ' +
-                'finishes.'
-              : commandResultAt
-                ? `Outcome of the last command, received at ${fmtTime(commandResultAt)}.`
-                : "This is the outcome of the last command sent below (e.g. Log Now, Check Signal, Check GPS, OTA) -- same " +
-                  "information Thonny's console would show, surfaced here so a laptop isn't needed."}
-          </Text>
         </View>
 
         <View style={styles.card}>
@@ -668,7 +689,6 @@ export default function App() {
             <ServiceButton cmd="signal" label="Check Signal" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
             <ServiceButton cmd="gps" label="Check GPS" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
             <ServiceButton cmd="wifi" label="Start Wi-Fi" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="ota" label="OTA" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
             <ServiceButton cmd="reboot" label="Reboot" style={[styles.dangerButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
           </View>
           <Text style={styles.hint}>
@@ -676,8 +696,9 @@ export default function App() {
             stays connected, {COMMAND_INFO.log.hint}). Check Signal reports modem/SIM/network
             registration + signal strength without opening a full data session ({COMMAND_INFO.signal.hint}).
             Check GPS asks the SIM7600 GPS for a fix and shows a Maps link when available
-            ({COMMAND_INFO.gps.hint}). Start Wi-Fi and Reboot both {COMMAND_INFO.reboot.hint.toLowerCase()} -- that disconnect is
-            expected, not a failure. See "Last Result" above for the outcome of each, including while
+            ({COMMAND_INFO.gps.hint}). Reboot to update only appears above when the GitHub version is newer
+            than the Pico version. Start Wi-Fi and Reboot both {COMMAND_INFO.reboot.hint.toLowerCase()} -- that disconnect is
+            expected, not a failure. See "Command Status" above for the outcome of each, including while
             it's still running.
           </Text>
         </View>
@@ -870,8 +891,11 @@ const styles = StyleSheet.create({
   pendingText: {
     color: '#7dd3fc',
     fontSize: 16,
-    marginLeft: 10,
     ...FW600,
+  },
+  pendingCopy: {
+    flex: 1,
+    marginLeft: 10,
   },
   raw: {
     color: '#cbd5e1',
