@@ -80,6 +80,26 @@ const IN_PROGRESS_RESULTS = new Set([
   'rebooting',
 ]);
 
+function bleAvailabilitySummary({ connected, bleBroadcasting, scanning, inputs }) {
+  const switchOn = !!inputs?.switch;
+  const keyOn = !!inputs?.key;
+  if (connected) {
+    if (switchOn || keyOn) {
+      return 'BLE active — battery switch or key is ON.';
+    }
+    return 'Connected, but switch and key read OFF — Pico may leave BLE mode soon.';
+  }
+  if (scanning) return 'Scanning for BoatMonitor…';
+  if (bleBroadcasting) {
+    return 'BoatMonitor nearby — tap Connect BLE (keep switch or key ON).';
+  }
+  return 'No BLE yet — turn battery switch or key ON at the boat and stay within range. USB to a laptop does not start BLE.';
+}
+
+function remoteFirmwareHint() {
+  return 'Remote firmware update: set Config cmd_ota = 1 on the sheet (one shot). The next automatic upload reboots the Pico for OTA — this does not turn BLE on.';
+}
+
 function inProgressStageText(result) {
   switch (result) {
     case 'logging':
@@ -635,6 +655,13 @@ export default function App() {
           </View>
         </View>
 
+        <View style={styles.bleBanner}>
+          <Text style={styles.bleBannerText}>
+            {bleAvailabilitySummary({ connected, bleBroadcasting, scanning, inputs })}
+          </Text>
+          <Text style={styles.bleBannerHint}>{remoteFirmwareHint()}</Text>
+        </View>
+
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Command Status</Text>
           <StatusRow label="App" value={message} danger={!connected && !scanning} />
@@ -647,9 +674,8 @@ export default function App() {
                 </Text>
                 {pendingStage ? <Text style={styles.stageText}>{pendingStage}</Text> : null}
                 <Text style={styles.hint}>
-                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. While you are connected over BLE,
-                  Log Now uses cellular. When the phone is away, the Pico logs on its own (standby) and prefers Wi-Fi
-                  (marina/home SSIDs), then cellular if Wi-Fi cannot connect.
+                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}.
+                  {pendingCommand === 'log' ? ' Uses cellular while you stay connected over BLE.' : ''}
                 </Text>
               </View>
             </View>
@@ -673,35 +699,50 @@ export default function App() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Logging & connectivity</Text>
-          <Text style={styles.bodyText}>
-            Automatic logging (switch/key off, no app) runs in standby: Wi-Fi first when known networks are configured
-            (GitHub list, Google Sheet Config, or local credentials), then the cell modem if Wi-Fi is unavailable. Boot
-            firmware updates use the same order.
-          </Text>
-          <Text style={[styles.bodyText, styles.bodyGap]}>
-            While you are connected in this app, Log Now intentionally uses cellular so BLE and Wi-Fi do not fight over
-            the same radio. Check the sheet Power_Log column uplink for Levy-Guest, Seattle Boat, or cellular.
-          </Text>
-          <Text style={[styles.bodyText, styles.bodyGap]}>
-            USB to a laptop does not require the cell modem at home. Turn the battery switch or key on when you need this
-            app over BLE at the boat.
-          </Text>
-        </View>
-
-        <View style={styles.card}>
           <Text style={styles.cardTitle}>Service Commands</Text>
-          <View style={styles.buttonRowWrap}>
-            <ServiceButton cmd="log" label="Log Now" style={styles.secondaryButton} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="signal" label="Check Signal" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="gps" label="Check GPS" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="wifi" label="Start Wi-Fi" style={[styles.secondaryButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
-            <ServiceButton cmd="reboot" label="Reboot" style={[styles.dangerButton, styles.btnGap]} connected={connected} pendingCommand={pendingCommand} onPress={sendCommand} />
+          <ServiceButton
+            cmd="log"
+            label="Log Now"
+            style={styles.logNowButton}
+            connected={connected}
+            pendingCommand={pendingCommand}
+            onPress={sendCommand}
+          />
+          <View style={styles.serviceGrid}>
+            <ServiceButton
+              cmd="signal"
+              label="Check Signal"
+              style={styles.serviceGridButton}
+              connected={connected}
+              pendingCommand={pendingCommand}
+              onPress={sendCommand}
+            />
+            <ServiceButton
+              cmd="gps"
+              label="Check GPS"
+              style={styles.serviceGridButton}
+              connected={connected}
+              pendingCommand={pendingCommand}
+              onPress={sendCommand}
+            />
+            <ServiceButton
+              cmd="wifi"
+              label="Start Wi-Fi"
+              style={styles.serviceGridButton}
+              connected={connected}
+              pendingCommand={pendingCommand}
+              onPress={sendCommand}
+            />
+            <ServiceButton
+              cmd="reboot"
+              label="Reboot"
+              style={[styles.serviceGridButton, styles.dangerButton]}
+              connected={connected}
+              pendingCommand={pendingCommand}
+              onPress={sendCommand}
+            />
           </View>
-          <Text style={styles.hint}>
-            Log Now uses cellular while BLE is connected ({COMMAND_INFO.log.hint}). Check Signal and GPS are modem-only
-            diagnostics. Reboot to update appears under Firmware when GitHub is newer.
-          </Text>
+          <Text style={styles.hint}>Log Now posts to Google Sheets over cellular. Firmware update: use Reboot to Update below or sheet cmd_ota.</Text>
         </View>
 
         <View style={styles.card}>
@@ -811,8 +852,9 @@ function StatusRow({ label, value, danger, onPress }) {
 // still in progress on the Pico.
 function ServiceButton({ cmd, label, style, connected, pendingCommand, onPress }) {
   const isPending = pendingCommand === cmd;
+  const disabled = !connected || (!!pendingCommand && !isPending);
   return (
-    <TouchableOpacity style={style} onPress={() => onPress(cmd)} disabled={!connected || !!pendingCommand}>
+    <TouchableOpacity style={[style, disabled && styles.buttonDisabled]} onPress={() => onPress(cmd)} disabled={disabled}>
       {isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{label}</Text>}
     </TouchableOpacity>
   );
@@ -904,6 +946,51 @@ const styles = StyleSheet.create({
   buttonRowWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+  },
+  bleBanner: {
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: '#2563eb',
+  },
+  bleBannerText: {
+    color: '#e2e8f0',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  bleBannerHint: {
+    color: '#64748b',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 8,
+  },
+  logNowButton: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 10,
+    width: '100%',
+  },
+  serviceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  serviceGridButton: {
+    backgroundColor: '#334155',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    width: '48%',
+    marginBottom: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
   },
   btnGap: {
     marginLeft: 10,
