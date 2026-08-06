@@ -1,10 +1,14 @@
 {
-  "version": "1.1.24",
-  "notes": "Wi-Fi Apps Script redirect cookies + chunked bodies; skip GPS when power POST fails.",
+  "version": "1.1.25",
+  "notes": "Boot OTA HTTP retries; Wi-Fi Sheets redirect cookies + chunked; diag log.",
   "files": [
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
+    },
+    {
+      "path": "ota.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
     },
     {
       "path": "wifi_uplink.py",

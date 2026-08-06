@@ -44,8 +44,31 @@ def current_version():
 
 
 def load_manifest(client):
-    data = client.http_get(ota_config.OTA_MANIFEST_URL)
+    data = _http_get_retry(client, ota_config.OTA_MANIFEST_URL)
     return json.loads(data)
+
+
+def _http_get_retry(client, url, attempts=3):
+    """Retry manifest/file downloads — Pico Wi-Fi TLS often aborts once (errno 103)."""
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        try:
+            try:
+                return client.http_get(url, timeout_s=30)
+            except TypeError:
+                return client.http_get(url)
+        except Exception as exc:
+            last_exc = exc
+            print("OTA: GET attempt %d/%d failed: %s" % (attempt, attempts, exc))
+            try:
+                import gc
+
+                gc.collect()
+            except Exception:
+                pass
+            if attempt < attempts:
+                time.sleep(1.5)
+    raise OtaError(str(last_exc))
 
 
 def write_file(path, data):
@@ -84,7 +107,7 @@ def apply_manifest(client, manifest):
         min_size = entry.get("min_size", 1)
 
         print("Updating", path)
-        data = client.http_get(url)
+        data = _http_get_retry(client, url)
         if len(data) < min_size:
             raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
         write_file(path, data)
