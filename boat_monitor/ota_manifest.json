@@ -1,6 +1,6 @@
 {
-  "version": "1.1.1",
-  "notes": "REVERTED 1.1.0's AT+CFUN=0 power-save in close_data() out of caution. modem_cfun_test.py's standalone bench run passed cleanly, but on the very next real boot after 1.1.0 shipped, the boot-time OTA check's first AT+CPIN? got '+CME ERROR: SIM failure' (not the transient 'SIM busy' check_sim() already retries on -- a harder failure), and the SAME failure repeated identically on the next auto-log cycle 300s later. check_alive() (AT/ATE0) succeeded both times; only SIM detection failed, immediately after self.reset()'s hardware reset pulse -- meaning reset() did NOT reliably clear whatever state AT+CFUN=0 left the SIM interface in. The timing (first cellular attempt after this exact change shipped, failing identically twice) was too suspicious to keep running unattended without further investigation on real hardware, so close_data() no longer sends AT+CFUN=0 at all -- reverted rather than guessing at an unverified fix. If you hit 'SIM failure' right now, a full physical power cycle of the modem (not just a Pico soft reboot) is the recommended recovery step -- let me know whether that clears it, since that result tells us whether this really was CFUN=0-related or a separate SIM/hardware issue.",
+  "version": "1.1.2",
+  "notes": "Improve the Wi-Fi console: Log Now, Check GitHub Version, and OTA from GitHub now run as background jobs with a live status card instead of leaving the browser waiting on a long cellular request. The console also shows Pico firmware versus the GitHub OTA manifest and clarifies manual Update Files versus OTA from GitHub.",
   "files": [
     {
       "path": "version.py",
