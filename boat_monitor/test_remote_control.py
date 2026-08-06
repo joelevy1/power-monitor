@@ -24,19 +24,21 @@ def test_interval_override():
 
 
 def test_one_shot_ota():
-    actions = remote_control.apply_commands_payload(
+    actions, detail = remote_control.apply_commands_payload(
         {"settings": {}, "one_shots": ["ota"]},
         device_id="boat-p2",
     )
     assert actions == ["ota"]
+    assert "one_shot=ota" in detail
 
 
 def test_min_fw_version():
-    actions = remote_control.apply_commands_payload(
+    actions, detail = remote_control.apply_commands_payload(
         {"settings": {"min_fw_version": "9.9.9"}, "one_shots": []},
         device_id="boat-p2",
     )
     assert actions == ["ota"]
+    assert "min_fw_version=9.9.9" in detail
 
 
 def main():

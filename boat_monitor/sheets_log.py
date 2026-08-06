@@ -165,7 +165,13 @@ class SheetsLogger:
         try:
             from remote_control import apply_from_log_response
 
-            return apply_from_log_response(response, device_id=device_id)
+            actions, detail = apply_from_log_response(response, device_id=device_id)
+            if detail:
+                try:
+                    self.log_event(device_id, "remote_config", detail)
+                except Exception as exc:
+                    print("SheetsLogger: remote_config event:", exc)
+            return actions
         except Exception as exc:
             print("SheetsLogger: remote_control:", exc)
             return []

@@ -35,14 +35,17 @@ def _version_lt(current, minimum):
 
 
 def apply_commands_payload(payload, device_id=""):
-    """Parse Apps Script `commands` object. Returns a list of actions:
-    'ota', 'reboot' (deduped, ota before reboot).
+    """Parse Apps Script `commands` object.
+
+    Returns (actions, applied_detail) where actions is a list like ['ota']
+    and applied_detail is a short human-readable summary for Events / debugging.
     """
     if not payload or not isinstance(payload, dict):
-        return []
+        return [], ""
 
     settings = payload.get("settings") or {}
     one_shots = payload.get("one_shots") or []
+    applied = []
 
     try:
         import auto_log
@@ -51,8 +54,10 @@ def apply_commands_payload(payload, device_id=""):
         off_s = settings.get("interval_engine_off_s")
         if on_s is not None and str(on_s).strip() != "":
             auto_log.set_interval_overrides(engine_on_s=int(on_s))
+            applied.append("interval_engine_on_s=%s" % int(on_s))
         if off_s is not None and str(off_s).strip() != "":
             auto_log.set_interval_overrides(engine_off_s=int(off_s))
+            applied.append("interval_engine_off_s=%s" % int(off_s))
     except Exception as exc:
         print("remote_control: interval override failed:", exc)
 
@@ -61,8 +66,10 @@ def apply_commands_payload(payload, device_id=""):
         key = str(name or "").strip().lower()
         if key in ("ota", "update", "firmware"):
             actions.append("ota")
+            applied.append("one_shot=ota")
         elif key in ("reboot", "reset"):
             actions.append("reboot")
+            applied.append("one_shot=reboot")
 
     min_fw = settings.get("min_fw_version") or settings.get("target_fw_version")
     if min_fw:
@@ -70,6 +77,7 @@ def apply_commands_payload(payload, device_id=""):
             import version
 
             current = getattr(version, "VERSION", "0")
+            applied.append("min_fw_version=%s current=%s" % (min_fw, current))
             if _version_lt(current, min_fw):
                 actions.append("ota")
         except Exception as exc:
@@ -77,16 +85,17 @@ def apply_commands_payload(payload, device_id=""):
 
     if _truthy(settings.get("cmd_ota")) or _truthy(settings.get("force_ota")):
         actions.append("ota")
+        applied.append("cmd_ota=1")
     if _truthy(settings.get("cmd_reboot")) or _truthy(settings.get("force_reboot")):
         actions.append("reboot")
+        applied.append("cmd_reboot=1")
 
-    # Stable order: OTA (may reboot) before plain reboot.
     out = []
     if "ota" in actions:
         out.append("ota")
     if "reboot" in actions and "ota" not in out:
         out.append("reboot")
-    return out
+    return out, "; ".join(applied)
 
 
 def apply_from_log_response(response, device_id=""):
