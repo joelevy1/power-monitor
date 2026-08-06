@@ -31,7 +31,7 @@
  * Saving Code.gs alone does NOT update the live /exec URL the Pico uses.
  */
 
-var RECEIVER_VERSION = 3;
+var RECEIVER_VERSION = 4;
 var TIMESTAMP_DISPLAY_FORMAT = 'mmm d, yyyy h:mm AM/PM';
 var CONFIG_TAB = 'Config';
 
@@ -48,14 +48,165 @@ function doPost(e) {
 }
 
 function doGet(e) {
+  var params = (e && e.parameter) ? e.parameter : {};
+  var action = String(params.action || '').trim().toLowerCase();
+  if (action === 'dashboard' || action === 'mobile_dashboard') {
+    return jsonOutput_(handleDashboardGet_(params));
+  }
+
   var body = {
     ok: true,
     receiver_version: RECEIVER_VERSION,
-    msg: 'Boat Monitor Sheets receiver is running. POST JSON to log a row.',
+    msg: 'Boat Monitor Sheets receiver is running. POST JSON to log a row. GET ?action=dashboard&token=... for mobile read API.',
   };
+  return jsonOutput_(body);
+}
+
+function jsonOutput_(body) {
   return ContentService
     .createTextOutput(JSON.stringify(body))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleDashboardGet_(params) {
+  var expectedToken = PropertiesService.getScriptProperties().getProperty('SHEETS_POST_TOKEN');
+  if (expectedToken && params.token !== expectedToken) {
+    return { ok: false, error: 'bad token' };
+  }
+
+  var deviceFilter = params.device ? String(params.device).trim() : '';
+  var config = readConfigSettingsOnly_(deviceFilter);
+
+  return {
+    ok: true,
+    receiver_version: RECEIVER_VERSION,
+    device: deviceFilter || 'all',
+    fetched_at: new Date().toISOString(),
+    power: lastRowAsObject_('Power_Log', deviceFilter),
+    gps: lastRowAsObject_('GPS_Log', deviceFilter),
+    bilge_recent: recentRowsAsObjects_('Bilge_Log', deviceFilter, 10),
+    events_recent: recentRowsAsObjects_('Events', deviceFilter, 10),
+    config: config,
+  };
+}
+
+function sheetHeaders_(sheet) {
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) {
+    return [];
+  }
+  return sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+}
+
+function rowToObject_(headers, row) {
+  var out = {};
+  for (var i = 0; i < headers.length; i++) {
+    var key = String(headers[i] || '').trim();
+    if (!key) {
+      continue;
+    }
+    var val = row[i];
+    if (val instanceof Date) {
+      out[key] = val.toISOString();
+    } else {
+      out[key] = val;
+    }
+  }
+  return out;
+}
+
+function deviceMatches_(rowDevice, deviceFilter) {
+  if (!deviceFilter) {
+    return true;
+  }
+  return String(rowDevice || '').trim() === deviceFilter;
+}
+
+function lastRowAsObject_(tabName, deviceFilter) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) {
+    return null;
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return null;
+  }
+  var headers = sheetHeaders_(sheet);
+  var deviceCol = headers.indexOf('device');
+  var scanStart = Math.max(2, lastRow - 200);
+  var values = sheet.getRange(scanStart, 1, lastRow, headers.length).getValues();
+  for (var r = values.length - 1; r >= 0; r--) {
+    var row = values[r];
+    if (deviceCol !== -1 && !deviceMatches_(row[deviceCol], deviceFilter)) {
+      continue;
+    }
+    return rowToObject_(headers, row);
+  }
+  return null;
+}
+
+function recentRowsAsObjects_(tabName, deviceFilter, limit) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) {
+    return [];
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return [];
+  }
+  var headers = sheetHeaders_(sheet);
+  var deviceCol = headers.indexOf('device');
+  var scanStart = Math.max(2, lastRow - 300);
+  var values = sheet.getRange(scanStart, 1, lastRow, headers.length).getValues();
+  var out = [];
+  for (var r = values.length - 1; r >= 0 && out.length < limit; r--) {
+    var row = values[r];
+    if (deviceCol !== -1 && !deviceMatches_(row[deviceCol], deviceFilter)) {
+      continue;
+    }
+    out.push(rowToObject_(headers, row));
+  }
+  return out;
+}
+
+/**
+ * Config read for mobile dashboard — does NOT consume cmd_* one-shots.
+ */
+function readConfigSettingsOnly_(deviceId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var config = ss.getSheetByName(CONFIG_TAB);
+  if (!config || config.getLastRow() < 2) {
+    return {};
+  }
+
+  var rows = config.getRange(2, 1, config.getLastRow(), 2).getValues();
+  var settings = {};
+
+  for (var i = 0; i < rows.length; i++) {
+    var rawKey = String(rows[i][0] || '').trim();
+    var value = rows[i][1];
+    if (!rawKey) {
+      continue;
+    }
+
+    var key = rawKey;
+    if (rawKey.indexOf(':') !== -1) {
+      if (!deviceId || rawKey.indexOf(deviceId + ':') !== 0) {
+        continue;
+      }
+      key = rawKey.substring(deviceId.length + 1);
+    }
+
+    if (key.indexOf('cmd_') === 0) {
+      continue;
+    }
+
+    settings[key] = value;
+  }
+
+  return settings;
 }
 
 function handlePost_(e) {
