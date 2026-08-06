@@ -163,6 +163,13 @@ export default function App() {
   const [commandResultAt, setCommandResultAt] = useState(null);
   const lastCommandResultRef = useRef(null);
   const lastFirmwareCheckRef = useRef(null);
+  const wifiCheckIdRef = useRef(0);
+
+  function resetWifiConsoleStatus() {
+    wifiCheckIdRef.current += 1;
+    setWifiConsoleStatus('idle');
+    setWifiConsoleError(null);
+  }
 
   // Ticking display while a command is pending -- without this, pressing
   // a button that takes 10-90s (a real cellular round-trip) just shows a
@@ -296,13 +303,17 @@ export default function App() {
   }, [connected]);
 
   async function checkWifiConsole() {
+    const checkId = wifiCheckIdRef.current + 1;
+    wifiCheckIdRef.current = checkId;
     setWifiConsoleStatus('checking');
     setWifiConsoleError(null);
     try {
       const res = await fetchWithTimeout(WIFI_CONSOLE_URL, { method: 'GET' }, WIFI_CHECK_TIMEOUT_MS);
+      if (wifiCheckIdRef.current !== checkId) return;
       setWifiConsoleStatus(res.ok ? 'reachable' : 'unreachable');
       if (!res.ok) setWifiConsoleError(`HTTP ${res.status}`);
     } catch (error) {
+      if (wifiCheckIdRef.current !== checkId) return;
       setWifiConsoleStatus('unreachable');
       setWifiConsoleError(error?.message || String(error));
     }
@@ -320,6 +331,7 @@ export default function App() {
     if (scanning) return;
     setScanning(true);
     setMessage('Scanning for BoatMonitor...');
+    resetWifiConsoleStatus();
     setStatus(null);
     setRawStatus('');
 
@@ -333,6 +345,7 @@ export default function App() {
         setMessage('Disconnected');
         setLastUpdated(null);
         setSignalStrength(null);
+        resetWifiConsoleStatus();
         // A pending "reboot"/"wifi" command causes exactly this disconnect
         // as its expected, successful outcome -- but ANY disconnect ends
         // whatever was pending, since there's no more BLE connection left
@@ -382,6 +395,7 @@ export default function App() {
         setStatus(null);
       }
       setConnected(true);
+      resetWifiConsoleStatus();
       setMessage(`Connected to ${ble.deviceLabel(connectedDevice) || connectedDevice.id}`);
     } catch (error) {
       setMessage(error.message || String(error));
@@ -407,6 +421,7 @@ export default function App() {
       setMessage('Disconnected');
       setLastUpdated(null);
       setSignalStrength(null);
+      resetWifiConsoleStatus();
       setPendingCommand(null);
       setPendingSince(null);
       import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
@@ -430,6 +445,7 @@ export default function App() {
     const label = COMMAND_INFO[cmd]?.label || cmd;
     setPendingCommand(cmd);
     setPendingSince(Date.now());
+    if (RESET_COMMANDS.has(cmd)) resetWifiConsoleStatus();
 
     try {
       const ble = await import('./bleConnection');
