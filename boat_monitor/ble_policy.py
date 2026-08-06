@@ -51,3 +51,15 @@ def ble_wanted():
     if inputs["switch"] or inputs["key"]:
         return True
     return usb_host_connected()
+
+
+def wait_for_ble_wanted(timeout_s=3.0, poll_s=0.2):
+    """USB CDC often connects a moment after boot when Thonny opens the port."""
+    import time
+
+    deadline = time.ticks_add(time.ticks_ms(), int(timeout_s * 1000))
+    while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+        if ble_wanted():
+            return True
+        time.sleep(poll_s)
+    return ble_wanted()
