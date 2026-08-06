@@ -157,55 +157,83 @@ def read_status(command_result=None):
     return status
 
 
-def log_power_and_gps(note, on_progress=None, gps_timeout_s=20):
-    """Log one Power_Log row and attempt one GPS_Log row, tracking each
-    outcome independently so a GPS no-fix (e.g. no antenna) doesn't hide a
-    successful power log or vice versa. Shared by:
-    - ble_service.py's manual 'log'/'log_now' BLE command
-    - BoatMonitorBle._maybe_auto_log()'s automatic background trigger
-    - field_console.py's web '/log' page ("Log Now" button)
-    previously duplicated inline in the first two (and its own separate
-    copy in field_console.py).
-
-    on_progress: optional callback(stage) for BLE/UI status while work runs.
-    gps_timeout_s: keep auto-log at 20s; manual BLE log uses a shorter wait.
-
-    Returns a "power: ..., gps: ..." summary string. Raises on
-    ensure_data()/close_data() failure (e.g. modem not responding at
-    all) -- the caller decides how to report that differently from a
-    partial power/gps failure.
+def log_power_and_gps(
+    note,
+    on_progress=None,
+    gps_timeout_s=20,
+    prefer_wifi=True,
+    ble_monitor=None,
+):
+    """Log Power_Log + GPS_Log. prefer_wifi=True tries known Wi-Fi first when
+    safe (no active BLE central). Manual BLE 'Log Now' passes prefer_wifi=False
+    so the phone connection stays up and cellular carries the upload.
     """
     import sheets_log
 
-    # prefer_wifi=False: BLE may be connected right now (this function is
-    # commonly reached from a BLE command/auto-log tick) -- Wi-Fi and BLE
-    # share one radio and cannot run at the same time, so trying Wi-Fi
-    # here could kill an active connection. Cellular uses separate UART
-    # hardware and is safe to run alongside BLE. field_console.py's own
-    # call site is Wi-Fi-AP-served, where the Wi-Fi radio is already busy
-    # as an AP -- same reasoning applies there too.
-    logger = sheets_log.SheetsLogger(prefer_wifi=False)
-    actions = []
-    try:
-        status = read_status()
-        summary = logger.log_power_and_gps(
-            device=status["device"],
-            mode=status["mode"],
-            engine=status["engine"],
-            house=status["house"],
-            v50=status["v50"],
-            note=note,
-            gps_timeout_s=gps_timeout_s,
-            on_progress=on_progress,
-        )
-        actions = getattr(logger, "_last_remote_actions", []) or []
-        return summary
-    finally:
-        logger.close_data()
-        if actions:
-            from remote_control import run_actions
+    def _run(prefer):
+        logger = sheets_log.SheetsLogger(prefer_wifi=prefer)
+        actions = []
+        try:
+            import version
 
-            run_actions(actions, prefer_wifi=False)
+            fw = getattr(version, "VERSION", "")
+            status = read_status()
+            summary = logger.log_power_and_gps(
+                device=status["device"],
+                mode=status["mode"],
+                engine=status["engine"],
+                house=status["house"],
+                v50=status["v50"],
+                note=note,
+                fw=fw,
+                gps_timeout_s=gps_timeout_s,
+                on_progress=on_progress,
+            )
+            actions = getattr(logger, "_last_remote_actions", []) or []
+            return summary, actions
+        finally:
+            logger.close_data()
+
+    use_wifi = prefer_wifi and _wifi_uplink_configured()
+    if use_wifi and ble_monitor is not None and ble_monitor.connections:
+        use_wifi = False
+
+    if use_wifi and ble_monitor is not None:
+        summary, actions = _wifi_handoff_log(ble_monitor, lambda: _run(True))
+    else:
+        summary, actions = _run(use_wifi and ble_monitor is None)
+
+    if actions:
+        from remote_control import run_actions
+
+        run_actions(actions, prefer_wifi=False)
+    return summary
+
+
+def _wifi_uplink_configured():
+    try:
+        import wifi_uplink
+
+        return bool(wifi_uplink._load_networks())
+    except Exception:
+        return False
+
+
+def _wifi_handoff_log(ble_monitor, fn):
+    """Drop BLE briefly so the shared radio can join Wi-Fi STA."""
+    ble_monitor.ble.active(False)
+    time.sleep_ms(300)
+    try:
+        return fn()
+    finally:
+        ensure_wifi_off()
+        try:
+            ble_monitor.ble.active(True)
+        except OSError as exc:
+            print("ERROR: ble.active(True) after Wi-Fi log failed:", exc)
+            raise
+        ble_monitor.advertise()
+        ble_monitor.update_status()
 
 
 def check_gps_fix(timeout_s=30, poll_interval_s=2):
@@ -463,6 +491,7 @@ class BoatMonitorBle:
                     note="ble_log_now",
                     on_progress=log_progress,
                     gps_timeout_s=10,
+                    prefer_wifi=False,
                 )
                 self.command_result = "logged (%s)" % summary
             except Exception as exc:
@@ -510,11 +539,13 @@ class BoatMonitorBle:
             self.command_result = "unknown_command: %s" % cmd
             self.update_status()
 
-    def _log_power_and_gps(self, note, on_progress=None, gps_timeout_s=20):
+    def _log_power_and_gps(self, note, on_progress=None, gps_timeout_s=20, prefer_wifi=True):
         return log_power_and_gps(
             note,
             on_progress=on_progress,
             gps_timeout_s=gps_timeout_s,
+            prefer_wifi=prefer_wifi,
+            ble_monitor=self,
         )
 
     def _maybe_auto_log(self, mode):
@@ -556,10 +587,7 @@ class BoatMonitorBle:
 
         print("Auto-log: mode=%s, elapsed=%.0fs" % (mode, elapsed_s))
         try:
-            import version
-
-            fw = getattr(version, "VERSION", "?")
-            summary = self._log_power_and_gps(note="auto_log fw=%s tag=remote6-e2e" % fw)
+            summary = self._log_power_and_gps(note="auto_log", prefer_wifi=True)
             self.command_result = "auto_logged (%s)" % summary
             print("Auto-log result:", summary)
         except Exception as exc:

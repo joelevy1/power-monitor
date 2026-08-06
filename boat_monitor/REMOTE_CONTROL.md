@@ -51,7 +51,8 @@ A raw JSON file in the repo (e.g. `boat_monitor/remote_config.json`) could be fe
 
 | Signal | Where | What to look for |
 |--------|--------|------------------|
-| Firmware version | **Power_Log** `note` column | `auto_log fw=1.1.9` (auto-log rows only) |
+| Firmware version | **Power_Log** `fw` column | e.g. `1.1.16` |
+| Upload path | **Power_Log** `uplink` column | Wi-Fi SSID or `cellular` |
 | Config applied | **Events** tab | `event=remote_config`, `detail` lists intervals / `cmd_ota` / `min_fw_version` |
 | Log cadence | **Power_Log** timestamps | ~**6 minutes** apart after `interval_engine_*_s=360` |
 | OTA ran | Next **Power_Log** `note` | `fw=` bumps from `1.1.8` → `1.1.9` |

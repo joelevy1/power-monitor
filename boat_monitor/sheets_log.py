@@ -77,6 +77,15 @@ class SheetsLogger:
         self._cellular = None  # created lazily, only if the cellular path is used
         self._data_open = False
         self._wifi_ssid = None
+        self._used_cellular = False
+
+    def uplink_label(self):
+        """SSID string when on Wi-Fi, or 'cellular' after ensure_data()."""
+        if self._wifi_ssid:
+            return self._wifi_ssid
+        if self._used_cellular:
+            return "cellular"
+        return ""
 
     def ensure_data(self, registration_timeout_s=60):
         """Bring up an internet connection: Wi-Fi first if configured and
@@ -108,6 +117,7 @@ class SheetsLogger:
             self._cellular.ensure_data(registration_timeout_s=registration_timeout_s)
         except CellularError as exc:
             raise SheetsLogError(str(exc))
+        self._used_cellular = True
         self._data_open = True
 
     def close_data(self):
@@ -176,7 +186,7 @@ class SheetsLogger:
             print("SheetsLogger: remote_control:", exc)
             return []
 
-    def log_power(self, device, mode, engine, house, v50, note=""):
+    def log_power(self, device, mode, engine, house, v50, note="", fw="", uplink=""):
         return self.log_row(
             "Power_Log",
             {
@@ -187,6 +197,8 @@ class SheetsLogger:
                 "house_v": house.get("v") if house else None,
                 "house_a": house.get("a") if house else None,
                 "v50_v": v50.get("v") if v50 else None,
+                "fw": fw,
+                "uplink": uplink,
                 "note": note,
             },
         )
@@ -204,7 +216,18 @@ class SheetsLogger:
             },
         )
 
-    def log_power_and_gps(self, device, mode, engine, house, v50, note="", gps_timeout_s=20, on_progress=None):
+    def log_power_and_gps(
+        self,
+        device,
+        mode,
+        engine,
+        house,
+        v50,
+        note="",
+        fw="",
+        gps_timeout_s=20,
+        on_progress=None,
+    ):
         """One Power_Log row plus a best-effort GPS_Log row. Optional on_progress
         stage strings let BLE/UI show progress while cellular work runs."""
         if on_progress:
@@ -224,6 +247,8 @@ class SheetsLogger:
                 house=house,
                 v50=v50,
                 note=status_note,
+                fw=fw,
+                uplink=self.uplink_label(),
             )
             remote_actions = self._apply_remote_from_response(last_response, device)
         except Exception as exc:
@@ -270,7 +295,10 @@ class SheetsLogger:
         best-effort attempt, not a guarantee of a fix.
         """
         if self._cellular is None:
-            return {"ok": False, "error": "GPS requires the cellular modem (no GPS over Wi-Fi)"}
+            from cellular import Sim7600Modem
+
+            self._cellular = Sim7600Modem()
+            self._cellular.check_alive()
 
         from gps import Gps
 
