@@ -157,7 +157,7 @@ def read_status(command_result=None):
     return status
 
 
-def log_power_and_gps(note):
+def log_power_and_gps(note, on_progress=None, gps_timeout_s=20):
     """Log one Power_Log row and attempt one GPS_Log row, tracking each
     outcome independently so a GPS no-fix (e.g. no antenna) doesn't hide a
     successful power log or vice versa. Shared by:
@@ -166,6 +166,9 @@ def log_power_and_gps(note):
     - field_console.py's web '/log' page ("Log Now" button)
     previously duplicated inline in the first two (and its own separate
     copy in field_console.py).
+
+    on_progress: optional callback(stage) for BLE/UI status while work runs.
+    gps_timeout_s: keep auto-log at 20s; manual BLE log uses a shorter wait.
 
     Returns a "power: ..., gps: ..." summary string. Raises on
     ensure_data()/close_data() failure (e.g. modem not responding at
@@ -182,31 +185,18 @@ def log_power_and_gps(note):
     # call site is Wi-Fi-AP-served, where the Wi-Fi radio is already busy
     # as an AP -- same reasoning applies there too.
     logger = sheets_log.SheetsLogger(prefer_wifi=False)
-    logger.ensure_data()
     try:
         status = read_status()
-
-        power_outcome = "ok"
-        try:
-            logger.log_power(
-                device=status["device"],
-                mode=status["mode"],
-                engine=status["engine"],
-                house=status["house"],
-                v50=status["v50"],
-                note=note,
-            )
-        except Exception as exc:
-            power_outcome = "failed: %s" % exc
-
-        gps_outcome = "no_fix"
-        try:
-            gps_result = logger.log_gps_now(status["device"], note=note)
-            gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
-        except Exception as exc:
-            gps_outcome = "failed: %s" % exc
-
-        return "power: %s, gps: %s" % (power_outcome, gps_outcome)
+        return logger.log_power_and_gps(
+            device=status["device"],
+            mode=status["mode"],
+            engine=status["engine"],
+            house=status["house"],
+            v50=status["v50"],
+            note=note,
+            gps_timeout_s=gps_timeout_s,
+            on_progress=on_progress,
+        )
     finally:
         logger.close_data()
 
@@ -456,8 +446,17 @@ class BoatMonitorBle:
         elif cmd in ("log", "log_now"):
             self.command_result = "logging"
             self.update_status()
+
+            def log_progress(stage):
+                self.command_result = stage
+                self.update_status()
+
             try:
-                summary = self._log_power_and_gps(note="ble_log_now")
+                summary = self._log_power_and_gps(
+                    note="ble_log_now",
+                    on_progress=log_progress,
+                    gps_timeout_s=10,
+                )
                 self.command_result = "logged (%s)" % summary
             except Exception as exc:
                 self.command_result = "log_failed: %s" % exc
@@ -504,8 +503,12 @@ class BoatMonitorBle:
             self.command_result = "unknown_command: %s" % cmd
             self.update_status()
 
-    def _log_power_and_gps(self, note):
-        return log_power_and_gps(note)
+    def _log_power_and_gps(self, note, on_progress=None, gps_timeout_s=20):
+        return log_power_and_gps(
+            note,
+            on_progress=on_progress,
+            gps_timeout_s=gps_timeout_s,
+        )
 
     def _maybe_auto_log(self, mode):
         """Called once per run() tick (~2s cadence) with the mode from

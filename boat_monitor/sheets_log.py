@@ -189,6 +189,42 @@ class SheetsLogger:
             },
         )
 
+    def log_power_and_gps(self, device, mode, engine, house, v50, note="", gps_timeout_s=20, on_progress=None):
+        """One Power_Log row plus a best-effort GPS_Log row. Optional on_progress
+        stage strings let BLE/UI show progress while cellular work runs."""
+        if on_progress:
+            on_progress("logging_modem")
+        self.ensure_data()
+        if on_progress:
+            on_progress("logging_power")
+        status_note = note
+        power_outcome = "ok"
+        try:
+            self.log_power(
+                device=device,
+                mode=mode,
+                engine=engine,
+                house=house,
+                v50=v50,
+                note=status_note,
+            )
+        except Exception as exc:
+            power_outcome = "failed: %s" % exc
+
+        if on_progress:
+            on_progress("logging_power_ok")
+
+        gps_outcome = "no_fix"
+        try:
+            if on_progress:
+                on_progress("logging_gps")
+            gps_result = self.log_gps_now(device, timeout_s=gps_timeout_s, note=status_note)
+            gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
+        except Exception as exc:
+            gps_outcome = "failed: %s" % exc
+
+        return "power: %s, gps: %s" % (power_outcome, gps_outcome)
+
     def log_gps_now(self, device, timeout_s=20, poll_interval_s=2, note=""):
         """Get one GPS fix attempt over the modem's UART and log it to
         GPS_Log (blank lat/lon/maps_link + status="no_fix" if none was

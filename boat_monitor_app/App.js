@@ -53,7 +53,7 @@ function fetchWithTimeout(url, options, timeoutMs) {
 // registration + HTTPS), not app slowness -- see cellular.py/auto_log.py.
 const COMMAND_INFO = {
   refresh: { label: 'Refresh', hint: 'instant' },
-  log: { label: 'Log Now', hint: '~10-90s (cellular)' },
+  log: { label: 'Log Now', hint: '~15-45s (modem setup + Sheets + quick GPS try)' },
   signal: { label: 'Check Signal', hint: '~5-20s (modem/SIM/network registration, no data session)' },
   gps: { label: 'Check GPS', hint: '~5-30s (GPS fix check, no internet data session)' },
   ota: { label: 'OTA Check', hint: 'reboots, then checks GitHub before BLE starts' },
@@ -68,12 +68,46 @@ const COMMAND_INFO = {
 // showing "Sent command: X" forever with no further feedback.
 const IN_PROGRESS_RESULTS = new Set([
   'logging',
+  'logging_modem',
+  'logging_power',
+  'logging_power_ok',
+  'logging_gps',
   'checking_signal',
   'checking_gps',
   'ota_started',
+  'ota_rebooting',
   'starting_wifi',
   'rebooting',
 ]);
+
+function inProgressStageText(result) {
+  switch (result) {
+    case 'logging':
+      return 'Starting log to Google Sheets...';
+    case 'logging_modem':
+      return 'Connecting cellular modem to the network (this is usually the slow part)...';
+    case 'logging_power':
+      return 'Posting Power_Log to Google Sheets...';
+    case 'logging_power_ok':
+      return 'Power row saved — check the sheet now. Trying a quick GPS fix...';
+    case 'logging_gps':
+      return 'Trying a quick GPS fix for GPS_Log...';
+    case 'checking_signal':
+      return 'Checking modem/SIM/network registration...';
+    case 'checking_gps':
+      return 'Checking GPS fix...';
+    case 'ota_rebooting':
+      return 'Rebooting to run OTA before BLE starts...';
+    case 'ota_started':
+      return 'Checking GitHub for firmware updates...';
+    case 'starting_wifi':
+      return 'Switching to Wi-Fi console mode...';
+    case 'rebooting':
+      return 'Rebooting Pico...';
+    default:
+      return result;
+  }
+}
 
 // These intentionally reboot the Pico -- BLE disconnecting shortly after
 // sending them is EXPECTED (a successful outcome), not a failure/hang.
@@ -204,6 +238,7 @@ export default function App() {
   const lastCommandResultRef = useRef(null);
   const lastFirmwareCheckRef = useRef(null);
   const wifiCheckIdRef = useRef(0);
+  const commandBaselineRef = useRef(null);
 
   function resetWifiConsoleStatus() {
     wifiCheckIdRef.current += 1;
@@ -233,16 +268,25 @@ export default function App() {
   useEffect(() => {
     const result = status?.command_result;
     if (!result) return;
+
+    if (pendingCommand) {
+      const baseline = commandBaselineRef.current;
+      if (result === baseline) return;
+      if (IN_PROGRESS_RESULTS.has(result)) return;
+
+      const label = COMMAND_INFO[pendingCommand]?.label || pendingCommand;
+      const friendly = friendlyCommandResult(result);
+      lastCommandResultRef.current = result;
+      setCommandResultAt(new Date());
+      setMessage(`${label} ${friendly.danger ? 'failed' : 'finished'} - see Command Status.`);
+      setPendingCommand(null);
+      setPendingSince(null);
+      return;
+    }
+
     if (result !== lastCommandResultRef.current) {
       lastCommandResultRef.current = result;
       setCommandResultAt(new Date());
-    }
-    if (pendingCommand && !IN_PROGRESS_RESULTS.has(result)) {
-      const label = COMMAND_INFO[pendingCommand]?.label || pendingCommand;
-      const friendly = friendlyCommandResult(result);
-      setMessage(`${label} ${friendly.danger ? 'failed' : 'finished'} - see Last Result.`);
-      setPendingCommand(null);
-      setPendingSince(null);
     }
   }, [status?.command_result, pendingCommand]);
 
@@ -495,6 +539,8 @@ export default function App() {
     }
 
     const label = COMMAND_INFO[cmd]?.label || cmd;
+    commandBaselineRef.current = status?.command_result ?? null;
+    setCommandResultAt(null);
     setPendingCommand(cmd);
     setPendingSince(Date.now());
     if (RESET_COMMANDS.has(cmd)) resetWifiConsoleStatus();
@@ -517,7 +563,17 @@ export default function App() {
 
   const inputs = status?.inputs || {};
   const mode = status?.mode || '--';
-  const friendlyResult = friendlyCommandResult(status?.command_result);
+  const liveCommandResult = status?.command_result;
+  const pendingStage =
+    pendingCommand &&
+    liveCommandResult &&
+    liveCommandResult !== commandBaselineRef.current &&
+    IN_PROGRESS_RESULTS.has(liveCommandResult)
+      ? inProgressStageText(liveCommandResult)
+      : null;
+  const friendlyResult = friendlyCommandResult(
+    pendingCommand ? null : status?.command_result,
+  );
 
   const activeRssi = connected ? signalStrength : scanRssi;
   const bleQuality = signalQualityFor(activeRssi);
@@ -578,11 +634,13 @@ export default function App() {
               <ActivityIndicator color="#7dd3fc" />
               <View style={styles.pendingCopy}>
                 <Text style={styles.pendingText}>
-                  Waiting for {COMMAND_INFO[pendingCommand]?.label || pendingCommand} result... ({pendingElapsedS}s)
+                  Waiting for {COMMAND_INFO[pendingCommand]?.label || pendingCommand}... ({pendingElapsedS}s)
                 </Text>
+                {pendingStage ? <Text style={styles.stageText}>{pendingStage}</Text> : null}
                 <Text style={styles.hint}>
-                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. Buttons stay disabled until the Pico
-                  sends a final result or disconnects.
+                  Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}. Log Now is slow because the Pico
+                  resets the cellular modem, registers on the network, posts to Sheets, then tries GPS — not because the
+                  sheet write itself is heavy.
                 </Text>
               </View>
             </View>
@@ -896,6 +954,11 @@ const styles = StyleSheet.create({
   pendingCopy: {
     flex: 1,
     marginLeft: 10,
+  },
+  stageText: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    marginTop: 8,
   },
   raw: {
     color: '#cbd5e1',
