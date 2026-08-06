@@ -1,14 +1,14 @@
 {
-  "version": "1.1.19",
-  "notes": "wifi_known_networks: Seattle Boat + Levy-Guest.",
+  "version": "1.1.20",
+  "notes": "Fix: no OTA/reboot from sheet when Power_Log POST failed (GPS-only path).",
   "files": [
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
     },
     {
-      "path": "wifi_known_networks.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_known_networks.py"
+      "path": "sheets_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
     }
   ]
 }
