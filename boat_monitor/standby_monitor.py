@@ -25,8 +25,8 @@ def main():
 
     while True:
         if ble_policy.ble_wanted():
-            diag_log.log("ble_wanted -> reboot for BLE service")
-            print("standby_monitor: switch/key/USB — rebooting for BLE service")
+            diag_log.log("switch/key on -> reboot for BLE service")
+            print("standby_monitor: switch/key on — rebooting for BLE service")
             import machine
 
             time.sleep(0.3)

@@ -1,10 +1,22 @@
 {
-  "version": "1.1.25",
-  "notes": "Boot OTA HTTP retries; Wi-Fi Sheets redirect cookies + chunked; diag log.",
+  "version": "1.1.26",
+  "notes": "USB/Thonny no longer forces BLE; bench USB uses standby Wi-Fi log + boot OTA.",
   "files": [
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
+    },
+    {
+      "path": "ble_policy.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_policy.py"
+    },
+    {
+      "path": "main.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
+    },
+    {
+      "path": "standby_monitor.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
     },
     {
       "path": "ota.py",
@@ -23,16 +35,8 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/diag_log.py"
     },
     {
-      "path": "standby_monitor.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
-    },
-    {
       "path": "ble_service.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
-    },
-    {
-      "path": "main.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
     },
     {
       "path": "remote_control.py",

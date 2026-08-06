@@ -1,12 +1,13 @@
 """
 When the Boat Monitor should run BLE (phone app) vs standby-only (logging, no radio).
 
-BLE is enabled only when someone might use the app:
+BLE is enabled when someone might use the app at the boat:
   - Master battery switch ON, or
-  - Ignition key ON, or
-  - Pico micro-USB connected to a PC host (USB serial / CDC active)
+  - Ignition key ON
 
-Otherwise standby_monitor.py runs with BLE off for lower power and simpler Wi-Fi uplink.
+USB micro-USB to a PC (Thonny, serial console) does **not** force BLE — standby
+still runs so boot OTA and Wi-Fi auto-log work on the bench with the cable
+plugged in. Use switch/key on when you need the phone app.
 """
 
 try:
@@ -47,14 +48,13 @@ def usb_host_connected():
 
 
 def ble_wanted():
+    """Start ble_service.main() instead of standby_monitor (switch/key only)."""
     inputs = read_switch_key()
-    if inputs["switch"] or inputs["key"]:
-        return True
-    return usb_host_connected()
+    return inputs["switch"] or inputs["key"]
 
 
 def wait_for_ble_wanted(timeout_s=3.0, poll_s=0.2):
-    """USB CDC often connects a moment after boot when Thonny opens the port."""
+    """Deprecated wait for USB CDC; kept for API compatibility — switch/key only."""
     import time
 
     deadline = time.ticks_add(time.ticks_ms(), int(timeout_s * 1000))

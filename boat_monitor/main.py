@@ -59,13 +59,13 @@ else:
     try:
         import ble_policy
 
-        if ble_policy.wait_for_ble_wanted(timeout_s=3.0):
-            print("Starting BLE service (switch/key on or USB host)")
+        if ble_policy.wait_for_ble_wanted(timeout_s=0.5):
+            print("Starting BLE service (switch or key on)")
             import ble_service
 
             ble_service.main()
         else:
-            print("Starting standby monitor (BLE off)")
+            print("Starting standby monitor (BLE off — Wi-Fi auto-log; USB OK)")
             import standby_monitor
 
             standby_monitor.main()
