@@ -1,10 +1,8 @@
 """
 Load Wi-Fi networks from every source the boat monitor uses.
 
-Try order (first match wins per SSID):
-  1. wifi_credentials.py on the Pico (gitignored, local bench overrides)
-  2. wifi_sheet.json (written from Google Sheet Config key wifi_networks)
-  3. wifi_known_networks.py (GitHub — edit in repo, ship via OTA)
+  - If wifi_sheet.json exists (from Config tab `wifi_networks`), use it only.
+  - Else: wifi_credentials.py, then wifi_known_networks.py (GitHub / OTA).
 """
 
 try:
@@ -60,7 +58,16 @@ def load_sheet_networks():
 
 
 def load_networks():
-    """Ordered list of (ssid, password) for wifi_uplink.connect()."""
+    """Ordered list of (ssid, password) for wifi_uplink.connect().
+
+    When the Config tab has pushed a non-empty list (wifi_sheet.json), that list
+    is authoritative — it replaces GitHub wifi_known_networks for this device.
+    Otherwise: wifi_credentials.py → wifi_known_networks.py.
+    """
+    sheet = load_sheet_networks()
+    if sheet:
+        return sheet
+
     result = []
     seen = set()
 
@@ -77,8 +84,6 @@ def load_networks():
         add(getattr(wifi_credentials, "WIFI_NETWORKS", []))
     except ImportError:
         pass
-
-    add(load_sheet_networks())
 
     try:
         import wifi_known_networks

@@ -1,14 +1,14 @@
 {
-  "version": "1.1.30",
-  "notes": "Wi-Fi miss -> cellular fallback when ALLOW_CELLULAR_WIFI_FALLBACK; OTA test build.",
+  "version": "1.1.31",
+  "notes": "Sheet wifi_networks overrides wifi_known_networks when wifi_sheet.json set.",
   "files": [
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
     },
     {
-      "path": "config.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/config.py"
+      "path": "wifi_networks.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_networks.py"
     },
     {
       "path": "sheets_log.py",
@@ -19,40 +19,8 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
     },
     {
-      "path": "wifi_uplink.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
-    },
-    {
-      "path": "wifi_known_networks.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_known_networks.py"
-    },
-    {
-      "path": "wifi_networks.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_networks.py"
-    },
-    {
-      "path": "standby_monitor.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
-    },
-    {
-      "path": "main.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
-    },
-    {
-      "path": "ble_policy.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_policy.py"
-    },
-    {
-      "path": "diag_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/diag_log.py"
-    },
-    {
-      "path": "ble_service.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
-    },
-    {
-      "path": "remote_control.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_control.py"
+      "path": "config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/config.py"
     }
   ]
 }
