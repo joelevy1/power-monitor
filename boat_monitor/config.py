@@ -42,3 +42,7 @@ HARNESS_SIGNALS = (
     ("Battery switch", PIN_BATTERY_SWITCH, "Opto Ch5 IN+ (+ PlusRoc IN+)"),
     ("Key", PIN_KEY, "Opto Ch6 IN+"),
 )
+
+# Wi-Fi first; if SSIDs exist but none connect, use SIM7600 when True.
+# Empty Wi-Fi list never uses cellular. Set False to fail instead of cell.
+ALLOW_CELLULAR_WIFI_FALLBACK = True

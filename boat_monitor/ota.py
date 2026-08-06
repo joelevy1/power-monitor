@@ -152,18 +152,17 @@ def _get_client(prefer_wifi=True):
         except Exception as exc:
             print("OTA: Wi-Fi attempt failed:", exc)
 
+        allow_cell = True
         try:
-            import wifi_uplink
+            import config as cfg
 
-            if wifi_uplink.load_networks():
-                raise OtaError("Wi-Fi configured but no network connected (modem fallback disabled)")
-        except OtaError:
-            raise
-        except Exception:
+            allow_cell = getattr(cfg, "ALLOW_CELLULAR_WIFI_FALLBACK", True)
+        except ImportError:
             pass
-
-    if prefer_wifi:
-        raise OtaError("Wi-Fi OTA failed and cellular fallback is disabled when prefer_wifi=True")
+        if prefer_wifi and wifi_uplink.load_networks() and allow_cell:
+            print("OTA: Wi-Fi unreachable — trying cellular")
+        elif prefer_wifi:
+            raise OtaError("Wi-Fi could not connect (cellular fallback disabled or no networks)")
 
     print("OTA: using cellular")
     from cellular import Sim7600Modem

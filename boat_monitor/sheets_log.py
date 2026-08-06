@@ -146,10 +146,57 @@ class SheetsLogger:
             try:
                 import diag_log
 
-                diag_log.log("ensure_data FAIL %s" % msg)
+                diag_log.log("ensure_data wifi miss %s" % msg)
             except Exception:
                 pass
-            raise SheetsLogError(msg)
+            allow_cell = True
+            try:
+                import config as cfg
+
+                allow_cell = getattr(cfg, "ALLOW_CELLULAR_WIFI_FALLBACK", True)
+            except ImportError:
+                pass
+            if allow_cell:
+                print("SheetsLogger: %s — trying cellular fallback" % msg)
+                try:
+                    import diag_log
+
+                    diag_log.log("ensure_data wifi miss -> cellular fallback")
+                except Exception:
+                    pass
+            else:
+                raise SheetsLogError(msg)
+
+        else:
+            try:
+                import diag_log
+
+                diag_log.log("ensure_data cellular start timeout=%ss" % registration_timeout_s)
+            except Exception:
+                pass
+
+            from cellular import CellularError, Sim7600Modem
+
+            self._cellular = Sim7600Modem()
+            try:
+                self._cellular.ensure_data(registration_timeout_s=registration_timeout_s)
+            except CellularError as exc:
+                try:
+                    import diag_log
+
+                    diag_log.log("ensure_data cellular FAIL %s" % exc)
+                except Exception:
+                    pass
+                raise SheetsLogError(str(exc))
+            self._used_cellular = True
+            self._data_open = True
+            try:
+                import diag_log
+
+                diag_log.log("ensure_data cellular ok")
+            except Exception:
+                pass
+            return
 
         try:
             import diag_log
