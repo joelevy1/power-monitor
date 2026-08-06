@@ -47,6 +47,14 @@ No TestFlight or Wi-Fi console required for Pico updates.
 
 A raw JSON file in the repo (e.g. `boat_monitor/remote_config.json`) could be fetched on each log for extra keys. The sheet is enough for intervals and OTA triggers and is easier to edit on a phone. Both can coexist later (sheet overrides file).
 
-## Security
+## How to verify (remote test)
 
-Same as logging: anyone with **edit access** to the spreadsheet can set `cmd_ota` or intervals. Keep the sheet private; `SHEETS_POST_TOKEN` only protects **writes from the Pico**, not who edits Config.
+| Signal | Where | What to look for |
+|--------|--------|------------------|
+| Firmware version | **Power_Log** `note` column | `auto_log fw=1.1.9` (auto-log rows only) |
+| Config applied | **Events** tab | `event=remote_config`, `detail` lists intervals / `cmd_ota` / `min_fw_version` |
+| Log cadence | **Power_Log** timestamps | ~**6 minutes** apart after `interval_engine_*_s=360` |
+| OTA ran | Next **Power_Log** `note` | `fw=` bumps from `1.1.8` → `1.1.9` |
+| BLE (if nearby) | App status JSON | `"fw": "1.1.9"` |
+
+Interval overrides are **in RAM only** (lost on reboot until Config is read again on the next log POST).

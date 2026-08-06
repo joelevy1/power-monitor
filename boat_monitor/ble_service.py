@@ -556,7 +556,10 @@ class BoatMonitorBle:
 
         print("Auto-log: mode=%s, elapsed=%.0fs" % (mode, elapsed_s))
         try:
-            summary = self._log_power_and_gps(note="auto_log")
+            import version
+
+            fw = getattr(version, "VERSION", "?")
+            summary = self._log_power_and_gps(note="auto_log fw=%s" % fw)
             self.command_result = "auto_logged (%s)" % summary
             print("Auto-log result:", summary)
         except Exception as exc:
