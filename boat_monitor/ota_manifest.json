@@ -1,6 +1,6 @@
 {
-  "version": "1.1.9",
-  "notes": "Remote test: Power_Log note includes fw= version; Events tab logs remote_config; verify 6min interval via Config sheet.",
+  "version": "1.1.10",
+  "notes": "Remote test 2: note tag=remote2; use Config cmd_ota + interval 420s to verify full remote update.",
   "files": [
     {
       "path": "version.py",
