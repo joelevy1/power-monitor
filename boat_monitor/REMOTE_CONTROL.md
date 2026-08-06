@@ -15,6 +15,24 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 | `min_fw_version` | `1.1.7` | If Pico `version.py` is older, run **OTA** on that log cycle |
 | `cmd_ota` | `1` | **One-shot:** OTA + reboot after this log; cell cleared by script |
 | `cmd_reboot` | `1` | **One-shot:** reboot after this log; cell cleared |
+| `wifi_networks` | see below | Saves networks on the Pico (`wifi_sheet.json`); used on next Wi-Fi connect |
+
+**`wifi_networks` value** — one network per line in the **value** cell (use a tall cell or paste multiple lines):
+
+```text
+Seattle Boat|marina-password
+HomeSSID|home-password
+```
+
+Lines starting with `#` are ignored. Separator is `|` or tab. Applied on every log POST that returns this key (persistent until you change the cell).
+
+## Wi-Fi networks in GitHub (recommended default list)
+
+Edit **`boat_monitor/wifi_known_networks.py`** on `master` — a Python list of `("SSID", "password")` tuples. Tell your Cursor agent what to add; it ships on the next **OTA**.
+
+**On the Pico, try order:** `wifi_credentials.py` (local) → **Sheet** `wifi_networks` → **GitHub** `wifi_known_networks.py`.
+
+Use the **Sheet** when you want a change on the boat without OTA. Use **GitHub** when you want the list versioned and easy to ask the agent to maintain.
 
 Per-device keys use `device_id:` prefix (device id from logs, e.g. `boat-p2`):
 
@@ -42,10 +60,6 @@ Keys without a prefix apply to **all** devices.
 3. Wait for the next **auto-log** (or trigger Log Now over BLE). The Pico downloads the manifest over cellular, installs, and reboots.
 
 No TestFlight or Wi-Fi console required for Pico updates.
-
-## GitHub config file (optional later)
-
-A raw JSON file in the repo (e.g. `boat_monitor/remote_config.json`) could be fetched on each log for extra keys. The sheet is enough for intervals and OTA triggers and is easier to edit on a phone. Both can coexist later (sheet overrides file).
 
 ## How to verify (remote test)
 
