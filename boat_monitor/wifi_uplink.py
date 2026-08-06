@@ -60,6 +60,13 @@ def connect(timeout_s=15):
         print("wifi_uplink: no networks configured (see wifi_credentials.example.py)")
         return None
 
+    try:
+        import diag_log
+
+        diag_log.log("wifi connect start networks=%d timeout=%ss" % (len(networks), timeout_s))
+    except Exception:
+        pass
+
     wlan = _wlan()
     wlan.active(True)
 
@@ -70,26 +77,62 @@ def connect(timeout_s=15):
 
         print("wifi_uplink: trying", ssid)
         try:
+            import diag_log
+
+            diag_log.log("wifi trying %s" % ssid)
+        except Exception:
+            pass
+        try:
             wlan.connect(ssid, password)
         except OSError as exc:
             print("wifi_uplink: connect() raised for %s: %s" % (ssid, exc))
+            try:
+                import diag_log
+
+                diag_log.log("wifi connect() error %s: %s" % (ssid, exc))
+            except Exception:
+                pass
             continue
 
         start = time.ticks_ms()
         while time.ticks_diff(time.ticks_ms(), start) < timeout_s * 1000:
             if wlan.isconnected():
                 print("wifi_uplink: connected to", ssid, wlan.ifconfig())
+                try:
+                    import diag_log
+
+                    diag_log.log("wifi connected %s ip=%s" % (ssid, wlan.ifconfig()[0]))
+                except Exception:
+                    pass
                 return ssid
             # status() < 0 means the connect attempt already failed (wrong
             # password, not found, etc) -- no point waiting out the timeout.
             if hasattr(wlan, "status") and wlan.status() < 0:
                 print("wifi_uplink: %s failed early (status %s)" % (ssid, wlan.status()))
+                try:
+                    import diag_log
+
+                    diag_log.log("wifi early fail %s status=%s" % (ssid, wlan.status()))
+                except Exception:
+                    pass
                 break
             time.sleep(0.5)
         else:
             print("wifi_uplink: timed out connecting to", ssid)
+            try:
+                import diag_log
+
+                diag_log.log("wifi timeout %s" % ssid)
+            except Exception:
+                pass
 
     wlan.active(False)
+    try:
+        import diag_log
+
+        diag_log.log("wifi connect failed (no network)")
+    except Exception:
+        pass
     return None
 
 

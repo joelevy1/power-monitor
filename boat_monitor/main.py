@@ -13,6 +13,14 @@ try:
 except Exception as exc:
     print("OTA config unavailable:", exc)
 
+try:
+    import diag_log
+    import version
+
+    diag_log.log("main boot fw=%s" % getattr(version, "VERSION", "?"))
+except Exception:
+    pass
+
 # Decide which mode was requested BEFORE trying to start either one -- a
 # single try/except wrapping both the os.stat() check AND the import that
 # starts a whole radio mode was a real bug: os.stat() raising OSError
