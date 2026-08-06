@@ -12,7 +12,9 @@ import json
 import os
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 SCOPES = (
     "https://www.googleapis.com/auth/spreadsheets",
@@ -24,6 +26,7 @@ SCOPES = (
 SHEET_TITLE = "Boat Monitor"
 SHEET_TIME_ZONE = "America/Los_Angeles"
 TIMESTAMP_NUMBER_FORMAT = "mmm d, yyyy h:mm AM/PM"
+GOOGLE_SHEETS_EPOCH = datetime(1899, 12, 30)
 
 TABS = {
     "Power_Log": [
@@ -198,6 +201,158 @@ def _format_timestamp_columns(sheets, spreadsheet_id, existing):
     print("OK: spreadsheet timezone set to %s and timestamp columns formatted" % SHEET_TIME_ZONE)
 
 
+def _parse_iso_timestamp(value):
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _sheets_serial_for_pacific(dt_utc):
+    local = dt_utc.astimezone(ZoneInfo(SHEET_TIME_ZONE)).replace(tzinfo=None)
+    return (local - GOOGLE_SHEETS_EPOCH).total_seconds() / 86400
+
+
+def _maps_link(lat, lon):
+    try:
+        return "https://www.google.com/maps?q=%.7f,%.7f" % (float(lat), float(lon))
+    except Exception:
+        return ""
+
+
+def _convert_existing_timestamps_and_repair_gps(sheets, spreadsheet_id, existing):
+    """One-time cleanup for rows written before timestamp/maps_link fixes.
+
+    - Converts ISO timestamp text into date/time values formatted in Pacific
+      time, so number formatting applies to old rows too.
+    - Repairs legacy GPS_Log rows from before the maps_link column existed
+      (old E=status, F=note, G=blank -> new E=maps_link, F=status, G=note).
+    """
+    requests = []
+    converted_timestamps = {}
+
+    for title, headers in TABS.items():
+        if "timestamp_utc" not in headers or title not in existing:
+            continue
+        col = headers.index("timestamp_utc")
+        col_letter = chr(ord("A") + col)
+        values = (
+            sheets.spreadsheets()
+            .values()
+            .get(
+                spreadsheetId=spreadsheet_id,
+                range="%s!%s2:%s" % (title, col_letter, col_letter),
+                valueRenderOption="UNFORMATTED_VALUE",
+            )
+            .execute()
+            .get("values", [])
+        )
+
+        count = 0
+        for offset, row in enumerate(values):
+            if not row:
+                continue
+            dt = _parse_iso_timestamp(row[0])
+            if not dt:
+                continue
+            requests.append(
+                {
+                    "updateCells": {
+                        "range": {
+                            "sheetId": existing[title],
+                            "startRowIndex": offset + 1,
+                            "endRowIndex": offset + 2,
+                            "startColumnIndex": col,
+                            "endColumnIndex": col + 1,
+                        },
+                        "rows": [
+                            {
+                                "values": [
+                                    {
+                                        "userEnteredValue": {"numberValue": _sheets_serial_for_pacific(dt)},
+                                        "userEnteredFormat": {
+                                            "numberFormat": {
+                                                "type": "DATE_TIME",
+                                                "pattern": TIMESTAMP_NUMBER_FORMAT,
+                                            }
+                                        },
+                                    }
+                                ]
+                            }
+                        ],
+                        "fields": "userEnteredValue,userEnteredFormat.numberFormat",
+                    }
+                }
+            )
+            count += 1
+        converted_timestamps[title] = count
+
+    repaired_gps = 0
+    if "GPS_Log" in existing:
+        rows = (
+            sheets.spreadsheets()
+            .values()
+            .get(
+                spreadsheetId=spreadsheet_id,
+                range="GPS_Log!A2:G",
+                valueRenderOption="UNFORMATTED_VALUE",
+            )
+            .execute()
+            .get("values", [])
+        )
+        for offset, row in enumerate(rows):
+            padded = list(row) + [""] * (7 - len(row))
+            # Legacy layout before maps_link existed: E=status, F=note, G=blank.
+            if str(padded[4]).strip() in ("fix", "no_fix") and str(padded[6]).strip() == "":
+                status = str(padded[4]).strip()
+                note = str(padded[5])
+                link = _maps_link(padded[2], padded[3]) if status == "fix" else ""
+                requests.append(
+                    {
+                        "updateCells": {
+                            "range": {
+                                "sheetId": existing["GPS_Log"],
+                                "startRowIndex": offset + 1,
+                                "endRowIndex": offset + 2,
+                                "startColumnIndex": 4,
+                                "endColumnIndex": 7,
+                            },
+                            "rows": [
+                                {
+                                    "values": [
+                                        {"userEnteredValue": {"stringValue": link}},
+                                        {"userEnteredValue": {"stringValue": status}},
+                                        {"userEnteredValue": {"stringValue": note}},
+                                    ]
+                                }
+                            ],
+                            "fields": "userEnteredValue",
+                        }
+                    }
+                )
+                repaired_gps += 1
+
+    for start in range(0, len(requests), 100):
+        sheets.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": requests[start : start + 100]},
+        ).execute()
+
+    print(
+        "OK: converted existing timestamp text cells:",
+        ", ".join("%s=%d" % item for item in sorted(converted_timestamps.items())),
+    )
+    print("OK: repaired legacy GPS_Log rows:", repaired_gps)
+
+
 def main():
     creds_path = _credentials_path()
 
@@ -236,6 +391,7 @@ def main():
 
     print("OK: header rows written on:", ", ".join(TABS.keys()))
     _format_timestamp_columns(sheets, spreadsheet_id, existing)
+    _convert_existing_timestamps_and_repair_gps(sheets, spreadsheet_id, existing)
     print("Set GitHub secret GOOGLE_SHEETS_ID to:", spreadsheet_id)
     return 0
 
