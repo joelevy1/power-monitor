@@ -1,6 +1,6 @@
 {
-  "version": "1.1.31",
-  "notes": "Sheet wifi_networks overrides wifi_known_networks when wifi_sheet.json set.",
+  "version": "1.1.33",
+  "notes": "GP7 PWRKEY wakes the SIM7600 for each cellular/GPS session and AT+CPOF powers it down afterward.",
   "files": [
     {
       "path": "version.py",
@@ -13,6 +13,14 @@
     {
       "path": "sheets_log.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+    },
+    {
+      "path": "cellular.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular.py"
+    },
+    {
+      "path": "ble_service.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
     },
     {
       "path": "ota.py",

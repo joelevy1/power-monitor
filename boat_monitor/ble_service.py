@@ -276,15 +276,18 @@ def check_gps_fix(timeout_s=30, poll_interval_s=2):
     from sheets_log import maps_link_url
 
     modem = Sim7600Modem()
+    modem.ensure_awake()
     modem.check_alive()
     gps = Gps(uart=modem.uart)
     if not gps.on():
+        modem.power_off()
         raise OSError("GPS did not start")
 
     try:
         fix = gps.read(timeout_s=timeout_s, poll_interval_s=poll_interval_s)
     finally:
         gps.off()
+        modem.power_off()
 
     if fix.get("ok"):
         lat = fix.get("lat")

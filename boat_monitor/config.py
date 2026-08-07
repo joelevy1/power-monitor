@@ -18,6 +18,7 @@ PIN_TPS_VSNS = 11   # phys 15 — drive LOW
 PIN_UART_TX = 8     # phys 11
 PIN_UART_RX = 9     # phys 12
 PIN_MODEM_RESET = 10  # phys 14
+PIN_MODEM_PWRKEY = 7  # phys 10 — HAT PWR selector pin, active HIGH
 MODEM_BAUD = 115200
 
 # Optocoupler outputs — active LOW when boat signal is ON

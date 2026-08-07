@@ -483,6 +483,7 @@ class SheetsLogger:
 
             try:
                 self._cellular = Sim7600Modem()
+                self._cellular.ensure_awake()
                 self._cellular.check_alive()
             except CellularError as exc:
                 print("SheetsLogger: GPS skipped —", exc)

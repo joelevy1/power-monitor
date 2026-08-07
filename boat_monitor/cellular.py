@@ -216,6 +216,10 @@ class Sim7600Modem:
             rxbuf=self.RX_BUFFER_SIZE,
         )
         self.rst = Pin(cfg.PIN_MODEM_RESET, Pin.OUT, value=1)
+        # Waveshare HAT PWR selector input. The HAT translates this 3.3V
+        # active-HIGH control into the SIM7600 module's active-LOW PWRKEY.
+        # LOW is released; a ~1.2s HIGH pulse starts a powered-off modem.
+        self.pwrkey = Pin(cfg.PIN_MODEM_PWRKEY, Pin.OUT, value=0)
         self._cfg = cfg
         self._data_open = False
 
@@ -225,6 +229,53 @@ class Sim7600Modem:
         time.sleep(0.3)
         self.rst.value(1)
         time.sleep(3)
+
+    def ensure_awake(self, boot_timeout_s=30):
+        """Wake a modem shut down by AT+CPOF; return True if newly started.
+
+        GP10/RST cannot wake this HAT after a true power-off. GP7 drives the
+        HAT's buffered PWR input and was confirmed on real hardware to wake
+        the modem after AT+CPOF. Avoid pulsing PWR when AT already responds:
+        PWRKEY is a state control, not a reset line.
+        """
+        if "OK" in self.at("AT", 1200, quiet=True):
+            return False
+
+        print("Modem is off; pulsing PWRKEY on GP%d..." % self._cfg.PIN_MODEM_PWRKEY)
+        self.pwrkey.value(1)
+        time.sleep(1.2)
+        self.pwrkey.value(0)
+
+        start = time.ticks_ms()
+        while time.ticks_diff(time.ticks_ms(), start) < boot_timeout_s * 1000:
+            time.sleep(1)
+            if "OK" in self.at("AT", 900, quiet=True):
+                print("Modem woke via PWRKEY.")
+                return True
+
+        raise CellularError(
+            "Modem did not wake after GP%d PWRKEY pulse within %ds"
+            % (self._cfg.PIN_MODEM_PWRKEY, boot_timeout_s)
+        )
+
+    def power_off(self):
+        """Gracefully power the modem off, leaving 5V present at the HAT."""
+        if "OK" not in self.at("AT", 1200, quiet=True):
+            print("Modem already off.")
+            return True
+
+        print("Powering modem off with AT+CPOF...")
+        resp = self.at("AT+CPOF", 15000)
+        if "OK" not in resp or "ERROR" in resp:
+            print("WARNING: modem refused AT+CPOF; leaving it powered.")
+            return False
+
+        # The bench test showed current returning to the Pico-only baseline
+        # after shutdown. Five seconds is ample before the next 5+ minute
+        # logging cycle and avoids blocking for the full UART-off interval.
+        time.sleep(5)
+        print("Modem power-off accepted.")
+        return True
 
     def flush(self):
         while self.uart.any():
@@ -450,15 +501,13 @@ class Sim7600Modem:
         if self._data_open:
             return
 
-        # Always reset first -- the modem needs several seconds after
-        # power-on/reset before it reliably responds to AT at all. This was
-        # previously opt-in via a reset_modem flag that defaulted to False,
-        # which is almost certainly why every earlier attempt failed at the
-        # very first "AT" command with zero response. modem_check.py's
-        # already-proven bench test resets first by default for the same
-        # reason (main(reset_modem=True, ...)) -- match that here instead
-        # of leaving it as a flag someone has to remember to pass.
-        self.reset()
+        # A modem deliberately shut down after the prior logging cycle needs
+        # PWRKEY, not RST. Preserve the established reset-first behavior only
+        # when the modem was already running; a freshly PWRKEY-started module
+        # has just completed its own clean boot.
+        newly_started = self.ensure_awake()
+        if not newly_started:
+            self.reset()
 
         self.check_alive()
         self.check_sim()
@@ -521,6 +570,13 @@ class Sim7600Modem:
         except Exception:
             pass
         self._data_open = False
+        try:
+            self.power_off()
+        except Exception as exc:
+            # Teardown must not turn an otherwise successful Sheet/OTA
+            # transaction into a reported failure. Leaving the modem on is
+            # the safe fallback; the next session can reset it as before.
+            print("WARNING: modem power-off failed:", exc)
 
     def read_http_head(self, timeout_ms=15000):
         """Read the response headers for the just-completed AT+HTTPACTION
