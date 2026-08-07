@@ -19,6 +19,8 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 | `v50_capacity_mah` | `13400` | V50 bank rated mAh (used for % remaining on Pico + sheet) |
 | `v50_full_at_utc` | ISO time | Reset cumulative mAh when user marks bank full (app button sets this) |
 
+Use **`v50_capacity_mah` only** — do not also set `v50_capacity_wh` (legacy Wh estimate).
+
 **`wifi_networks` value** — one network per line in the **value** cell (use a tall cell or paste multiple lines):
 
 ```text
