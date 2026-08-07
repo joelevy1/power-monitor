@@ -186,6 +186,19 @@ def parse_http_read(data, expected_length=None, debug=True):
     return result_bytes.decode("utf-8", "ignore")
 
 
+def modem_uart_responds():
+    """True if the SIM7600 answers AT on UART (not in AT+CPOF sleep).
+
+    Does not pulse PWRKEY — only observes. Safe to call from standby when
+    no logging session should be using the modem.
+    """
+    try:
+        modem = Sim7600Modem()
+        return "OK" in modem.at("AT", 900, quiet=True)
+    except Exception:
+        return False
+
+
 class Sim7600Modem:
     # MicroPython's default UART RX buffer (rp2 port) is small -- far
     # smaller than a burst of several KB the modem can send back-to-back

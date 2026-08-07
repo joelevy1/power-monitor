@@ -5,7 +5,7 @@
 
 @implementation BoatMonitorGoogleMaps
 
-RCT_EXPORT_MODULE();
+RCT_EXPORT_MODULE(BoatMonitorGoogleMaps);
 
 + (BOOL)requiresMainQueueSetup
 {

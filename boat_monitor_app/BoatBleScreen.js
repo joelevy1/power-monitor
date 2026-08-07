@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import Constants from 'expo-constants';
+import { formatTime12h } from './dateTimeFormat';
 
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
@@ -891,13 +892,10 @@ function fmtMetric(reading, field, digits = 2) {
   return reading[field].toFixed(digits);
 }
 
-// Avoids toLocaleTimeString()/Intl -- Hermes' Intl support has been
-// unreliable in this app before (see the base64-js/TextDecoder crashes
-// fixed in 0.1.8/0.1.9), so this sticks to plain Date getters.
+// Plain Date getters (no Intl) — see dateTimeFormat.js
 function fmtTime(date) {
   if (!date) return '--';
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return formatTime12h(date, { seconds: true });
 }
 
 const styles = StyleSheet.create({

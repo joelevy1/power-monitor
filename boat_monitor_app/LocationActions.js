@@ -16,7 +16,7 @@ export default function LocationActions({ lat, lon, mapsLink, shareTitle, whenLa
         onPress={() => Linking.openURL(url).catch(() => {})}
         accessibilityRole="button"
       >
-        <Text style={styles.buttonText}>Open in Maps</Text>
+        <Text style={styles.buttonText}>Open in Google Maps</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.button, styles.secondary]}

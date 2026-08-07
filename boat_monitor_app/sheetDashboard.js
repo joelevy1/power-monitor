@@ -1,6 +1,15 @@
 import Constants from 'expo-constants';
 
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 45000;
+
+function friendlyFetchError(exc) {
+  const name = exc?.name || '';
+  const msg = String(exc?.message || exc || '');
+  if (name === 'AbortError' || msg === 'Aborted' || /aborted/i.test(msg)) {
+    return 'Request timed out — the sheet backend can take 30+ seconds on a cold start. Pull to refresh or tap Try again.';
+  }
+  return msg || 'Could not load sheet data';
+}
 
 function extra() {
   return Constants.expoConfig?.extra || Constants.manifest2?.extra?.expoClient?.extra || {};
@@ -30,6 +39,8 @@ async function fetchWithTimeout(url, timeoutMs) {
       throw new Error(body?.error || `HTTP ${res.status}`);
     }
     return body;
+  } catch (exc) {
+    throw new Error(friendlyFetchError(exc));
   } finally {
     clearTimeout(timer);
   }
@@ -71,4 +82,30 @@ export async function fetchSheetDashboard() {
     };
   }
   return { ok: true, data: body };
+}
+
+/** Write a device-scoped Config key (requires Apps Script v5+ deployed). */
+export async function setSheetConfigKey(key, value) {
+  const { url, token, deviceId, configured } = getSheetClientConfig();
+  if (!configured) {
+    return { ok: false, error: 'missing_config' };
+  }
+  const params = new URLSearchParams({
+    action: 'set_config',
+    token,
+    device: deviceId,
+    key,
+    value: String(value),
+  });
+  const requestUrl = `${url}${url.includes('?') ? '&' : '?'}${params.toString()}`;
+  const body = await fetchWithTimeout(requestUrl, DEFAULT_TIMEOUT_MS);
+  if (!body?.ok) {
+    return { ok: false, error: body?.error || 'set_config_failed', message: body?.error };
+  }
+  return { ok: true };
+}
+
+/** Mark V50 bank 100% — sets v50_full_at_utc in sheet Config. */
+export async function markV50BankFull() {
+  return setSheetConfigKey('v50_full_at_utc', new Date().toISOString());
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # EAS Build: inject Google Maps API key into Info.plist (never commit the key).
 # Run from boat_monitor_app/ (where eas.json lives).
+# Invoked via eas.json prebuildCommand and package.json eas-build-post-install (after pod install).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$ROOT/ios/BoatMonitor/Info.plist"
