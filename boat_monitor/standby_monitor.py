@@ -72,6 +72,12 @@ def main():
                 "heartbeat mode=%s elapsed=%.0fs next_log_in~%.0fs stale_limit=%ss v50=%s heap=%sK"
                 % (mode, elapsed_s, need, stale_limit_s, status.get("v50"), diag_log.mem_kb())
             )
+            try:
+                import v50_energy
+
+                v50_energy.tick(status.get("v50"))
+            except Exception:
+                pass
             stale_s = time.ticks_diff(now, last_successful_log_ms) / 1000
             if stale_s >= stale_limit_s:
                 reason = (

@@ -1,6 +1,6 @@
 {
-  "version": "1.1.36",
-  "notes": "Standby stall reboot: 2x log interval threshold; Events standby_stall_reboot + diag tail.",
+  "version": "1.1.37",
+  "notes": "V50 cumulative mAh on-device + V50_Bank tab; heartbeat sampling between logs.",
   "files": [
     {
       "path": "version.py",
@@ -13,6 +13,14 @@
     {
       "path": "sheets_log.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+    },
+    {
+      "path": "remote_control.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_control.py"
+    },
+    {
+      "path": "v50_energy.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/v50_energy.py"
     },
     {
       "path": "cellular.py",
