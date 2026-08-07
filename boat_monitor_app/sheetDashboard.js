@@ -1,6 +1,15 @@
 import Constants from 'expo-constants';
 
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 45000;
+
+function friendlyFetchError(exc) {
+  const name = exc?.name || '';
+  const msg = String(exc?.message || exc || '');
+  if (name === 'AbortError' || msg === 'Aborted' || /aborted/i.test(msg)) {
+    return 'Request timed out — the sheet backend can take 30+ seconds on a cold start. Pull to refresh or tap Try again.';
+  }
+  return msg || 'Could not load sheet data';
+}
 
 function extra() {
   return Constants.expoConfig?.extra || Constants.manifest2?.extra?.expoClient?.extra || {};
