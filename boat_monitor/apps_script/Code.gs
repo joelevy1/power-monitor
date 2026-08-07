@@ -31,7 +31,7 @@
  * Saving Code.gs alone does NOT update the live /exec URL the Pico uses.
  */
 
-var RECEIVER_VERSION = 4;
+var RECEIVER_VERSION = 5;
 var TIMESTAMP_DISPLAY_FORMAT = 'mmm d, yyyy h:mm AM/PM';
 var CONFIG_TAB = 'Config';
 
@@ -52,6 +52,9 @@ function doGet(e) {
   var action = String(params.action || '').trim().toLowerCase();
   if (action === 'dashboard' || action === 'mobile_dashboard') {
     return jsonOutput_(handleDashboardGet_(params));
+  }
+  if (action === 'set_config') {
+    return jsonOutput_(handleSetConfigGet_(params));
   }
 
   var body = {
@@ -83,6 +86,7 @@ function handleDashboardGet_(params) {
     device: deviceFilter || 'all',
     fetched_at: new Date().toISOString(),
     power: lastRowAsObject_('Power_Log', deviceFilter),
+    power_recent: recentRowsAsObjects_('Power_Log', deviceFilter, 72),
     gps: lastRowAsObject_('GPS_Log', deviceFilter),
     bilge_recent: recentRowsAsObjects_('Bilge_Log', deviceFilter, 10),
     events_recent: recentRowsAsObjects_('Events', deviceFilter, 10),
@@ -169,6 +173,51 @@ function recentRowsAsObjects_(tabName, deviceFilter, limit) {
     out.push(rowToObject_(headers, row));
   }
   return out;
+}
+
+/**
+ * Mobile: set a Config key (device-scoped). GET ?action=set_config&token=...&device=boat-p2&key=v50_full_at_utc&value=...
+ */
+function handleSetConfigGet_(params) {
+  var expectedToken = PropertiesService.getScriptProperties().getProperty('SHEETS_POST_TOKEN');
+  if (expectedToken && params.token !== expectedToken) {
+    return { ok: false, error: 'bad token' };
+  }
+  var deviceId = params.device ? String(params.device).trim() : '';
+  var key = params.key ? String(params.key).trim() : '';
+  var value = params.value != null ? String(params.value) : '';
+  if (!deviceId || !key) {
+    return { ok: false, error: 'missing device or key' };
+  }
+  if (key.indexOf('cmd_') === 0) {
+    return { ok: false, error: 'cannot set cmd_* via mobile' };
+  }
+  upsertConfigKey_(deviceId + ':' + key, value);
+  return { ok: true, device: deviceId, key: key, value: value, receiver_version: RECEIVER_VERSION };
+}
+
+function upsertConfigKey_(fullKey, value) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var config = ss.getSheetByName(CONFIG_TAB);
+  if (!config) {
+    throw new Error('missing Config tab');
+  }
+  var lastRow = config.getLastRow();
+  if (lastRow < 1) {
+    config.getRange(1, 1, 1, 4).setValues([['key', 'value', 'updated_utc', 'note']]);
+    lastRow = 1;
+  }
+  var searchEnd = Math.max(lastRow, 2);
+  var keys = config.getRange(2, 1, searchEnd, 1).getValues();
+  for (var i = 0; i < keys.length; i++) {
+    if (String(keys[i][0] || '').trim() === fullKey) {
+      var rowNum = i + 2;
+      config.getRange(rowNum, 2).setValue(value);
+      config.getRange(rowNum, 3).setValue(new Date());
+      return;
+    }
+  }
+  config.appendRow([fullKey, value, new Date(), 'mobile app']);
 }
 
 /**

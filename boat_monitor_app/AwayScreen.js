@@ -13,7 +13,8 @@ import { describeBoatMode } from './boatMode';
 import { formatDateTime12h } from './dateTimeFormat';
 import GpsMapView from './GpsMapView';
 import LocationActions from './LocationActions';
-import { fetchSheetDashboard, getSheetClientConfig } from './sheetDashboard';
+import { fetchSheetDashboard, getSheetClientConfig, markV50BankFull } from './sheetDashboard';
+import { estimateV50State } from './v50Bank';
 
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
@@ -62,6 +63,7 @@ export default function AwayScreen({ onBack }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [dashboard, setDashboard] = useState(null);
+  const [markingFull, setMarkingFull] = useState(false);
 
   const load = useCallback(async (isRefresh) => {
     if (isRefresh) setRefreshing(true);
@@ -93,6 +95,42 @@ export default function AwayScreen({ onBack }) {
   const { deviceId } = getSheetClientConfig();
   const lastPowerAt = power?.timestamp_utc;
   const stale = lastPowerAt && Date.now() - new Date(lastPowerAt).getTime() > 6 * 3600 * 1000;
+  const v50 = estimateV50State({
+    power,
+    powerRecent: dashboard?.power_recent,
+    config: dashboard?.config,
+  });
+
+  const onMarkV50Full = async () => {
+    setMarkingFull(true);
+    try {
+      const result = await markV50BankFull();
+      if (!result.ok) {
+        setError(result.message || result.error || 'Could not save to sheet Config');
+      } else {
+        await load(true);
+      }
+    } catch (exc) {
+      setError(exc?.message || String(exc));
+    } finally {
+      setMarkingFull(false);
+    }
+  };
+
+  const v50BankLine =
+    power?.v50_a != null && power.v50_a !== ''
+      ? `${fmtNum(power.v50_v)} V · ${fmtNum(power.v50_a, 3)} A`
+      : `${fmtNum(power?.v50_v)} V`;
+  const v50PowerLine =
+    v50.watts != null ? `~${fmtNum(v50.watts, 1)} W now` : null;
+  const v50SocLine =
+    v50.percent != null
+      ? `~${fmtNum(v50.percent, 0)}% left (since “full”)`
+      : v50.needsCapacity
+        ? 'Add boat-p2:v50_capacity_wh in Config (Wh, e.g. 256 for River 2)'
+        : v50.needsFullAnchor
+          ? 'Tap “Bank is 100% full” when charged'
+          : null;
 
   return (
     <View style={styles.container}>
@@ -137,7 +175,22 @@ export default function AwayScreen({ onBack }) {
             {modeInfo.detail ? <Text style={styles.modeDetail}>{modeInfo.detail}</Text> : null}
             <Row label="Engine" value={`${fmtNum(power.engine_v)} V · ${fmtNum(power.engine_a, 3)} A`} />
             <Row label="House" value={`${fmtNum(power.house_v)} V · ${fmtNum(power.house_a, 3)} A`} />
-            <Row label="V50 bank" value={`${fmtNum(power.v50_v)} V`} />
+            <Row label="V50 bank" value={v50BankLine} />
+            {v50PowerLine ? <Row label="V50 load" value={v50PowerLine} /> : null}
+            {v50SocLine ? <Row label="V50 estimate" value={v50SocLine} /> : null}
+            <TouchableOpacity
+              style={styles.v50Button}
+              onPress={onMarkV50Full}
+              disabled={markingFull || loading}
+              accessibilityRole="button"
+            >
+              <Text style={styles.v50ButtonText}>
+                {markingFull ? 'Saving…' : 'Bank is 100% full'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.v50Hint}>
+              Uses Power_Log V/A and Config capacity (Wh). Rough estimate — mark full after a charge.
+            </Text>
             <Row label="Firmware" value={power.fw || '—'} />
             <Row label="Uplink" value={power.uplink || '—'} />
             {power.note ? <Text style={styles.noteText}>{String(power.note)}</Text> : null}
@@ -215,7 +268,7 @@ export default function AwayScreen({ onBack }) {
         ) : null}
 
         <Text style={styles.footerHint}>
-          Push alerts (battery left on, bilge runs) can be added later — this view is read-only from the sheet.
+          V50 % needs Apps Script v5, v50_a in Power_Log, and Config keys. Other alerts can be added later.
         </Text>
       </ScrollView>
     </View>
