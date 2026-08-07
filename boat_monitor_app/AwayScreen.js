@@ -53,16 +53,19 @@ function ageLabel(isoOrDate) {
 
 function Row({ label, value, danger, onPress }) {
   const valueStyle = [styles.rowValue, danger ? styles.danger : null, onPress ? styles.link : null];
+  const valueNode = onPress ? (
+    <TouchableOpacity onPress={onPress} style={styles.rowValueWrap}>
+      <Text style={valueStyle}>{value}</Text>
+    </TouchableOpacity>
+  ) : (
+    <View style={styles.rowValueWrap}>
+      <Text style={valueStyle}>{value}</Text>
+    </View>
+  );
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      {onPress ? (
-        <TouchableOpacity onPress={onPress}>
-          <Text style={valueStyle}>{value}</Text>
-        </TouchableOpacity>
-      ) : (
-        <Text style={valueStyle}>{value}</Text>
-      )}
+      {valueNode}
     </View>
   );
 }
@@ -136,8 +139,8 @@ export default function AwayScreen({ onBack }) {
   const v50SocLine =
     v50.percent != null
       ? v50.mahRemain != null && v50.capacityMah != null
-        ? `~${fmtNum(v50.percent, 0)}% · ~${fmtNum(v50.mahRemain, 0)} mAh left (${fmtNum(v50.capacityMah, 0)} mAh rated)`
-        : `~${fmtNum(v50.percent, 0)}% left (since “full”)`
+        ? `${fmtNum(v50.percent, 0)}% · ${fmtNum(v50.mahRemain, 0)} / ${fmtNum(v50.capacityMah, 0)} mAh`
+        : `~${fmtNum(v50.percent, 0)}% since full`
       : v50.needsCapacity
         ? 'Set boat-p2:v50_capacity_mah in Config (e.g. 13400)'
         : v50.needsFullAnchor
@@ -319,13 +322,25 @@ const styles = StyleSheet.create({
   cardTitle: { color: '#f8fafc', fontSize: 18, ...FW600, marginBottom: 8 },
   row: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#334155',
-    gap: 8,
+    gap: 10,
   },
-  rowLabel: { color: '#cbd5e1', fontSize: 15, flex: 1 },
+  rowLabel: {
+    color: '#cbd5e1',
+    fontSize: 15,
+    width: 118,
+    flexShrink: 0,
+    paddingTop: 1,
+  },
+  rowValueWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-end',
+  },
   rowValue: { color: '#f8fafc', fontSize: 15, textAlign: 'right', flexShrink: 1 },
   danger: { color: '#fca5a5', ...FW600 },
   link: { color: '#7dd3fc', textDecorationLine: 'underline' },
