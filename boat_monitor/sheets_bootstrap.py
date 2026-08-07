@@ -38,6 +38,7 @@ TABS = {
         "house_v",
         "house_a",
         "v50_v",
+        "v50_a",
         "fw",
         "uplink",
         "note",

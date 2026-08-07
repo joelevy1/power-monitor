@@ -140,7 +140,7 @@ export default function AwayScreen({ onBack }) {
             {modeInfo.detail ? <Text style={styles.modeDetail}>{modeInfo.detail}</Text> : null}
             <Row label="Engine" value={`${fmtNum(power.engine_v)} V · ${fmtNum(power.engine_a, 3)} A`} />
             <Row label="House" value={`${fmtNum(power.house_v)} V · ${fmtNum(power.house_a, 3)} A`} />
-            <Row label="V50 bank" value={`${fmtNum(power.v50_v)} V`} />
+            <Row label="V50 bank" value={`${fmtNum(power.v50_v)} V · ${fmtNum(power.v50_a, 3)} A`} />
             <Row label="Firmware" value={power.fw || '—'} />
             <Row label="Uplink" value={power.uplink || '—'} />
             {power.note ? <Text style={styles.noteText}>{String(power.note)}</Text> : null}

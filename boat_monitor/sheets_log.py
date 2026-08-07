@@ -330,6 +330,7 @@ class SheetsLogger:
                 "house_v": house.get("v") if house else None,
                 "house_a": house.get("a") if house else None,
                 "v50_v": v50.get("v") if v50 else None,
+                "v50_a": v50.get("a") if v50 else None,
                 "fw": fw,
                 "uplink": uplink,
                 "note": note,
