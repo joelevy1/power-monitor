@@ -93,7 +93,7 @@ def clear():
         print("clear failed:", exc)
 
 
-def upload_tail_to_events(device="boat-p2", lines=15):
+def upload_tail_to_events(device="boat-p2", lines=15, event="diag"):
     """Best-effort: post last diag lines to Events tab (one row)."""
     try:
         with open(LOG_PATH, "r") as f:
@@ -106,9 +106,43 @@ def upload_tail_to_events(device="boat-p2", lines=15):
         logger = sheets_log.SheetsLogger(prefer_wifi=True)
         try:
             logger.ensure_data()
-            logger.log_event(device, "diag", text[:1500])
+            logger.log_event(device, event, text[:1500])
         finally:
             logger.close_data()
-        log("uploaded tail to Events tab")
+        log("uploaded tail to Events tab event=%s" % event)
     except Exception as exc:
         log("upload_tail failed: %s" % exc)
+
+
+def upload_stall_report(device, reason, mode=None, lines=40):
+    """Log stall reason locally, then try to POST Events row before reboot."""
+    import auto_log
+
+    interval_s = auto_log.interval_for_mode(mode) if mode else None
+    threshold_s = auto_log.stale_reboot_threshold_s(mode) if mode else None
+    header = reason
+    if mode is not None:
+        header += " mode=%s interval_s=%s stale_threshold_s=%s" % (
+            mode,
+            interval_s,
+            threshold_s,
+        )
+    log(header)
+    try:
+        with open(LOG_PATH, "r") as f:
+            tail_text = "\n".join(f.read().splitlines()[-lines:])
+    except Exception as exc:
+        tail_text = "no diag log: %s" % exc
+    detail = header + "\n--- boat_diag.log ---\n" + tail_text
+    try:
+        import sheets_log
+
+        logger = sheets_log.SheetsLogger(prefer_wifi=True)
+        try:
+            logger.ensure_data()
+            logger.log_event(device, "standby_stall_reboot", detail[:1500])
+        finally:
+            logger.close_data()
+        log("uploaded standby_stall_reboot to Events")
+    except Exception as exc:
+        log("upload_stall_report failed: %s" % exc)

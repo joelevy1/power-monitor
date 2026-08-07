@@ -79,7 +79,7 @@ Interval overrides are **in RAM only** (lost on reboot until Config is read agai
 | Method | When it works |
 |--------|----------------|
 | **`cmd_reboot` = `1`** (or `boat-p2:cmd_reboot`) | Next **successful** Power_Log POST — does **not** help if the Pico is wedged and never finishes a log cycle. |
-| **Firmware 1.1.35+** | Standby reboots automatically if no successful auto-log for **~20 minutes**, a single log runs **>8 minutes**, or **3** consecutive log failures. |
+| **Firmware 1.1.35+** | Standby reboots if no successful auto-log for **2×** the current `interval_engine_*_s` (sheet overrides included), if one log runs longer than that same limit, or after **3** consecutive failures. Posts **`standby_stall_reboot`** on Events with `boat_diag.log` tail when possible. |
 | **Power cycle** | Immediate — unplug Pico/USB path ~10s if the REPL or auto-log is hung. |
 
 After a stall, check **Events** for `diag_log` uploads (standby posts tail on exceptions) or Thonny `diag_log.tail(80)` if you have USB.

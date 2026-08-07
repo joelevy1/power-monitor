@@ -102,6 +102,15 @@ def interval_for_mode(mode):
     return INTERVAL_ENGINE_OFF_S
 
 
+def stale_reboot_threshold_s(mode):
+    """Standby watchdog: reboot after this long without a successful auto-log.
+
+    Uses 2× the current interval for `mode` (sheet overrides included).
+    Minimum 120s so a very short test interval does not reboot instantly.
+    """
+    return max(120, 2 * interval_for_mode(mode))
+
+
 def should_log_now(mode, elapsed_s, last_mode=None):
     """elapsed_s: seconds since the last auto-log ATTEMPT (successful or
     not) -- ble_service.py updates its last-attempt timestamp regardless
