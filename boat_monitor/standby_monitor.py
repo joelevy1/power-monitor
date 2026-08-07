@@ -17,15 +17,22 @@ from ble_service import log_power_and_gps, read_status
 # take 10-90s on cellular + GPS).
 MODEM_WATCHDOG_QUIET_S = 150
 
-# If no successful auto-log for this long, assume a hang and reboot (sheet
-# cmd_reboot only runs after a successful POST — cannot recover a wedged loop).
-STALE_LOG_REBOOT_MIN_S = 1200  # 20 min with 5-min cadence = ~4 missed logs
-
-# Auto-log session longer than this without returning → reboot.
-AUTO_LOG_MAX_S = 480
-
 # Consecutive auto-log failures (exceptions or power: failed) before reboot.
 AUTO_LOG_FAIL_REBOOT_COUNT = 3
+
+
+def _reboot_after_stall(reason, mode, device_id):
+    diag_log.upload_stall_report(device_id, reason, mode=mode)
+    import machine
+
+    time.sleep(0.5)
+    machine.reset()
+
+
+def _in_progress_limit_s(mode):
+    """Single auto-log session should finish well within 2× the log interval."""
+    return auto_log.stale_reboot_threshold_s(mode)
+
 
 def main():
     diag_log.log("standby_monitor start")
@@ -40,6 +47,7 @@ def main():
     last_successful_log_ms = time.ticks_ms()
     auto_log_failures = 0
     auto_log_started_ms = None
+    device_id = "boat-p2"
 
     while True:
         if ble_policy.ble_wanted():
@@ -52,43 +60,34 @@ def main():
 
         status = read_status()
         mode = status["mode"]
+        device_id = status.get("device") or device_id
         now = time.ticks_ms()
         elapsed_s = time.ticks_diff(now, last_auto_log_ms) / 1000
+        stale_limit_s = auto_log.stale_reboot_threshold_s(mode)
 
         if time.ticks_diff(now, last_heartbeat_ms) > 60000:
             last_heartbeat_ms = now
             need = max(0, auto_log.interval_for_mode(mode) - elapsed_s)
             diag_log.log(
-                "heartbeat mode=%s elapsed=%.0fs next_log_in~%.0fs v50=%s heap=%sK"
-                % (mode, elapsed_s, need, status.get("v50"), diag_log.mem_kb())
+                "heartbeat mode=%s elapsed=%.0fs next_log_in~%.0fs stale_limit=%ss v50=%s heap=%sK"
+                % (mode, elapsed_s, need, stale_limit_s, status.get("v50"), diag_log.mem_kb())
             )
             stale_s = time.ticks_diff(now, last_successful_log_ms) / 1000
-            if stale_s >= STALE_LOG_REBOOT_MIN_S:
-                diag_log.log(
-                    "STALE no successful auto-log for %.0fs >= %s — rebooting"
-                    % (stale_s, STALE_LOG_REBOOT_MIN_S)
+            if stale_s >= stale_limit_s:
+                reason = (
+                    "no successful auto-log for %.0fs (limit 2x interval = %ss)"
+                    % (stale_s, stale_limit_s)
                 )
-                print(
-                    "standby_monitor: no successful log for %.0fs — rebooting"
-                    % stale_s
-                )
-                import machine
-
-                time.sleep(0.5)
-                machine.reset()
+                print("standby_monitor: %s — rebooting" % reason)
+                _reboot_after_stall(reason, mode, device_id)
 
         if auto_log_started_ms is not None:
             running_s = time.ticks_diff(now, auto_log_started_ms) / 1000
-            if running_s >= AUTO_LOG_MAX_S:
-                diag_log.log(
-                    "STALE auto-log running %.0fs >= %s — rebooting"
-                    % (running_s, AUTO_LOG_MAX_S)
-                )
-                print("standby_monitor: auto-log hung %.0fs — rebooting" % running_s)
-                import machine
-
-                time.sleep(0.5)
-                machine.reset()
+            run_limit_s = _in_progress_limit_s(mode)
+            if running_s >= run_limit_s:
+                reason = "auto-log running %.0fs (limit %ss)" % (running_s, run_limit_s)
+                print("standby_monitor: %s — rebooting" % reason)
+                _reboot_after_stall(reason, mode, device_id)
 
         since_log_s = time.ticks_diff(now, last_auto_log_ms) / 1000
         if (
@@ -131,12 +130,9 @@ def main():
                     auto_log_failures += 1
                     diag_log.log("auto-log soft-fail count=%s" % auto_log_failures)
                 if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
-                    diag_log.log("auto-log failed %s times — rebooting" % auto_log_failures)
-                    print("standby_monitor: too many log failures — rebooting")
-                    import machine
-
-                    time.sleep(0.5)
-                    machine.reset()
+                    reason = "auto-log failed %s times in a row" % auto_log_failures
+                    print("standby_monitor: %s — rebooting" % reason)
+                    _reboot_after_stall(reason, mode, device_id)
                 print(
                     "standby_monitor: next auto-log in ~%ds (mode=%s)"
                     % (auto_log.interval_for_mode(mode), mode)
@@ -147,15 +143,13 @@ def main():
                 diag_log.log("auto-log FAIL %s count=%s" % (exc, auto_log_failures))
                 print("standby_monitor: auto-log failed:", exc)
                 try:
-                    diag_log.upload_tail_to_events()
+                    diag_log.upload_tail_to_events(device=device_id, lines=25)
                 except Exception:
                     pass
                 if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
-                    diag_log.log("auto-log failed %s times — rebooting" % auto_log_failures)
-                    import machine
-
-                    time.sleep(0.5)
-                    machine.reset()
+                    reason = "auto-log exception x%s last=%s" % (auto_log_failures, exc)
+                    print("standby_monitor: %s — rebooting" % reason)
+                    _reboot_after_stall(reason, mode, device_id)
 
         last_auto_log_mode = mode
         time.sleep(2)

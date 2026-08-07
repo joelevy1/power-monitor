@@ -17,6 +17,7 @@ from auto_log import (  # noqa: E402
     INTERVAL_ENGINE_ON_S,
     interval_for_mode,
     should_log_now,
+    stale_reboot_threshold_s,
 )
 
 
@@ -43,6 +44,15 @@ def run():
     # which stays true whether they're temporarily equal or (normally)
     # engine-off is the longer one.
     check("engine-on interval is never longer than engine-off", INTERVAL_ENGINE_ON_S <= INTERVAL_ENGINE_OFF_S)
+
+    check(
+        "stale reboot threshold is 2x interval",
+        stale_reboot_threshold_s("docked_off") == 2 * INTERVAL_ENGINE_OFF_S,
+    )
+    check(
+        "stale reboot threshold for key_on",
+        stale_reboot_threshold_s("key_on") == 2 * INTERVAL_ENGINE_ON_S,
+    )
 
     # should_log_now(): the ordinary "enough time has passed" case, for
     # both engine-on and engine-off intervals.

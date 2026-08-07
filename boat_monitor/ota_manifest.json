@@ -1,6 +1,6 @@
 {
-  "version": "1.1.35",
-  "notes": "Standby: reboot if auto-log stalls 20+ min, hangs 8+ min, or fails 3x; remote cmd_reboot unchanged.",
+  "version": "1.1.36",
+  "notes": "Standby stall reboot: 2x log interval threshold; Events standby_stall_reboot + diag tail.",
   "files": [
     {
       "path": "version.py",
@@ -21,6 +21,14 @@
     {
       "path": "ble_service.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
+    },
+    {
+      "path": "auto_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/auto_log.py"
+    },
+    {
+      "path": "diag_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/diag_log.py"
     },
     {
       "path": "ota.py",
