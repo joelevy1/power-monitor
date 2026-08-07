@@ -59,7 +59,7 @@ Verify from a PC:
 curl -sL "$GOOGLE_APPS_SCRIPT_URL" | python3 -m json.tool
 ```
 
-You want `"receiver_version": 3` (or higher) for remote Config commands on each log POST (see `REMOTE_CONTROL.md`). Version `2` logs rows only. If that field is missing,
+You want `"receiver_version": 3` (or higher) for remote Config commands on each log POST (see `REMOTE_CONTROL.md`). Version `2` logs rows only. **Version `4`+** adds `GET ?action=dashboard&token=...` for the iOS app’s away-from-boat view. If that field is missing,
 the live deployment is still old and new log rows will keep ISO text
 timestamps until you redeploy.
 
