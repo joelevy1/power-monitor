@@ -161,6 +161,12 @@ def upload_stall_report_bounded(
         log("stall upload skipped (no time left)")
         return False
     try:
+        import gc
+
+        gc.collect()
+    except Exception:
+        pass
+    try:
         import sheets_log
 
         logger = sheets_log.SheetsLogger(prefer_wifi=True)

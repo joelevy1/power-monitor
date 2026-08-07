@@ -4,7 +4,7 @@ MODULES = (
     "version",
     "ota",
     "ota_config",
-    "main",
+    # Do not import main here — main.py runs boot OTA on import (reboots / drops USB).
     "resilience",
     "diag_log",
     "secrets",
