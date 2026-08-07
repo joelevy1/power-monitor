@@ -1,6 +1,6 @@
 {
   "version": "1.1.34",
-  "notes": "Standby modem watchdog: power off SIM7600 if it answers AT when only Wi-Fi logging expected.",
+  "notes": "V50 v50_a in Power_Log; standby modem watchdog (AT+CPOF if modem wakes in Wi-Fi-only standby).",
   "files": [
     {
       "path": "version.py",
