@@ -32,7 +32,7 @@ except ImportError:
 
 try:
     import secrets
-except ImportError:
+except (ImportError, SyntaxError):
     secrets = None
 
 
@@ -335,9 +335,7 @@ class SheetsLogger:
         except Exception as exc:
             print("SheetsLogger: v50_energy:", exc)
 
-        result = self.log_row(
-            "Power_Log",
-            {
+        payload = {
                 "device": device,
                 "mode": mode,
                 "engine_v": engine.get("v") if engine else None,
@@ -349,8 +347,13 @@ class SheetsLogger:
                 "fw": fw,
                 "uplink": uplink,
                 "note": note,
-                **extra,
-            },
+            }
+        if extra:
+            for key, val in extra.items():
+                payload[key] = val
+        result = self.log_row(
+            "Power_Log",
+            payload,
         )
         if snap:
             try:

@@ -1,6 +1,6 @@
 {
-  "version": "1.1.38",
-  "notes": "Standby resilience: boot OTA cap, bounded stall Events upload, pending stall on boot, hardware WDT, stale check every loop.",
+  "version": "1.1.39",
+  "notes": "Fix sheets_log secrets SyntaxError handling; boot OTA max_total_s fallback; Thonny import probe; OTA wifi_uplink.",
   "files": [
     {
       "path": "version.py",
@@ -15,8 +15,16 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/resilience.py"
     },
     {
+      "path": "pico_import_check.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/pico_import_check.py"
+    },
+    {
       "path": "wifi_networks.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_networks.py"
+    },
+    {
+      "path": "wifi_uplink.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
     },
     {
       "path": "sheets_log.py",
@@ -33,6 +41,10 @@
     {
       "path": "cellular.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular.py"
+    },
+    {
+      "path": "gps.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/gps.py"
     },
     {
       "path": "ble_service.py",

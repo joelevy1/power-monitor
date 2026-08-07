@@ -14,10 +14,11 @@ try:
             import ota
 
             max_s = getattr(ota_config, "BOOT_OTA_MAX_SECONDS", 90)
-            ota.update(
-                reboot=getattr(ota_config, "AUTO_OTA_REBOOT_AFTER_UPDATE", True),
-                max_total_s=max_s,
-            )
+            reboot = getattr(ota_config, "AUTO_OTA_REBOOT_AFTER_UPDATE", True)
+            try:
+                ota.update(reboot=reboot, max_total_s=max_s)
+            except TypeError:
+                ota.update(reboot=reboot)
         except Exception as exc:
             print("Boot OTA skipped/failed:", exc)
             try:
