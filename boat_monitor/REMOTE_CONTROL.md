@@ -83,6 +83,7 @@ Interval overrides are **in RAM only** (lost on reboot until Config is read agai
 | Method | When it works |
 |--------|----------------|
 | **`cmd_reboot` = `1`** (or `boat-p2:cmd_reboot`) | Next **successful** Power_Log POST — does **not** help if the Pico is wedged and never finishes a log cycle. |
+| **Firmware 1.1.38+** | Boot OTA capped at **90s** (`BOOT_OTA_MAX_SECONDS`). Stall reboot writes **`pending_stall_reboot.json`**, tries Events upload for **≤12s**, then **always** resets; next boot flushes pending stall. Standby checks **stale every ~2s** (not only on heartbeat). Hardware **WDT** (~8s, fed via `diag_log` + loop). |
 | **Firmware 1.1.35+** | Standby reboots if no successful auto-log for **2×** the current `interval_engine_*_s` (sheet overrides included), if one log runs longer than that same limit, or after **3** consecutive failures. Posts **`standby_stall_reboot`** on Events with `boat_diag.log` tail when possible. |
 | **Power cycle** | Immediate — unplug Pico/USB path ~10s if the REPL or auto-log is hung. |
 
