@@ -29,6 +29,7 @@
       "env": {
         "EXPO_PUBLIC_APP_VARIANT": "full"
       },
+      "prebuildCommand": "bash scripts/configure-google-maps-ios.sh",
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.2"
       }
@@ -38,6 +39,7 @@
       "env": {
         "EXPO_PUBLIC_APP_VARIANT": "full"
       },
+      "prebuildCommand": "bash scripts/configure-google-maps-ios.sh",
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.2"
       }
