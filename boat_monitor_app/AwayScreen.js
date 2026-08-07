@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { describeBoatMode } from './boatMode';
+import GpsMapView, { googleMapsUrl } from './GpsMapView';
 import { fetchSheetDashboard, getSheetClientConfig } from './sheetDashboard';
 
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
@@ -154,14 +155,23 @@ export default function AwayScreen({ onBack }) {
         {gps ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Latest GPS</Text>
+            <GpsMapView
+              lat={gps.lat}
+              lon={gps.lon}
+              mapsLink={gps.maps_link}
+              label="Boat Monitor"
+              timestampLabel={fmtTimestamp(gps.timestamp_utc)}
+            />
             <Row label="Time" value={fmtTimestamp(gps.timestamp_utc)} />
             <Row label="Position" value={`${fmtNum(gps.lat, 5)}, ${fmtNum(gps.lon, 5)}`} />
             <Row label="Status" value={gps.status || '—'} />
-            {gps.maps_link ? (
-              <TouchableOpacity onPress={() => Linking.openURL(String(gps.maps_link))}>
-                <Text style={styles.linkBlock}>Open in Maps</Text>
-              </TouchableOpacity>
-            ) : null}
+            <TouchableOpacity
+              onPress={() =>
+                Linking.openURL(gps.maps_link ? String(gps.maps_link) : googleMapsUrl(gps.lat, gps.lon))
+              }
+            >
+              <Text style={styles.linkBlock}>Open in Google Maps</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
