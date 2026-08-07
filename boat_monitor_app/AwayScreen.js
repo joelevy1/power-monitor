@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { describeBoatMode } from './boatMode';
+import { formatDateTime12h } from './dateTimeFormat';
 import GpsMapView from './GpsMapView';
 import LocationActions from './LocationActions';
 import { fetchSheetDashboard, getSheetClientConfig } from './sheetDashboard';
@@ -24,11 +25,7 @@ function fmtNum(value, digits = 2) {
 }
 
 function fmtTimestamp(value) {
-  if (!value) return '—';
-  const d = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return formatDateTime12h(value);
 }
 
 function ageLabel(isoOrDate) {
