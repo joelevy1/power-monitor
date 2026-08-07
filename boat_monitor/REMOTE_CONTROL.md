@@ -16,10 +16,12 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 | `cmd_ota` | `1` | **One-shot:** OTA + reboot after this log; cell cleared by script |
 | `cmd_reboot` | `1` | **One-shot:** reboot after this log; cell cleared |
 | `wifi_networks` | see below | Saves networks on the Pico (`wifi_sheet.json`); used on next Wi-Fi connect |
-| `v50_capacity_mah` | `13400` | V50 bank rated mAh (used for % remaining on Pico + sheet) |
-| `v50_full_at_utc` | ISO time | Reset cumulative mAh when user marks bank full (app button sets this) |
+| `boat-p2:v50_capacity_mah` | `13400` | V50 rated mAh (Pico + **Away** app % estimate) |
+| `boat-p2:v50_full_at_utc` | ISO time | **Mark bank full** — app button **Bank is 100% full**, or set this manually; Pico resets cumulative mAh on next log when it changes |
 
-Use **`v50_capacity_mah` only** — do not also set `v50_capacity_wh` (legacy Wh estimate).
+Use **`boat-p2:v50_capacity_mah` only** — do not set legacy `v50_capacity_wh`. Run `python3 sheets_config_cleanup.py` to remove empty `cmd_*` dupes and backup rows.
+
+**Reset power bank to “100% full”:** In the iOS app → **Away from boat** → **Bank is 100% full** (needs Apps Script **v5** deployed). Or set Config `boat-p2:v50_full_at_utc` to an ISO timestamp (e.g. `2026-08-07T22:00:00Z`). The Pico applies it on the next successful log.
 
 **`wifi_networks` value** — one network per line in the **value** cell (use a tall cell or paste multiple lines):
 

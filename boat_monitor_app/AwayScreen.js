@@ -25,6 +25,15 @@ function fmtNum(value, digits = 2) {
   return n.toFixed(digits);
 }
 
+/** Show µA/mA for bench standby loads; full amps when ≥ 10 mA. */
+function fmtAmps(amps) {
+  const n = Number(amps);
+  if (!Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  if (abs > 0 && abs < 0.01) return `${(n * 1000).toFixed(1)} mA`;
+  return `${n.toFixed(3)} A`;
+}
+
 function fmtTimestamp(value) {
   return formatDateTime12h(value);
 }
@@ -120,20 +129,22 @@ export default function AwayScreen({ onBack }) {
 
   const v50BankLine =
     power?.v50_a != null && power.v50_a !== ''
-      ? `${fmtNum(power.v50_v)} V · ${fmtNum(power.v50_a, 3)} A`
+      ? `${fmtNum(power.v50_v)} V · ${fmtAmps(power.v50_a)}`
       : `${fmtNum(power?.v50_v)} V`;
   const v50PowerLine =
     v50.watts != null ? `~${fmtNum(v50.watts, 1)} W now` : null;
   const v50SocLine =
     v50.percent != null
       ? v50.mahRemain != null && v50.capacityMah != null
-        ? `~${fmtNum(v50.percent, 0)}% left · ~${fmtNum(v50.mahRemain, 0)} / ${fmtNum(v50.capacityMah, 0)} mAh`
+        ? `~${fmtNum(v50.percent, 0)}% · ~${fmtNum(v50.mahRemain, 0)} mAh left (${fmtNum(v50.capacityMah, 0)} mAh rated)`
         : `~${fmtNum(v50.percent, 0)}% left (since “full”)`
       : v50.needsCapacity
-        ? 'Add boat-p2:v50_capacity_mah in Config (e.g. 13400)'
+        ? 'Set boat-p2:v50_capacity_mah in Config (e.g. 13400)'
         : v50.needsFullAnchor
-          ? 'Tap “Bank is 100% full” when charged'
-          : null;
+          ? 'Tap “Bank is 100% full” after charging (or wait for Pico mAh columns on next log)'
+          : power?.v50_pct_remain == null && power?.v50_mah_used == null
+            ? 'Waiting for Pico v50_mah_used on Power_Log (OTA 1.1.37+)'
+            : null;
 
   return (
     <View style={styles.container}>
