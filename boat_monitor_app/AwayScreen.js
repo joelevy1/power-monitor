@@ -51,17 +51,30 @@ function ageLabel(isoOrDate) {
   return `${days}d ago`;
 }
 
-function Row({ label, value, danger, onPress }) {
-  const valueStyle = [styles.rowValue, danger ? styles.danger : null, onPress ? styles.link : null];
+function Row({ label, value, danger, onPress, stacked }) {
+  const valueStyle = [
+    stacked ? styles.rowValueStacked : styles.rowValue,
+    danger ? styles.danger : null,
+    onPress ? styles.link : null,
+  ];
+  const valueWrapStyle = stacked ? styles.rowValueWrapStacked : styles.rowValueWrap;
   const valueNode = onPress ? (
-    <TouchableOpacity onPress={onPress} style={styles.rowValueWrap}>
+    <TouchableOpacity onPress={onPress} style={valueWrapStyle}>
       <Text style={valueStyle}>{value}</Text>
     </TouchableOpacity>
   ) : (
-    <View style={styles.rowValueWrap}>
+    <View style={valueWrapStyle}>
       <Text style={valueStyle}>{value}</Text>
     </View>
   );
+  if (stacked) {
+    return (
+      <View style={styles.rowStacked}>
+        <Text style={styles.rowLabelStacked}>{label}</Text>
+        {valueNode}
+      </View>
+    );
+  }
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -194,7 +207,7 @@ export default function AwayScreen({ onBack }) {
             <Row label="House" value={`${fmtNum(power.house_v)} V · ${fmtNum(power.house_a, 3)} A`} />
             <Row label="V50 bank" value={v50BankLine} />
             {v50PowerLine ? <Row label="V50 load" value={v50PowerLine} /> : null}
-            {v50SocLine ? <Row label="V50 estimate" value={v50SocLine} /> : null}
+            {v50SocLine ? <Row label="V50 estimate" value={v50SocLine} stacked /> : null}
             <TouchableOpacity
               style={styles.v50Button}
               onPress={onMarkV50Full}
@@ -341,6 +354,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'flex-end',
   },
+  rowStacked: {
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#334155',
+    gap: 4,
+  },
+  rowLabelStacked: { color: '#cbd5e1', fontSize: 15 },
+  rowValueWrapStacked: { width: '100%' },
+  rowValueStacked: { color: '#f8fafc', fontSize: 15, lineHeight: 21 },
   rowValue: { color: '#f8fafc', fontSize: 15, textAlign: 'right', flexShrink: 1 },
   danger: { color: '#fca5a5', ...FW600 },
   link: { color: '#7dd3fc', textDecorationLine: 'underline' },
@@ -368,5 +390,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryText: { color: '#fff', ...FW500 },
+  v50Button: {
+    marginTop: 10,
+    alignSelf: 'stretch',
+    backgroundColor: '#166534',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  v50ButtonText: { color: '#ecfdf5', fontSize: 15, ...FW600 },
+  v50Hint: { color: '#94a3b8', fontSize: 12, lineHeight: 17, marginTop: 8 },
   footerHint: { color: '#64748b', fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 4 },
 });
