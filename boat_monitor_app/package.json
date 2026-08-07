@@ -9,8 +9,8 @@
     "validate": "(npx expo-doctor@latest || true) && npm run validate:bundle",
     "validate:bundle": "EXPO_PUBLIC_APP_VARIANT=full expo export --platform ios --output-dir /tmp/boat-monitor-export-full && EXPO_PUBLIC_APP_VARIANT=smoke expo export --platform ios --output-dir /tmp/boat-monitor-export-smoke",
     "eas:ios": "eas build --platform ios --profile preview --non-interactive",
-    "eas:ios:prod": "eas build --platform ios --profile production --non-interactive",
-    "eas:ios:next": "eas build --platform ios --profile production_xcode26 --non-interactive",
+    "eas:ios:prod": "eas build --platform ios --profile production --non-interactive --auto-submit --no-wait",
+    "eas:ios:next": "eas build --platform ios --profile production_xcode26 --non-interactive --auto-submit --no-wait",
     "eas:submit:ios": "eas submit --platform ios --latest --profile production --non-interactive",
     "eas:submit:ios:next": "eas submit --platform ios --latest --profile production_xcode26 --non-interactive",
     "android": "expo run:android"
