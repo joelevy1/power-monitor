@@ -161,7 +161,9 @@ class SheetsLogger:
                 try:
                     import diag_log
 
-                    diag_log.log("ensure_data wifi miss -> cellular fallback")
+                    diag_log.log(
+                        "ensure_data wifi miss -> cellular fallback (modem will wake; fix Wi-Fi on Pico if unintended)"
+                    )
                 except Exception:
                     pass
             else:
