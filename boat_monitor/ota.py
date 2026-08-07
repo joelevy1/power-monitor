@@ -172,6 +172,17 @@ def _get_client(prefer_wifi=True):
     return client, False
 
 
+def _ota_elapsed_s(start):
+    return time.time() - start
+
+
+def _check_ota_deadline(start, max_total_s, where):
+    if max_total_s is None:
+        return
+    if _ota_elapsed_s(start) >= max_total_s:
+        raise OtaError("OTA exceeded max_total_s=%s at %s" % (max_total_s, where))
+
+
 def _close_client(client, used_wifi):
     if used_wifi:
         try:
@@ -185,14 +196,21 @@ def _close_client(client, used_wifi):
     client.close_data()  # cellular.py handles HTTPTERM/NETCLOSE (Phase 2.4 discipline)
 
 
-def update(reboot=False, prefer_wifi=True):
+def update(reboot=False, prefer_wifi=True, max_total_s=None):
     print("Boat Monitor OTA update")
     print("Current version:", current_version())
     print("Manifest:", ota_config.OTA_MANIFEST_URL)
+    if max_total_s is not None:
+        print("OTA max_total_s:", max_total_s)
+
+    start = time.time()
+    _check_ota_deadline(start, max_total_s, "start")
 
     client, used_wifi = _get_client(prefer_wifi=prefer_wifi)
     try:
+        _check_ota_deadline(start, max_total_s, "after connect")
         manifest = load_manifest(client)
+        _check_ota_deadline(start, max_total_s, "after manifest")
         target_version = manifest.get("version", "unknown")
         print("Target version:", target_version)
 
@@ -200,7 +218,18 @@ def update(reboot=False, prefer_wifi=True):
             print("Already at target version.")
             return False
 
-        apply_manifest(client, manifest)
+        files = manifest.get("files", [])
+        for entry in files:
+            _check_ota_deadline(start, max_total_s, "before %s" % entry.get("path"))
+            path = entry["path"]
+            url = entry["url"]
+            min_size = entry.get("min_size", 1)
+            print("Updating", path)
+            data = _http_get_retry(client, url)
+            if len(data) < min_size:
+                raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
+            write_file(path, data)
+
         print("Update complete.")
         print("Reboot required to run new files.")
 

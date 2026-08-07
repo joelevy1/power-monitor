@@ -10,6 +10,7 @@ import time
 import auto_log
 import ble_policy
 import diag_log
+import resilience
 from ble_service import log_power_and_gps, read_status
 
 
@@ -22,11 +23,7 @@ AUTO_LOG_FAIL_REBOOT_COUNT = 3
 
 
 def _reboot_after_stall(reason, mode, device_id):
-    diag_log.upload_stall_report(device_id, reason, mode=mode)
-    import machine
-
-    time.sleep(0.5)
-    machine.reset()
+    resilience.reboot_after_stall(device_id, reason, mode=mode)
 
 
 def _in_progress_limit_s(mode):
@@ -36,6 +33,7 @@ def _in_progress_limit_s(mode):
 
 def main():
     diag_log.log("standby_monitor start")
+    resilience.enable_watchdog()
     print("standby_monitor: BLE off — Wi-Fi-first auto-log")
     auto_log.load_persisted_overrides()
     interval_s = auto_log.interval_for_mode("docked_off")
@@ -78,14 +76,15 @@ def main():
                 v50_energy.tick(status.get("v50"))
             except Exception:
                 pass
-            stale_s = time.ticks_diff(now, last_successful_log_ms) / 1000
-            if stale_s >= stale_limit_s:
-                reason = (
-                    "no successful auto-log for %.0fs (limit 2x interval = %ss)"
-                    % (stale_s, stale_limit_s)
-                )
-                print("standby_monitor: %s — rebooting" % reason)
-                _reboot_after_stall(reason, mode, device_id)
+
+        stale_s = time.ticks_diff(now, last_successful_log_ms) / 1000
+        if stale_s >= stale_limit_s:
+            reason = (
+                "no successful auto-log for %.0fs (limit 2x interval = %ss)"
+                % (stale_s, stale_limit_s)
+            )
+            print("standby_monitor: %s — rebooting" % reason)
+            _reboot_after_stall(reason, mode, device_id)
 
         if auto_log_started_ms is not None:
             running_s = time.ticks_diff(now, auto_log_started_ms) / 1000
@@ -158,6 +157,7 @@ def main():
                     _reboot_after_stall(reason, mode, device_id)
 
         last_auto_log_mode = mode
+        resilience.feed_watchdog()
         time.sleep(2)
 
 

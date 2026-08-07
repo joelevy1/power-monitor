@@ -11,3 +11,5 @@ OTA_SOCKET_PDP_TYPE = 6
 # If an update is installed, the Pico reboots once and starts the new files.
 AUTO_OTA_ON_BOOT = True
 AUTO_OTA_REBOOT_AFTER_UPDATE = True
+# Boot must reach standby even if GitHub/cellular is slow (remote hang recovery).
+BOOT_OTA_MAX_SECONDS = 90

@@ -50,6 +50,12 @@ def mem_kb():
 
 
 def log(msg):
+    try:
+        import resilience
+
+        resilience.feed_watchdog()
+    except Exception:
+        pass
     line = "[%s] (heap %dK) %s" % (_stamp(), mem_kb(), str(msg))
     print("DIAG:", line)
     try:
@@ -114,8 +120,7 @@ def upload_tail_to_events(device="boat-p2", lines=15, event="diag"):
         log("upload_tail failed: %s" % exc)
 
 
-def upload_stall_report(device, reason, mode=None, lines=40):
-    """Log stall reason locally, then try to POST Events row before reboot."""
+def _stall_report_detail(reason, mode=None, lines=40):
     import auto_log
 
     interval_s = auto_log.interval_for_mode(mode) if mode else None
@@ -127,22 +132,58 @@ def upload_stall_report(device, reason, mode=None, lines=40):
             interval_s,
             threshold_s,
         )
-    log(header)
     try:
         with open(LOG_PATH, "r") as f:
             tail_text = "\n".join(f.read().splitlines()[-lines:])
     except Exception as exc:
         tail_text = "no diag log: %s" % exc
-    detail = header + "\n--- boat_diag.log ---\n" + tail_text
+    return header, header + "\n--- boat_diag.log ---\n" + tail_text
+
+
+def upload_stall_report_bounded(
+    device, reason, mode=None, lines=40, max_total_s=12, event="standby_stall_reboot"
+):
+    """Best-effort Events POST with a wall-clock cap (never blocks reboot long)."""
+    try:
+        start = time.time()
+    except AttributeError:
+        start = time.ticks_ms() / 1000.0
+
+    def elapsed_s():
+        try:
+            return time.time() - start
+        except AttributeError:
+            return (time.ticks_ms() - int(start * 1000)) / 1000.0
+
+    header, detail = _stall_report_detail(reason, mode=mode, lines=lines)
+    log(header)
+    if elapsed_s() >= max_total_s:
+        log("stall upload skipped (no time left)")
+        return False
     try:
         import sheets_log
 
         logger = sheets_log.SheetsLogger(prefer_wifi=True)
         try:
             logger.ensure_data()
-            logger.log_event(device, "standby_stall_reboot", detail[:1500])
+            if elapsed_s() >= max_total_s:
+                log("stall upload skipped after ensure_data (timeout)")
+                return False
+            logger.log_event(device, event, detail[:1500])
         finally:
-            logger.close_data()
-        log("uploaded standby_stall_reboot to Events")
+            try:
+                logger.close_data()
+            except Exception:
+                pass
+        log("uploaded %s to Events (%.1fs)" % (event, elapsed_s()))
+        return True
     except Exception as exc:
-        log("upload_stall_report failed: %s" % exc)
+        log("upload_stall_report_bounded failed: %s" % exc)
+        return False
+
+
+def upload_stall_report(device, reason, mode=None, lines=40):
+    """Log stall reason locally, then try to POST Events row before reboot."""
+    upload_stall_report_bounded(
+        device, reason, mode=mode, lines=lines, max_total_s=45, event="standby_stall_reboot"
+    )
