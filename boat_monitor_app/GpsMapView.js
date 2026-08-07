@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import Constants from 'expo-constants';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
 
@@ -16,8 +17,8 @@ export function googleMapsUrl(lat, lon) {
 }
 
 /**
- * Embedded map for the latest sheet GPS fix. On iOS this uses Apple Maps tiles
- * (react-native-maps default). Tap the map or link to open Google Maps app/web.
+ * Embedded map for the latest sheet GPS fix. Uses Google Maps when the iOS
+ * native key is configured at EAS build time; otherwise Apple Maps (default).
  */
 export default function GpsMapView({ lat, lon, mapsLink, label, timestampLabel }) {
   const latitude = parseGpsCoord(lat);
@@ -25,6 +26,10 @@ export default function GpsMapView({ lat, lon, mapsLink, label, timestampLabel }
   if (latitude == null || longitude == null) {
     return null;
   }
+
+  const useGoogle =
+    Constants.expoConfig?.extra?.googleMapsConfigured ||
+    !!Constants.expoConfig?.ios?.config?.googleMapsApiKey;
 
   const region = useMemo(
     () => ({
@@ -46,6 +51,7 @@ export default function GpsMapView({ lat, lon, mapsLink, label, timestampLabel }
       <TouchableOpacity activeOpacity={0.95} onPress={openExternal} accessibilityRole="button">
         <MapView
           style={styles.map}
+          provider={useGoogle ? PROVIDER_GOOGLE : undefined}
           initialRegion={region}
           scrollEnabled={false}
           zoomEnabled={false}
@@ -57,7 +63,8 @@ export default function GpsMapView({ lat, lon, mapsLink, label, timestampLabel }
         </MapView>
       </TouchableOpacity>
       <Text style={styles.caption}>
-        {Platform.OS === 'ios' ? 'Apple Maps preview' : 'Map preview'} — tap to open in Google Maps
+        {useGoogle ? 'Google Maps preview' : Platform.OS === 'ios' ? 'Apple Maps preview' : 'Map preview'} — tap
+        to open in Google Maps
       </Text>
     </View>
   );

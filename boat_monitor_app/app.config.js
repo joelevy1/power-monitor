@@ -23,11 +23,18 @@ module.exports = ({ config }) => {
       sheetsScriptUrl: process.env.EXPO_PUBLIC_GOOGLE_APPS_SCRIPT_URL || '',
       sheetsPostToken: process.env.EXPO_PUBLIC_SHEETS_POST_TOKEN || '',
       boatDeviceId: process.env.EXPO_PUBLIC_BOAT_DEVICE_ID || 'boat-p2',
+      googleMapsConfigured: !!(
+        process.env.GOOGLE_MAPS_API_KEY ||
+        process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
+      ),
     },
     ios: {
       ...base.ios,
-      // Same bundle id as production so EAS internal credentials already on file work.
       bundleIdentifier: base.ios.bundleIdentifier,
+      config: {
+        googleMapsApiKey:
+          process.env.GOOGLE_MAPS_API_KEY || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+      },
     },
   };
 };

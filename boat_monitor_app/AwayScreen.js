@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Platform,
   RefreshControl,
   ScrollView,
