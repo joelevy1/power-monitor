@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import LocationActions from './LocationActions';
 import {
   ActivityIndicator,
   Alert,
@@ -180,7 +181,7 @@ function friendlyCommandResult(result) {
     const lat = gpsMatch[1].trim();
     const lon = gpsMatch[2].trim();
     const link = gpsMatch[3].trim();
-    return { icon: '✅', text: `GPS fix confirmed: ${lat}, ${lon}.`, link, danger: false };
+    return { icon: '✅', text: `GPS fix confirmed: ${lat}, ${lon}.`, link, lat, lon, danger: false };
   }
 
   gpsMatch = result.match(/^gps:\s*no_fix\s*\((.*)\)$/);
@@ -689,7 +690,14 @@ export default function BoatBleScreen({ onBack }) {
               <Text style={[styles.resultText, friendlyResult.danger ? styles.danger : styles.resultOk]}>
                 {friendlyResult.icon} {friendlyResult.text}
               </Text>
-              {friendlyResult.link ? (
+              {friendlyResult.lat != null && friendlyResult.lon != null ? (
+                <LocationActions
+                  lat={friendlyResult.lat}
+                  lon={friendlyResult.lon}
+                  mapsLink={friendlyResult.link}
+                  shareTitle="Boat Monitor (live GPS)"
+                />
+              ) : friendlyResult.link ? (
                 <TouchableOpacity onPress={() => Linking.openURL(friendlyResult.link)}>
                   <Text style={[styles.resultText, styles.linkValue]}>Open in Google Maps</Text>
                 </TouchableOpacity>
