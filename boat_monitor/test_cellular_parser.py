@@ -12,8 +12,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import cellular as cellular_module  # noqa: E402
 from cellular import (  # noqa: E402
     CellularError,
+    Sim7600Modem,
     extract_location,
     one_line,
     parse_http_action,
@@ -197,6 +199,67 @@ def run():
         extract_location(head.encode("utf-8"))
         == "https://script.googleusercontent.com/macros/echo?user_content_key=abc",
     )
+
+    # Hardware-independent PWRKEY state tests. Call the real methods on a
+    # small fake modem so regressions in pulse polarity/timing or AT+CPOF
+    # handling are caught without importing MicroPython's machine module.
+    class FakeTime:
+        def __init__(self):
+            self.now_ms = 0
+
+        def sleep(self, seconds):
+            self.now_ms += int(seconds * 1000)
+
+        def ticks_ms(self):
+            return self.now_ms
+
+        @staticmethod
+        def ticks_diff(new, old):
+            return new - old
+
+    class FakePin:
+        def __init__(self):
+            self.values = []
+
+        def value(self, value):
+            self.values.append(value)
+
+    class FakeCfg:
+        PIN_MODEM_PWRKEY = 7
+
+    class FakeModem:
+        def __init__(self, responses):
+            self.responses = list(responses)
+            self.commands = []
+            self.pwrkey = FakePin()
+            self._cfg = FakeCfg()
+
+        def at(self, command, *args, **kwargs):
+            self.commands.append(command)
+            return self.responses.pop(0)
+
+    real_time = cellular_module.time
+    fake_time = FakeTime()
+    cellular_module.time = fake_time
+    try:
+        sleeping = FakeModem(["", "", "OK"])
+        newly_started = Sim7600Modem.ensure_awake(sleeping, boot_timeout_s=5)
+        check("pwrkey wakes an off modem", newly_started is True)
+        check("pwrkey pulse is active HIGH then released LOW", sleeping.pwrkey.values == [1, 0])
+        check("pwrkey wake polls AT until OK", sleeping.commands == ["AT", "AT", "AT"])
+
+        awake = FakeModem(["OK"])
+        newly_started = Sim7600Modem.ensure_awake(awake, boot_timeout_s=5)
+        check("awake modem is not power-toggled", newly_started is False and awake.pwrkey.values == [])
+
+        fake_time.now_ms = 0
+        shutdown = FakeModem(["OK", "OK"])
+        powered_off = Sim7600Modem.power_off(shutdown)
+        check("power_off uses AT+CPOF after alive probe", shutdown.commands == ["AT", "AT+CPOF"])
+        check("power_off accepts acknowledged shutdown", powered_off is True)
+        check("power_off allows five-second shutdown settling", fake_time.now_ms == 5000)
+    finally:
+        cellular_module.time = real_time
 
     print()
     if failures:
