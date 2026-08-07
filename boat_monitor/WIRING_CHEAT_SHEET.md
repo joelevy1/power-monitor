@@ -2,7 +2,7 @@
 
 **middle = HOUSE · bottom = ENGINE · three I2C buses · no A0/A1 changes**
 
-**Print:** `WIRING_CHEAT_SHEET.docx` or `.pdf`
+**Print:** `WIRING_CHEAT_SHEET.docx` (regenerate: `python3 boat_monitor/build_cheat_sheet_docx.py`) or export PDF from Word.
 
 ---
 
