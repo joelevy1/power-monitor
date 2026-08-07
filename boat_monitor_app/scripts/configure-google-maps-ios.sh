@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # EAS Build: inject Google Maps API key into Info.plist (never commit the key).
+# Run from boat_monitor_app/ (where eas.json lives).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$ROOT/ios/BoatMonitor/Info.plist"
 KEY="${GOOGLE_MAPS_API_KEY:-${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}}"
+echo "configure-google-maps-ios: pwd=$(pwd) app_root=$ROOT"
 if [ -z "$KEY" ]; then
   echo "configure-google-maps-ios: no GOOGLE_MAPS_API_KEY — skipping"
   exit 0

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Constants from 'expo-constants';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { shouldUseGoogleMapProvider } from './googleMapsProvider';
 
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
 
@@ -17,8 +17,7 @@ export function googleMapsUrl(lat, lon) {
 }
 
 /**
- * Embedded map for the latest sheet GPS fix. Uses Google Maps when the iOS
- * native key is configured at EAS build time; otherwise Apple Maps (default).
+ * Embedded map for the latest sheet GPS fix.
  */
 export default function GpsMapView({ lat, lon, mapsLink, label, timestampLabel }) {
   const latitude = parseGpsCoord(lat);
@@ -27,9 +26,7 @@ export default function GpsMapView({ lat, lon, mapsLink, label, timestampLabel }
     return null;
   }
 
-  const useGoogle =
-    Constants.expoConfig?.extra?.googleMapsConfigured ||
-    !!Constants.expoConfig?.ios?.config?.googleMapsApiKey;
+  const useGoogle = shouldUseGoogleMapProvider();
 
   const region = useMemo(
     () => ({
