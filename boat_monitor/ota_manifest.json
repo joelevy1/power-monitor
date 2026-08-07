@@ -1,6 +1,6 @@
 {
-  "version": "1.1.34",
-  "notes": "V50 v50_a in Power_Log; standby modem watchdog (AT+CPOF if modem wakes in Wi-Fi-only standby).",
+  "version": "1.1.35",
+  "notes": "Standby: reboot if auto-log stalls 20+ min, hangs 8+ min, or fails 3x; remote cmd_reboot unchanged.",
   "files": [
     {
       "path": "version.py",

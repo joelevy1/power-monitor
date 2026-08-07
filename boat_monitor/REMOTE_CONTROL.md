@@ -73,3 +73,19 @@ No TestFlight or Wi-Fi console required for Pico updates.
 | BLE (if nearby) | App status JSON | `"fw": "1.1.9"` |
 
 Interval overrides are **in RAM only** (lost on reboot until Config is read again on the next log POST).
+
+## Remote reboot when logging stops
+
+| Method | When it works |
+|--------|----------------|
+| **`cmd_reboot` = `1`** (or `boat-p2:cmd_reboot`) | Next **successful** Power_Log POST — does **not** help if the Pico is wedged and never finishes a log cycle. |
+| **Firmware 1.1.35+** | Standby reboots automatically if no successful auto-log for **~20 minutes**, a single log runs **>8 minutes**, or **3** consecutive log failures. |
+| **Power cycle** | Immediate — unplug Pico/USB path ~10s if the REPL or auto-log is hung. |
+
+After a stall, check **Events** for `diag_log` uploads (standby posts tail on exceptions) or Thonny `diag_log.tail(80)` if you have USB.
+
+## Modem LEDs (SIM7600 HAT) in Wi‑Fi-only standby
+
+With **switch/key off**, the modem should be **off** (`AT+CPOF` after each cellular session; standby watchdog also powers off if AT responds). The HAT may still show **solid red** (5 V present on the modem rail from the V50/USB feed) — that is not necessarily “cellular active.”
+
+**Solid + flashing red** usually means the module is **powered and doing network activity** (registering, data, or stuck between states) — **not** the desired idle state when you are only logging over **Levy-Guest** Wi‑Fi. If lights stay that way for hours with `uplink` = Wi‑Fi in the sheet, treat it as a bug/leak; 1.1.34+ tries `AT+CPOF` from standby when the UART still answers.
