@@ -70,7 +70,7 @@ export function integrateV50WhSince(powerRecent, anchorMs) {
 
 export function estimateV50State({ power, powerRecent, v50Bank, config }) {
   const watts = v50WattsFromRow(power);
-  const capacityMah = capacityMahFromConfig(config);
+  const configCapacityMah = capacityMahFromConfig(config);
   const anchorMs = fullAnchorMs(config);
 
   const deviceMahUsed = num(power?.v50_mah_used);
@@ -81,7 +81,7 @@ export function estimateV50State({ power, powerRecent, v50Bank, config }) {
 
   let mahUsed = deviceMahUsed ?? bankMahUsed;
   let percent = devicePct ?? bankPct;
-  let capacityMah = bankCap ?? capacityMah;
+  let capacityMah = bankCap ?? configCapacityMah;
 
   if (mahUsed == null && capacityMah != null && anchorMs != null) {
     const usedWh = integrateV50WhSince(powerRecent, anchorMs);
