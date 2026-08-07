@@ -101,6 +101,13 @@ def apply_commands_payload(payload, device_id=""):
         actions.append("reboot")
         applied.append("cmd_reboot=1")
 
+    try:
+        import v50_energy
+
+        v50_energy.apply_config_settings(settings)
+    except Exception as exc:
+        print("remote_control: v50_energy:", exc)
+
     out = []
     if "ota" in actions:
         out.append("ota")

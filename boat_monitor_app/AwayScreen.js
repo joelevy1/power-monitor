@@ -98,6 +98,7 @@ export default function AwayScreen({ onBack }) {
   const v50 = estimateV50State({
     power,
     powerRecent: dashboard?.power_recent,
+    v50Bank: dashboard?.v50_bank,
     config: dashboard?.config,
   });
 
@@ -125,9 +126,11 @@ export default function AwayScreen({ onBack }) {
     v50.watts != null ? `~${fmtNum(v50.watts, 1)} W now` : null;
   const v50SocLine =
     v50.percent != null
-      ? `~${fmtNum(v50.percent, 0)}% left (since “full”)`
+      ? v50.mahRemain != null && v50.capacityMah != null
+        ? `~${fmtNum(v50.percent, 0)}% left · ~${fmtNum(v50.mahRemain, 0)} / ${fmtNum(v50.capacityMah, 0)} mAh`
+        : `~${fmtNum(v50.percent, 0)}% left (since “full”)`
       : v50.needsCapacity
-        ? 'Add boat-p2:v50_capacity_wh in Config (Wh, e.g. 256 for River 2)'
+        ? 'Add boat-p2:v50_capacity_mah in Config (e.g. 13400)'
         : v50.needsFullAnchor
           ? 'Tap “Bank is 100% full” when charged'
           : null;
@@ -189,7 +192,7 @@ export default function AwayScreen({ onBack }) {
               </Text>
             </TouchableOpacity>
             <Text style={styles.v50Hint}>
-              Uses Power_Log V/A and Config capacity (Wh). Rough estimate — mark full after a charge.
+              Pico tracks cumulative mAh between logs; V50_Bank tab + Power_Log columns after OTA. Mark full after a charge.
             </Text>
             <Row label="Firmware" value={power.fw || '—'} />
             <Row label="Uplink" value={power.uplink || '—'} />

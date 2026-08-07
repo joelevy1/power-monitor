@@ -87,6 +87,7 @@ function handleDashboardGet_(params) {
     fetched_at: new Date().toISOString(),
     power: lastRowAsObject_('Power_Log', deviceFilter),
     power_recent: recentRowsAsObjects_('Power_Log', deviceFilter, 72),
+    v50_bank: lastRowAsObject_('V50_Bank', deviceFilter),
     gps: lastRowAsObject_('GPS_Log', deviceFilter),
     bilge_recent: recentRowsAsObjects_('Bilge_Log', deviceFilter, 10),
     events_recent: recentRowsAsObjects_('Events', deviceFilter, 10),

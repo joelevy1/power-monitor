@@ -16,6 +16,8 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 | `cmd_ota` | `1` | **One-shot:** OTA + reboot after this log; cell cleared by script |
 | `cmd_reboot` | `1` | **One-shot:** reboot after this log; cell cleared |
 | `wifi_networks` | see below | Saves networks on the Pico (`wifi_sheet.json`); used on next Wi-Fi connect |
+| `v50_capacity_mah` | `13400` | V50 bank rated mAh (used for % remaining on Pico + sheet) |
+| `v50_full_at_utc` | ISO time | Reset cumulative mAh when user marks bank full (app button sets this) |
 
 **`wifi_networks` value** — one network per line in the **value** cell (use a tall cell or paste multiple lines):
 

@@ -322,7 +322,20 @@ class SheetsLogger:
             return []
 
     def log_power(self, device, mode, engine, house, v50, note="", fw="", uplink=""):
-        return self.log_row(
+        extra = {}
+        snap = None
+        try:
+            import v50_energy
+
+            if v50:
+                v50_energy.tick(v50)
+            snap = v50_energy.snapshot()
+            extra["v50_mah_used"] = snap.get("mah_used")
+            extra["v50_pct_remain"] = snap.get("pct_remain")
+        except Exception as exc:
+            print("SheetsLogger: v50_energy:", exc)
+
+        result = self.log_row(
             "Power_Log",
             {
                 "device": device,
@@ -335,6 +348,27 @@ class SheetsLogger:
                 "v50_a": v50.get("a") if v50 else None,
                 "fw": fw,
                 "uplink": uplink,
+                "note": note,
+                **extra,
+            },
+        )
+        if snap:
+            try:
+                self.log_v50_bank(device, v50, snap, note=note)
+            except Exception as exc:
+                print("SheetsLogger: V50_Bank:", exc)
+        return result
+
+    def log_v50_bank(self, device, v50, snap, note=""):
+        return self.log_row(
+            "V50_Bank",
+            {
+                "device": device,
+                "v50_v": v50.get("v") if v50 else None,
+                "v50_a": v50.get("a") if v50 else None,
+                "mah_used": snap.get("mah_used"),
+                "mah_capacity": snap.get("mah_capacity"),
+                "pct_remain": snap.get("pct_remain"),
                 "note": note,
             },
         )

@@ -1,6 +1,6 @@
 /**
- * V50 USB power bank — watts and rough % from sheet Power_Log history.
- * Capacity (Wh) and "full" anchor live in Config tab (Google Sheet).
+ * V50 USB power bank — watts and rough % remaining.
+ * Prefers on-device cumulative mAh (v50_mah_used) when present; else integrates sheet history.
  */
 
 function parseTime(value) {
@@ -15,7 +15,6 @@ function num(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Instantaneous power in watts from a Power_Log row (or latest snapshot). */
 export function v50WattsFromRow(row) {
   if (!row) return null;
   const v = num(row.v50_v);
@@ -24,21 +23,18 @@ export function v50WattsFromRow(row) {
   return v * a;
 }
 
-function capacityWhFromConfig(config) {
-  const raw = config?.v50_capacity_wh ?? config?.v50_capacity_Wh;
-  const n = num(raw);
-  if (n == null || n <= 0) return null;
-  return n;
+function capacityMahFromConfig(config) {
+  const mah = num(config?.v50_capacity_mah);
+  if (mah != null && mah > 0) return mah;
+  const wh = num(config?.v50_capacity_wh ?? config?.v50_capacity_Wh);
+  if (wh != null && wh > 0) return (wh * 1000) / 5;
+  return null;
 }
 
 function fullAnchorMs(config) {
   return parseTime(config?.v50_full_at_utc);
 }
 
-/**
- * Integrate discharge energy (Wh) from power_recent since full anchor.
- * Uses trapezoidal rule between log timestamps; only counts positive v50_a as discharge.
- */
 export function integrateV50WhSince(powerRecent, anchorMs) {
   if (!anchorMs || !Array.isArray(powerRecent) || powerRecent.length < 2) {
     return null;
@@ -72,24 +68,44 @@ export function integrateV50WhSince(powerRecent, anchorMs) {
   return wh;
 }
 
-export function estimateV50State({ power, powerRecent, config }) {
+export function estimateV50State({ power, powerRecent, v50Bank, config }) {
   const watts = v50WattsFromRow(power);
-  const capacityWh = capacityWhFromConfig(config);
+  const capacityMah = capacityMahFromConfig(config);
   const anchorMs = fullAnchorMs(config);
-  const usedWh = integrateV50WhSince(powerRecent, anchorMs);
 
-  let percent = null;
-  if (capacityWh != null && usedWh != null && anchorMs != null) {
-    const remaining = Math.max(0, capacityWh - usedWh);
-    percent = Math.min(100, Math.max(0, (remaining / capacityWh) * 100));
+  const deviceMahUsed = num(power?.v50_mah_used);
+  const devicePct = num(power?.v50_pct_remain);
+  const bankMahUsed = num(v50Bank?.mah_used);
+  const bankPct = num(v50Bank?.pct_remain);
+  const bankCap = num(v50Bank?.mah_capacity);
+
+  let mahUsed = deviceMahUsed ?? bankMahUsed;
+  let percent = devicePct ?? bankPct;
+  let capacityMah = bankCap ?? capacityMah;
+
+  if (mahUsed == null && capacityMah != null && anchorMs != null) {
+    const usedWh = integrateV50WhSince(powerRecent, anchorMs);
+    if (usedWh != null) {
+      mahUsed = (usedWh * 1000) / 5;
+    }
   }
+
+  if (percent == null && capacityMah != null && mahUsed != null) {
+    const remaining = Math.max(0, capacityMah - mahUsed);
+    percent = Math.min(100, Math.max(0, (remaining / capacityMah) * 100));
+  }
+
+  const mahRemain =
+    capacityMah != null && mahUsed != null ? Math.max(0, capacityMah - mahUsed) : null;
 
   return {
     watts,
-    capacityWh,
-    usedWhSinceFull: usedWh,
+    capacityMah,
+    mahUsed,
+    mahRemain,
     percent,
-    needsCapacity: capacityWh == null,
-    needsFullAnchor: anchorMs == null,
+    needsCapacity: capacityMah == null,
+    needsFullAnchor: anchorMs == null && mahUsed == null,
+    source: deviceMahUsed != null ? 'device' : bankMahUsed != null ? 'v50_bank_tab' : 'sheet_integrate',
   };
 }

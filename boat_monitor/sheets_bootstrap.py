@@ -39,6 +39,8 @@ TABS = {
         "house_a",
         "v50_v",
         "v50_a",
+        "v50_mah_used",
+        "v50_pct_remain",
         "fw",
         "uplink",
         "note",
@@ -46,6 +48,16 @@ TABS = {
     "GPS_Log": ["timestamp_utc", "device", "lat", "lon", "maps_link", "status", "note"],
     "Bilge_Log": ["timestamp_utc", "device", "channel", "state", "note"],
     "Events": ["timestamp_utc", "device", "event", "detail"],
+    "V50_Bank": [
+        "timestamp_utc",
+        "device",
+        "v50_v",
+        "v50_a",
+        "mah_used",
+        "mah_capacity",
+        "pct_remain",
+        "note",
+    ],
     "Config": ["key", "value", "updated_utc", "note"],
 }
 
