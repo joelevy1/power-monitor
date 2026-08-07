@@ -13,6 +13,7 @@
     "eas:ios:next": "eas build --platform ios --profile production_xcode26 --non-interactive",
     "eas:submit:ios": "eas submit --platform ios --latest --profile production --non-interactive",
     "eas:submit:ios:next": "eas submit --platform ios --latest --profile production_xcode26 --non-interactive",
+    "eas-build-post-install": "bash scripts/configure-google-maps-ios.sh",
     "android": "expo run:android"
   },
   "dependencies": {
