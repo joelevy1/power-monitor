@@ -59,8 +59,13 @@ Keys without a prefix apply to **all** devices.
 
 ## Firmware update flow (fully remote)
 
+**Mandatory:** See **`boat_monitor/RELEASE_PROCESS.md`**. Merge to **`master`**
+and verify GitHub `ota_manifest.json` **before** raising `min_fw_version` on the
+sheet. Otherwise the Pico reboots for OTA but installs nothing new.
+
 1. Merge firmware + bump `ota_manifest.json` on GitHub `master`.
-2. In **Config**, set either:
+2. Run `python3 boat_monitor/validate_release.py --check-github`.
+3. In **Config**, set either:
    - `min_fw_version` = new version (persistent until Pico catches up), or
    - `cmd_ota` = `1` once (or `boat-p2:cmd_ota`).
 3. Wait for the next **auto-log** (or trigger Log Now over BLE). The Pico downloads the manifest over cellular, installs, and reboots.

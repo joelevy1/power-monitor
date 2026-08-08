@@ -81,15 +81,22 @@ ota.update(reboot=True)
 
 ## Release process
 
+**Read `RELEASE_PROCESS.md` first.** Summary:
+
 1. Update the files in `boat_monitor/`.
-2. Bump `VERSION` in `version.py`.
-3. Bump `version` in `ota_manifest.json`.
-4. Commit and merge to `master`.
-5. The installed Pico will pull from:
+2. Bump `VERSION` in `version.py` and the same `version` in `ota_manifest.json`.
+3. Run `python3 boat_monitor/validate_release.py`.
+4. **Merge to `master`** and push.
+5. Run `python3 boat_monitor/validate_release.py --check-github`.
+6. **Only then** set Config `min_fw_version` (or `apply_ship_config.py`).
+7. The installed Pico will pull from:
 
 ```text
 https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_manifest.json
 ```
+
+Never set `min_fw_version` above the version published on **`master`** — see
+`RELEASE_PROCESS.md` for why.
 
 ## Safety notes
 

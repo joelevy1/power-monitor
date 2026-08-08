@@ -1,0 +1,23 @@
+name: firmware-release
+
+on:
+  pull_request:
+    paths:
+      - "boat_monitor/version.py"
+      - "boat_monitor/ota_manifest.json"
+  push:
+    branches: [master]
+    paths:
+      - "boat_monitor/version.py"
+      - "boat_monitor/ota_manifest.json"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version.py matches ota_manifest.json
+        run: python3 boat_monitor/validate_release.py
+      - name: Validate GitHub master manifest (push to master only)
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        run: python3 boat_monitor/validate_release.py --check-github

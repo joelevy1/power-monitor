@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Gate firmware releases: local consistency and optional GitHub master check.
+
+Exit 0 only when it is safe to set min_fw_version on the sheet.
+
+  python3 validate_release.py
+  python3 validate_release.py --check-github
+  python3 validate_release.py --min-fw 1.1.44   # fail if > shipped manifest
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+MANIFEST_PATH = ROOT / "ota_manifest.json"
+VERSION_PATH = ROOT / "version.py"
+MANIFEST_URL = (
+    "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_manifest.json"
+)
+
+
+def _read_local_version():
+    text = VERSION_PATH.read_text(encoding="utf-8")
+    m = re.search(r'^VERSION\s*=\s*["\']([^"\']+)["\']', text, re.M)
+    if not m:
+        raise SystemExit("validate_release: could not parse VERSION from version.py")
+    return m.group(1).strip()
+
+
+def _read_manifest_version(path):
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return str(data.get("version", "")).strip()
+
+
+def _parse_version(text):
+    parts = []
+    for piece in str(text or "").strip().split("."):
+        try:
+            parts.append(int(piece))
+        except Exception:
+            parts.append(0)
+    return tuple(parts)
+
+
+def _version_lt(a, b):
+    return _parse_version(a) < _parse_version(b)
+
+
+def _manifest_has_version_py(data):
+    for entry in data.get("files") or []:
+        if entry.get("path") == "version.py":
+            return True
+    return False
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Validate OTA release before sheet min_fw bump")
+    parser.add_argument(
+        "--check-github",
+        action="store_true",
+        help="Require GitHub master ota_manifest.json version to match local",
+    )
+    parser.add_argument(
+        "--min-fw",
+        metavar="X.Y.Z",
+        help="Fail if this min_fw_version is newer than local manifest (sheet safety)",
+    )
+    args = parser.parse_args(argv)
+
+    errors = []
+
+    if not MANIFEST_PATH.is_file():
+        errors.append("missing ota_manifest.json")
+    if not VERSION_PATH.is_file():
+        errors.append("missing version.py")
+
+    if errors:
+        for e in errors:
+            print("FAIL:", e, file=sys.stderr)
+        return 1
+
+    local_ver = _read_local_version()
+    manifest_ver = _read_manifest_version(MANIFEST_PATH)
+
+    if local_ver != manifest_ver:
+        print(
+            "FAIL: version.py VERSION=%s != ota_manifest.json version=%s"
+            % (local_ver, manifest_ver),
+            file=sys.stderr,
+        )
+        return 1
+
+    data = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    if not _manifest_has_version_py(data):
+        print("FAIL: ota_manifest.json does not include version.py", file=sys.stderr)
+        return 1
+
+    if args.min_fw and _version_lt(manifest_ver, args.min_fw):
+        print(
+            "FAIL: min_fw_version %s > shipped manifest %s (merge to master first)"
+            % (args.min_fw, manifest_ver),
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.check_github:
+        try:
+            req = urllib.request.Request(MANIFEST_URL, headers={"User-Agent": "validate_release"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                remote = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            print("FAIL: could not fetch GitHub master manifest:", exc, file=sys.stderr)
+            return 1
+        remote_ver = str(remote.get("version", "")).strip()
+        if remote_ver != manifest_ver:
+            print(
+                "FAIL: GitHub master manifest version=%s != local %s (push/merge master first)"
+                % (remote_ver, manifest_ver),
+                file=sys.stderr,
+            )
+            return 1
+
+    print("OK: release %s (manifest + version.py)" % local_ver)
+    if args.check_github:
+        print("OK: GitHub master manifest matches")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main() or 0)

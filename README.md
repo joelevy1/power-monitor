@@ -40,4 +40,5 @@ Useful debug files:
 
 The phone service console starts a `BoatMonitor` Wi-Fi AP and serves
 `http://192.168.4.1`. OTA updates pull files from GitHub using
-`boat_monitor/ota_manifest.json`; see `boat_monitor/OTA_UPDATE.md`.
+`boat_monitor/ota_manifest.json`; see `boat_monitor/OTA_UPDATE.md` and
+**`boat_monitor/RELEASE_PROCESS.md`** (required order: merge `master` before sheet `min_fw_version`).
