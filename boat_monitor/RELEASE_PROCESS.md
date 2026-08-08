@@ -4,6 +4,28 @@
 (`ota_manifest.json` → raw URLs). Config `min_fw_version` and sheet scripts
 **cannot** deploy code that is not merged to `master`.
 
+## Owner mandate (non‑negotiable)
+
+The field unit must **always** receive **one** current release — never a staircase
+of versions.
+
+1. **Batch before merge:** If more than one firmware fix or feature is in flight
+   for the boat, put it all in **one** `VERSION` bump and **one** merge to
+   **`master`**. Do **not** merge `1.1.44` today and `1.1.45` tomorrow when both
+   could have shipped together.
+2. **One target on the sheet:** After merge, set **`min_fw_version`** exactly once
+   to that **`master`** version (`apply_ship_config.py`). Never tell the owner to
+   “get X first, then Y” unless X and Y are literally the same release.
+3. **OTA is a single jump:** Boot OTA installs the full manifest on **`master`** in
+   one pass (`1.1.39` → `1.1.45` is normal). Multi-step advice is only a sign that
+   **`master`** or the sheet was updated at the wrong time — fix the process, not
+   the boat visit.
+4. **No sheet bump ahead of `master`:** Never raise **`min_fw_version`** until
+   `validate_release.py --check-github` passes for the version you are shipping.
+
+Violating this wastes field time and breaks trust. Treat repeat violations as a
+process failure.
+
 ## Never do this
 
 1. Set **`min_fw_version`** (or run `apply_ship_config.py`) to a version **newer
