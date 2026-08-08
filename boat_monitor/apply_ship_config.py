@@ -14,7 +14,7 @@ from sheets_bootstrap import SCOPES, _credentials_path, _sheet_id  # noqa: E402
 ROWS = [
     ("interval_engine_on_s", "60", "1 min while key_on (engine charging)"),
     ("interval_engine_off_s", "300", "5 min docked / standby battery test"),
-    ("min_fw_version", "1.1.42", "OTA when Pico is older than ship release"),
+    ("min_fw_version", "1.1.43", "OTA: BLE underway logging + prior ship fixes"),
 ]
 
 

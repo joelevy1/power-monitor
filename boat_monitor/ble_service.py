@@ -618,7 +618,10 @@ class BoatMonitorBle:
 
         print("Auto-log: mode=%s, elapsed=%.0fs" % (mode, elapsed_s))
         try:
-            summary = self._log_power_and_gps(note="auto_log", prefer_wifi=True)
+            # Cellular only while BLE service is up — same as manual "Log Now".
+            # prefer_wifi=True would call _wifi_handoff_log(), turn the radio off,
+            # and hunt home SSIDs (minutes on the water with no BLE advertising).
+            summary = self._log_power_and_gps(note="auto_log", prefer_wifi=False)
             self.command_result = "auto_logged (%s)" % summary
             print("Auto-log result:", summary)
         except Exception as exc:
