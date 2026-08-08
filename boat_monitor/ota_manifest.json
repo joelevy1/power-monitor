@@ -1,6 +1,6 @@
 {
-  "version": "1.1.39",
-  "notes": "Fix sheets_log secrets SyntaxError handling; boot OTA max_total_s fallback; Thonny import probe; OTA wifi_uplink.",
+  "version": "1.1.41",
+  "notes": "Standby auto-log schedules from last successful sheet row; 60s min retry after failure.",
   "files": [
     {
       "path": "version.py",

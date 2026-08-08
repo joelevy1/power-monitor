@@ -18,8 +18,9 @@ from ble_service import log_power_and_gps, read_status
 # take 10-90s on cellular + GPS).
 MODEM_WATCHDOG_QUIET_S = 150
 
-# Consecutive auto-log failures (exceptions or power: failed) before reboot.
-AUTO_LOG_FAIL_REBOOT_COUNT = 3
+# Minimum gap between auto-log attempts after a failure (success resets the
+# Config interval timer via last_successful_log_ms).
+MIN_ATTEMPT_GAP_S = 60
 
 
 def _reboot_after_stall(reason, mode, device_id):
@@ -38,11 +39,15 @@ def main():
     auto_log.load_persisted_overrides()
     interval_s = auto_log.interval_for_mode("docked_off")
     diag_log.log("docked interval_s=%s (after overrides)" % interval_s)
-    last_auto_log_ms = time.ticks_add(time.ticks_ms(), -int(interval_s * 1000))
+    now_boot = time.ticks_ms()
+    # Schedule from last *successful* sheet row so Config intervals match what
+    # you see in Power_Log (failed/hung cycles retry without waiting another
+    # full interval from a doomed attempt start).
+    last_successful_log_ms = time.ticks_add(now_boot, -int(interval_s * 1000))
+    last_attempt_ms = time.ticks_add(now_boot, -int(MIN_ATTEMPT_GAP_S * 1000))
     last_auto_log_mode = None
-    last_heartbeat_ms = time.ticks_ms()
-    last_modem_watchdog_ms = time.ticks_ms()
-    last_successful_log_ms = time.ticks_ms()
+    last_heartbeat_ms = now_boot
+    last_modem_watchdog_ms = now_boot
     auto_log_failures = 0
     auto_log_started_ms = None
     device_id = "boat-p2"
@@ -60,15 +65,15 @@ def main():
         mode = status["mode"]
         device_id = status.get("device") or device_id
         now = time.ticks_ms()
-        elapsed_s = time.ticks_diff(now, last_auto_log_ms) / 1000
+        since_success_s = time.ticks_diff(now, last_successful_log_ms) / 1000
         stale_limit_s = auto_log.stale_reboot_threshold_s(mode)
 
         if time.ticks_diff(now, last_heartbeat_ms) > 60000:
             last_heartbeat_ms = now
-            need = max(0, auto_log.interval_for_mode(mode) - elapsed_s)
+            need = max(0, auto_log.interval_for_mode(mode) - since_success_s)
             diag_log.log(
-                "heartbeat mode=%s elapsed=%.0fs next_log_in~%.0fs stale_limit=%ss v50=%s heap=%sK"
-                % (mode, elapsed_s, need, stale_limit_s, status.get("v50"), diag_log.mem_kb())
+                "heartbeat mode=%s since_success=%.0fs next_log_in~%.0fs stale_limit=%ss v50=%s heap=%sK"
+                % (mode, since_success_s, need, stale_limit_s, status.get("v50"), diag_log.mem_kb())
             )
             try:
                 import v50_energy
@@ -94,9 +99,8 @@ def main():
                 print("standby_monitor: %s — rebooting" % reason)
                 _reboot_after_stall(reason, mode, device_id)
 
-        since_log_s = time.ticks_diff(now, last_auto_log_ms) / 1000
         if (
-            since_log_s >= MODEM_WATCHDOG_QUIET_S
+            since_success_s >= MODEM_WATCHDOG_QUIET_S
             and time.ticks_diff(now, last_modem_watchdog_ms) >= 300000
         ):
             last_modem_watchdog_ms = now
@@ -117,12 +121,16 @@ def main():
             except Exception as exc:
                 diag_log.log("modem watchdog skipped: %s" % exc)
 
-        if auto_log.should_log_now(mode, elapsed_s, last_auto_log_mode):
+        since_attempt_s = time.ticks_diff(now, last_attempt_ms) / 1000
+
+        if auto_log_started_ms is None and since_attempt_s >= MIN_ATTEMPT_GAP_S and auto_log.should_log_now(
+            mode, since_success_s, last_auto_log_mode
+        ):
             last_auto_log_mode = mode
-            last_auto_log_ms = now
             auto_log_started_ms = now
-            diag_log.log("auto-log START mode=%s elapsed=%.0fs" % (mode, elapsed_s))
-            print("standby_monitor: auto-log mode=%s elapsed=%.0fs" % (mode, elapsed_s))
+            last_attempt_ms = now
+            diag_log.log("auto-log START mode=%s since_success=%.0fs" % (mode, since_success_s))
+            print("standby_monitor: auto-log mode=%s since_success=%.0fs" % (mode, since_success_s))
             try:
                 summary = log_power_and_gps(note="auto_log", prefer_wifi=True, ble_monitor=None)
                 auto_log_started_ms = None

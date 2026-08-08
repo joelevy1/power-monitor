@@ -51,6 +51,21 @@ function ageLabel(isoOrDate) {
   return `${days}d ago`;
 }
 
+function configIntervalSec(config, mode) {
+  const cfg = config || {};
+  const onS = Number(cfg.interval_engine_on_s);
+  const offS = Number(cfg.interval_engine_off_s);
+  const engineOn = mode === 'key_on';
+  const chosen = engineOn ? onS : offS;
+  if (Number.isFinite(chosen) && chosen >= 60) return chosen;
+  return engineOn ? 300 : 3600;
+}
+
+function fmtIntervalMinutes(sec) {
+  if (sec % 60 === 0) return `${sec / 60} min`;
+  return `${Math.round(sec / 60)} min`;
+}
+
 function Row({ label, value, danger, onPress, stacked }) {
   const valueStyle = [
     stacked ? styles.rowValueStacked : styles.rowValue,
@@ -119,7 +134,13 @@ export default function AwayScreen({ onBack }) {
   const modeInfo = describeBoatMode(power?.mode);
   const { deviceId } = getSheetClientConfig();
   const lastPowerAt = power?.timestamp_utc;
-  const stale = lastPowerAt && Date.now() - new Date(lastPowerAt).getTime() > 6 * 3600 * 1000;
+  const logAgeMs = lastPowerAt ? Date.now() - new Date(lastPowerAt).getTime() : null;
+  const stale = logAgeMs != null && logAgeMs > 6 * 3600 * 1000;
+  const expectedIntervalS = power ? configIntervalSec(dashboard?.config, power.mode) : null;
+  const logOverdue =
+    logAgeMs != null &&
+    expectedIntervalS != null &&
+    logAgeMs > expectedIntervalS * 1000 * 1.35 + 120000;
   const v50 = estimateV50State({
     power,
     powerRecent: dashboard?.power_recent,
@@ -197,10 +218,23 @@ export default function AwayScreen({ onBack }) {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Power snapshot</Text>
             <Row
-              label="Last log"
+              label="Last sheet row"
               value={`${fmtTimestamp(lastPowerAt)} (${ageLabel(lastPowerAt)})`}
-              danger={stale}
+              danger={stale || logOverdue}
             />
+            {expectedIntervalS != null ? (
+              <Row
+                label="Auto-log target"
+                value={`Every ${fmtIntervalMinutes(expectedIntervalS)} (${power.mode || 'mode'})`}
+              />
+            ) : null}
+            {logOverdue ? (
+              <Text style={styles.overdueHint}>
+                Later than Config suggests — Pico may be stuck (Wi‑Fi/modem), failing uploads, or rebooting.
+                Check Events for auto-log / stall lines. Flashing modem LED in standby usually means cellular
+                woke (Wi‑Fi miss or hung session); it should go dark after a successful log or watchdog.
+              </Text>
+            ) : null}
             <Row label="Mode" value={modeInfo.label} danger={modeInfo.danger} />
             {modeInfo.detail ? <Text style={styles.modeDetail}>{modeInfo.detail}</Text> : null}
             <Row label="Engine" value={`${fmtNum(power.engine_v)} V · ${fmtNum(power.engine_a, 3)} A`} />
@@ -368,6 +402,7 @@ const styles = StyleSheet.create({
   link: { color: '#7dd3fc', textDecorationLine: 'underline' },
   linkBlock: { color: '#7dd3fc', marginTop: 10, fontSize: 15, ...FW500 },
   modeDetail: { color: '#94a3b8', fontSize: 13, marginBottom: 6 },
+  overdueHint: { color: '#fca5a5', fontSize: 12, lineHeight: 17, marginBottom: 6 },
   noteText: { color: '#64748b', fontSize: 12, marginTop: 8, fontStyle: 'italic' },
   emptyText: { color: '#94a3b8', fontSize: 14 },
   listItem: {
