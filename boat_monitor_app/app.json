@@ -3,7 +3,7 @@
     "name": "Boat Monitor",
     "slug": "boat-monitor",
     "scheme": "boatmonitor",
-    "version": "0.1.27",
+    "version": "0.1.28",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",

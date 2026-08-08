@@ -10,8 +10,8 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 
 | Key | Value example | Effect |
 |-----|----------------|--------|
-| `interval_engine_on_s` | `300` | Auto-log interval while mode is `key_on` (min 60) |
-| `interval_engine_off_s` | `3600` | Auto-log when engine off / docked (min 60) |
+| `interval_engine_on_s` | `60` | Auto-log interval while mode is `key_on` (min 60) |
+| `interval_engine_off_s` | `300` | Auto-log when engine off / docked (min 60); use `3600` for long storage |
 | `min_fw_version` | `1.1.7` | If Pico `version.py` is older, run **OTA** on that log cycle |
 | `cmd_ota` | `1` | **One-shot:** OTA + reboot after this log; cell cleared by script |
 | `cmd_reboot` | `1` | **One-shot:** reboot after this log; cell cleared |

@@ -1,6 +1,6 @@
 {
-  "version": "1.1.41",
-  "notes": "Standby auto-log schedules from last successful sheet row; 60s min retry after failure.",
+  "version": "1.1.42",
+  "notes": "Standby cadence from last success; defaults 60s engine-on; Away V50 bar; Config 60/300.",
   "files": [
     {
       "path": "version.py",

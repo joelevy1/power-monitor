@@ -28,15 +28,10 @@ cellular work when it returns True.
 # logging cycle (modem reset + registration + NETOPEN + 1-2 HTTPS POSTs,
 # commonly 10-90s depending on network conditions -- see cellular.py) risks
 # overlapping the next one.
-INTERVAL_ENGINE_ON_S = 300  # 5 minutes
+INTERVAL_ENGINE_ON_S = 60  # 1 minute while engine on (sheet can override)
 
-# "Much less frequent" everywhere else (docked_off, switch_on_key_off,
-# bilge_active, float_alert) -- still checks in periodically so battery
-# drain, a stuck bilge pump, or an already-alerting float switch shows up
-# in the sheet even with nobody around to press "Log Now", without
-# spending cellular data/EAS-adjacent SIM costs on a near-real-time cadence
-# that only actually matters while underway.
-#
+# Docked / standby default when Config has no override — use sheet
+# interval_engine_off_s (often 300 for field tests).
 INTERVAL_ENGINE_OFF_S = 3600  # 60 minutes docked / standby
 
 ENGINE_ON_MODE = "key_on"

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   RefreshControl,
   ScrollView,
@@ -58,12 +59,36 @@ function configIntervalSec(config, mode) {
   const engineOn = mode === 'key_on';
   const chosen = engineOn ? onS : offS;
   if (Number.isFinite(chosen) && chosen >= 60) return chosen;
-  return engineOn ? 300 : 3600;
+  return engineOn ? 60 : 300;
 }
 
 function fmtIntervalMinutes(sec) {
+  if (sec < 60) return `${sec}s`;
   if (sec % 60 === 0) return `${sec / 60} min`;
   return `${Math.round(sec / 60)} min`;
+}
+
+function V50RemainBar({ percent, mahRemain, capacityMah }) {
+  if (percent == null || !Number.isFinite(percent)) return null;
+  const pct = Math.min(100, Math.max(0, percent));
+  return (
+    <View style={styles.v50BarBlock}>
+      <View style={styles.v50BarHeader}>
+        <Text style={styles.v50BarLabel}>V50 charge remaining</Text>
+        <Text style={styles.v50BarPct}>{fmtNum(pct, 0)}%</Text>
+      </View>
+      <View style={styles.v50BarTrack} accessibilityRole="progressbar">
+        <View style={[styles.v50BarFill, { width: `${pct}%` }]} />
+      </View>
+      {mahRemain != null && capacityMah != null ? (
+        <Text style={styles.v50BarSub}>
+          ~{fmtNum(mahRemain, 0)} mAh left · {fmtNum(capacityMah, 0)} mAh rated
+        </Text>
+      ) : (
+        <Text style={styles.v50BarSub}>Estimate from Pico / sheet history</Text>
+      )}
+    </View>
+  );
 }
 
 function Row({ label, value, danger, onPress, stacked }) {
@@ -148,6 +173,21 @@ export default function AwayScreen({ onBack }) {
     config: dashboard?.config,
   });
 
+  const confirmMarkV50Full = () => {
+    Alert.alert(
+      'Mark V50 bank 100% full?',
+      'Writes a new “full” time to sheet Config. The app cannot undo this — only edit Config on the sheet or mark full again after charging.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Mark full',
+          style: 'destructive',
+          onPress: () => onMarkV50Full(),
+        },
+      ],
+    );
+  };
+
   const onMarkV50Full = async () => {
     setMarkingFull(true);
     try {
@@ -178,7 +218,7 @@ export default function AwayScreen({ onBack }) {
       : v50.needsCapacity
         ? 'Set boat-p2:v50_capacity_mah in Config (e.g. 13400)'
         : v50.needsFullAnchor
-          ? 'Tap “Bank is 100% full” after charging (or wait for Pico mAh columns on next log)'
+          ? 'Set “full” anchor after charging (see bottom of screen)'
           : power?.v50_pct_remain == null && power?.v50_mah_used == null
             ? 'Waiting for Pico v50_mah_used on Power_Log (OTA 1.1.37+)'
             : null;
@@ -241,19 +281,17 @@ export default function AwayScreen({ onBack }) {
             <Row label="House" value={`${fmtNum(power.house_v)} V · ${fmtNum(power.house_a, 3)} A`} />
             <Row label="V50 bank" value={v50BankLine} />
             {v50PowerLine ? <Row label="V50 load" value={v50PowerLine} /> : null}
-            {v50SocLine ? <Row label="V50 estimate" value={v50SocLine} stacked /> : null}
-            <TouchableOpacity
-              style={styles.v50Button}
-              onPress={onMarkV50Full}
-              disabled={markingFull || loading}
-              accessibilityRole="button"
-            >
-              <Text style={styles.v50ButtonText}>
-                {markingFull ? 'Saving…' : 'Bank is 100% full'}
-              </Text>
-            </TouchableOpacity>
+            {v50.percent != null ? (
+              <V50RemainBar
+                percent={v50.percent}
+                mahRemain={v50.mahRemain}
+                capacityMah={v50.capacityMah}
+              />
+            ) : v50SocLine ? (
+              <Row label="V50 estimate" value={v50SocLine} stacked />
+            ) : null}
             <Text style={styles.v50Hint}>
-              Pico tracks cumulative mAh between logs; V50_Bank tab + Power_Log columns after OTA. Mark full after a charge.
+              Pico tracks cumulative mAh between logs. Charge state updates on each Power_Log row.
             </Text>
             <Row label="Firmware" value={power.fw || '—'} />
             <Row label="Uplink" value={power.uplink || '—'} />
@@ -328,6 +366,19 @@ export default function AwayScreen({ onBack }) {
               .map(([key, val]) => (
                 <Row key={key} label={key} value={String(val ?? '')} />
               ))}
+            <TouchableOpacity
+              style={styles.v50MarkLink}
+              onPress={confirmMarkV50Full}
+              disabled={markingFull || loading}
+              accessibilityRole="button"
+            >
+              <Text style={styles.v50MarkLinkText}>
+                {markingFull ? 'Saving…' : 'Mark V50 bank 100% full (Config)'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.v50MarkNote}>
+              Rare maintenance action — not a live control. Requires confirmation.
+            </Text>
           </View>
         ) : null}
 
@@ -425,16 +476,35 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryText: { color: '#fff', ...FW500 },
-  v50Button: {
-    marginTop: 10,
-    alignSelf: 'stretch',
-    backgroundColor: '#166534',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+  v50Hint: { color: '#94a3b8', fontSize: 12, lineHeight: 17, marginTop: 8, marginBottom: 4 },
+  v50BarBlock: { marginTop: 8, marginBottom: 4 },
+  v50BarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 6,
   },
-  v50ButtonText: { color: '#ecfdf5', fontSize: 15, ...FW600 },
-  v50Hint: { color: '#94a3b8', fontSize: 12, lineHeight: 17, marginTop: 8 },
+  v50BarLabel: { color: '#cbd5e1', fontSize: 15 },
+  v50BarPct: { color: '#f8fafc', fontSize: 17, ...FW600 },
+  v50BarTrack: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#334155',
+    overflow: 'hidden',
+  },
+  v50BarFill: {
+    height: '100%',
+    borderRadius: 6,
+    backgroundColor: '#22c55e',
+    minWidth: 2,
+  },
+  v50BarSub: { color: '#94a3b8', fontSize: 12, marginTop: 6 },
+  v50MarkLink: {
+    marginTop: 12,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  v50MarkLinkText: { color: '#64748b', fontSize: 13, textDecorationLine: 'underline' },
+  v50MarkNote: { color: '#475569', fontSize: 11, lineHeight: 15, marginBottom: 4 },
   footerHint: { color: '#64748b', fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 4 },
 });
