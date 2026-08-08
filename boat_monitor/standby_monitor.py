@@ -22,6 +22,8 @@ MODEM_WATCHDOG_QUIET_S = 150
 # Config interval timer via last_successful_log_ms).
 MIN_ATTEMPT_GAP_S = 60
 MIN_ATTEMPT_GAP_ENOMEM_S = 30
+# Consecutive soft-fails before stall reboot (also triggers degraded Events).
+AUTO_LOG_FAIL_REBOOT_COUNT = 4
 
 
 def _reboot_after_stall(reason, mode, device_id):
@@ -88,6 +90,17 @@ def main():
                 power_transition.maybe_reboot_on_power_transition(status, mode)
             except Exception:
                 pass
+            try:
+                import remote_telemetry
+
+                remote_telemetry.maybe_report_standby_overdue(
+                    device_id,
+                    mode,
+                    since_success_s,
+                    auto_log.interval_for_mode(mode),
+                )
+            except Exception as exc:
+                diag_log.log("standby_overdue telemetry skipped: %s" % exc)
 
         stale_s = time.ticks_diff(now, last_successful_log_ms) / 1000
         if stale_s >= stale_limit_s:
@@ -156,6 +169,23 @@ def main():
                     diag_log.log("auto-log soft-fail count=%s" % auto_log_failures)
                     if summary and "ENOMEM" in str(summary):
                         last_attempt_ms = time.ticks_add(now, -int((MIN_ATTEMPT_GAP_S - MIN_ATTEMPT_GAP_ENOMEM_S) * 1000))
+                    try:
+                        import remote_telemetry
+
+                        if auto_log_failures >= 1 and (
+                            auto_log_failures >= 2
+                            or (summary and "ENOMEM" in str(summary))
+                            or since_success_s >= auto_log.interval_for_mode(mode)
+                        ):
+                            remote_telemetry.maybe_report_auto_log_fail(
+                                device_id,
+                                mode,
+                                since_success_s,
+                                auto_log_failures,
+                                summary,
+                            )
+                    except Exception as exc:
+                        diag_log.log("auto_log_degraded telemetry skipped: %s" % exc)
                 if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
                     reason = "auto-log failed %s times in a row" % auto_log_failures
                     print("standby_monitor: %s — rebooting" % reason)

@@ -140,6 +140,61 @@ def _stall_report_detail(reason, mode=None, lines=40):
     return header, header + "\n--- boat_diag.log ---\n" + tail_text
 
 
+def upload_event_bounded(
+    device, event, detail, diag_tail_lines=0, max_total_s=20
+):
+    """Best-effort Events POST with a wall-clock cap (custom detail text)."""
+    try:
+        start = time.time()
+    except AttributeError:
+        start = time.ticks_ms() / 1000.0
+
+    def elapsed_s():
+        try:
+            return time.time() - start
+        except AttributeError:
+            return (time.ticks_ms() - int(start * 1000)) / 1000.0
+
+    body = str(detail)
+    if diag_tail_lines:
+        try:
+            with open(LOG_PATH, "r") as f:
+                tail_text = "\n".join(f.read().splitlines()[-diag_tail_lines:])
+            body = body + "\n--- boat_diag.log ---\n" + tail_text
+        except Exception as exc:
+            body = body + "\n(no diag log: %s)" % exc
+    log("upload_event_bounded event=%s" % event)
+    if elapsed_s() >= max_total_s:
+        log("event upload skipped (no time left)")
+        return False
+    try:
+        import gc
+
+        gc.collect()
+    except Exception:
+        pass
+    try:
+        import sheets_log
+
+        logger = sheets_log.SheetsLogger(prefer_wifi=True)
+        try:
+            logger.ensure_data()
+            if elapsed_s() >= max_total_s:
+                log("event upload skipped after ensure_data (timeout)")
+                return False
+            logger.log_event(device, event, body[:800])
+        finally:
+            try:
+                logger.close_data()
+            except Exception:
+                pass
+        log("uploaded %s to Events (%.1fs)" % (event, elapsed_s()))
+        return True
+    except Exception as exc:
+        log("upload_event_bounded failed: %s" % exc)
+        return False
+
+
 def upload_stall_report_bounded(
     device, reason, mode=None, lines=12, max_total_s=12, event="standby_stall_reboot"
 ):
