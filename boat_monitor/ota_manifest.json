@@ -1,6 +1,6 @@
 {
-  "version": "1.1.46",
-  "notes": "Power_Log note includes gpio sw/key + raw GP20/GP21 for opto bench vs field.",
+  "version": "1.1.47",
+  "notes": "BLE hold: faster adv, longer supervision, GPIO-off debounce, no auto-log while connected; ble_latch sheet cmd.",
   "files": [
     {
       "path": "version.py",

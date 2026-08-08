@@ -21,6 +21,11 @@ import ble_policy
 import config as cfg
 
 
+# Faster connectable advertising (µs). 128 ms is aggressive but helps iOS find/connect.
+BLE_ADV_INTERVAL_US = 128000
+# Supervision timeout for connection parameter update (units of 10 ms).
+BLE_SUPERVISION_TIMEOUT = 2000
+
 _IRQ_CENTRAL_CONNECT = const(1)
 _IRQ_CENTRAL_DISCONNECT = const(2)
 _IRQ_GATTS_WRITE = const(3)
@@ -423,6 +428,7 @@ class BoatMonitorBle:
         # it's called (see auto_log.py's docstring).
         self._last_auto_log_ms = time.ticks_ms()
         self._last_auto_log_mode = None
+        self._gpio_low_accum_s = 0
 
     def irq(self, event, data):
         # BLE IRQ callbacks must stay quick and must not re-enter the BLE
@@ -435,7 +441,9 @@ class BoatMonitorBle:
             conn_handle, addr_type, addr = data
             print("BLE connected", conn_handle)
             self.connections.add(conn_handle)
+            self._gpio_low_accum_s = 0
             self._schedule(self._scheduled_update_status, 0)
+            self._schedule(self._scheduled_conn_params, conn_handle)
         elif event == _IRQ_CENTRAL_DISCONNECT:
             conn_handle, addr_type, addr = data
             print("BLE disconnected", conn_handle)
@@ -457,6 +465,21 @@ class BoatMonitorBle:
             # status on its own 2s cadence.
             print("schedule failed (dropped):", exc)
 
+    def _scheduled_conn_params(self, conn_handle):
+        self._request_conn_params(conn_handle)
+
+    def _request_conn_params(self, conn_handle):
+        """Ask for a longer supervision timeout so brief radio stalls do not drop the phone."""
+        try:
+            # conn_interval in 1.25 ms units; supervision_timeout in 10 ms units.
+            self.ble.gap_conn_update(conn_handle, 16, 32, 0, BLE_SUPERVISION_TIMEOUT)
+            print(
+                "BLE conn params requested interval=16-32 latency=0 supervision=%ss"
+                % (BLE_SUPERVISION_TIMEOUT * 0.01)
+            )
+        except Exception as exc:
+            print("BLE gap_conn_update:", exc)
+
     def _scheduled_update_status(self, _arg):
         self.update_status()
 
@@ -465,7 +488,11 @@ class BoatMonitorBle:
 
     def advertise(self):
         try:
-            self.ble.gap_advertise(500000, adv_data=self.payload, resp_data=self.scan_resp_payload)
+            self.ble.gap_advertise(
+                BLE_ADV_INTERVAL_US,
+                adv_data=self.payload,
+                resp_data=self.scan_resp_payload,
+            )
         except OSError as exc:
             # Don't let a transient radio error crash the whole service — main.py's
             # blanket except would fall back to WiFi mode with no clear diagnostic.
@@ -619,6 +646,11 @@ class BoatMonitorBle:
             self._last_auto_log_mode = mode
             return
 
+        # Do not start a multi-minute cellular log while the phone is connected.
+        if self.connections:
+            self._last_auto_log_mode = mode
+            return
+
         self._last_auto_log_mode = mode
         self._last_auto_log_ms = now
 
@@ -636,15 +668,27 @@ class BoatMonitorBle:
         self.update_status()
 
     def run(self):
+        tick_s = 2
         while True:
-            if not ble_policy.ble_wanted():
-                print("BLE no longer needed — rebooting to standby (BLE off)")
+            hold_s = ble_policy.gpio_off_hold_s()
+            if self.connections or ble_policy.ble_latched():
+                self._gpio_low_accum_s = 0
+            elif not ble_policy.ble_inputs_on():
+                self._gpio_low_accum_s += tick_s
+            else:
+                self._gpio_low_accum_s = 0
+
+            if self._gpio_low_accum_s >= hold_s:
+                print(
+                    "BLE GPIO off for %.0fs (hold %ss) — rebooting to standby"
+                    % (self._gpio_low_accum_s, hold_s)
+                )
                 time.sleep(0.3)
                 machine.reset()
 
             status = self.update_status()
             self._maybe_auto_log(status["mode"])
-            time.sleep(2)
+            time.sleep(tick_s)
 
 
 def main():
