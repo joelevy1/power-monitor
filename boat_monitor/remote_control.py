@@ -101,6 +101,25 @@ def apply_commands_payload(payload, device_id=""):
         actions.append("reboot")
         applied.append("cmd_reboot=1")
 
+    hold = settings.get("ble_gpio_off_hold_s")
+    if hold is not None and str(hold).strip() != "":
+        try:
+            import ble_policy
+
+            ble_policy.set_gpio_off_hold_s(int(hold))
+            applied.append("ble_gpio_off_hold_s=%s" % int(hold))
+        except Exception as exc:
+            print("remote_control: ble_gpio_off_hold_s failed:", exc)
+
+    if _truthy(settings.get("cmd_ble_latch")) or _truthy(settings.get("ble_latch")):
+        try:
+            import ble_policy
+
+            ble_policy.set_ble_latch(True)
+            applied.append("ble_latch=1")
+        except Exception as exc:
+            print("remote_control: ble_latch failed:", exc)
+
     try:
         import v50_energy
 

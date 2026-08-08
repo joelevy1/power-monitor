@@ -93,7 +93,8 @@ Interval overrides are **in RAM only** (lost on reboot until Config is read agai
 
 | Method | When it works |
 |--------|----------------|
-| **`cmd_reboot` = `1`** (or `boat-p2:cmd_reboot`) | Next **successful** Power_Log POST — does **not** help if the Pico is wedged and never finishes a log cycle. |
+| **`cmd_ble_latch` = `1`** (1.1.47+) | **One-shot:** keep BLE service up even if switch/key GPIO reads OFF (field debug). Cleared when applied. |
+| **`ble_gpio_off_hold_s`** | **1.1.47+:** seconds switch/key must read OFF before Pico leaves BLE for standby (default **30**). |
 | **Firmware 1.1.38+** | Boot OTA capped at **90s** (`BOOT_OTA_MAX_SECONDS`). Stall reboot writes **`pending_stall_reboot.json`**, tries Events upload for **≤12s**, then **always** resets; next boot flushes pending stall. Standby checks **stale every ~2s** (not only on heartbeat). Hardware **WDT** (~8s, fed via `diag_log` + loop). |
 | **Firmware 1.1.45+** | While Power_Log is quiet but standby is running: **`auto_log_degraded`** (ENOMEM/POST soft-fails) and **`standby_overdue`** (alive past interval) on **Events**, rate-limited so fail loops do not spam the sheet. **1.1.44** still reduces how often those fire. |
 | **Firmware 1.1.35+** | Standby reboots if no successful auto-log for **2×** the current `interval_engine_*_s` (sheet overrides included), if one log runs longer than that same limit, or after **4** consecutive soft-fails (`AUTO_LOG_FAIL_REBOOT_COUNT`). Posts **`standby_stall_reboot`** on Events with `boat_diag.log` tail when possible. |
