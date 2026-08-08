@@ -29,6 +29,7 @@ SSIDs/passwords; gitignored, never commit it):
 Optional debug/service files:
 
 - `bench_test.py`
+- `bench_resilience.py` (home bench: mode, log, OTA — see `BENCH_HOME_TESTING.md`)
 - `modem_check.py`
 - `ble_probe.py`
 - `ble_status.py`
