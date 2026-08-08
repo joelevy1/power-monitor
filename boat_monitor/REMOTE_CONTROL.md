@@ -80,6 +80,7 @@ No TestFlight or Wi-Fi console required for Pico updates.
 | Upload path | **Power_Log** `uplink` column | Wi-Fi SSID or `cellular` |
 | Config applied | **Events** tab | `event=remote_config`, `detail` lists intervals / `cmd_ota` / `min_fw_version` |
 | Degraded logging (1.1.45+) | **Events** tab | `auto_log_degraded` — soft-fail summary + diag tail (throttled ~10 min) |
+| GPIO opto test (1.1.46+) | **Power_Log** `note` | Suffix `gpio sw=0 key=0 gp20=1 gp21=1` — firmware ON when `sw`/`key`=1; raw `gp*=0` means pin LOW (opto active). Header pins **26/27** = GP20/GP21. |
 | Overdue but alive (1.1.45+) | **Events** tab | `standby_overdue` — past log interval, no Power_Log yet (throttled ~15 min) |
 | Stall / reboot | **Events** tab | `standby_stall_reboot` — watchdog reboot + diag tail |
 | Log cadence | **Power_Log** timestamps | ~**6 minutes** apart after `interval_engine_*_s=360` |

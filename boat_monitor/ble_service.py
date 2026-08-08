@@ -189,13 +189,19 @@ def log_power_and_gps(
 
             fw = getattr(version, "VERSION", "")
             status = read_status()
+            try:
+                import gpio_probe
+
+                log_note = gpio_probe.enrich_note(note, status)
+            except Exception:
+                log_note = note
             summary = logger.log_power_and_gps(
                 device=status["device"],
                 mode=status["mode"],
                 engine=status["engine"],
                 house=status["house"],
                 v50=status["v50"],
-                note=note,
+                note=log_note,
                 fw=fw,
                 gps_timeout_s=gps_timeout_s,
                 on_progress=on_progress,
