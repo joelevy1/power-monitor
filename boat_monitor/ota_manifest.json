@@ -1,6 +1,6 @@
 {
-  "version": "1.1.44",
-  "notes": "ENOMEM retries, skip V50_Bank when low heap, power-transition reboot, BLE cell auto-log.",
+  "version": "1.1.45",
+  "notes": "Throttled Events: auto_log_degraded, standby_overdue; fix AUTO_LOG_FAIL_REBOOT_COUNT.",
   "files": [
     {
       "path": "version.py",
@@ -89,6 +89,10 @@
     {
       "path": "standby_monitor.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
+    },
+    {
+      "path": "remote_telemetry.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_telemetry.py"
     }
   ]
 }

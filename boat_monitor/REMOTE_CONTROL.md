@@ -79,6 +79,9 @@ No TestFlight or Wi-Fi console required for Pico updates.
 | Firmware version | **Power_Log** `fw` column | e.g. `1.1.16` |
 | Upload path | **Power_Log** `uplink` column | Wi-Fi SSID or `cellular` |
 | Config applied | **Events** tab | `event=remote_config`, `detail` lists intervals / `cmd_ota` / `min_fw_version` |
+| Degraded logging (1.1.45+) | **Events** tab | `auto_log_degraded` — soft-fail summary + diag tail (throttled ~10 min) |
+| Overdue but alive (1.1.45+) | **Events** tab | `standby_overdue` — past log interval, no Power_Log yet (throttled ~15 min) |
+| Stall / reboot | **Events** tab | `standby_stall_reboot` — watchdog reboot + diag tail |
 | Log cadence | **Power_Log** timestamps | ~**6 minutes** apart after `interval_engine_*_s=360` |
 | OTA ran | Next **Power_Log** `note` | `fw=` bumps from `1.1.8` → `1.1.9` |
 | BLE (if nearby) | App status JSON | `"fw": "1.1.9"` |
@@ -91,7 +94,8 @@ Interval overrides are **in RAM only** (lost on reboot until Config is read agai
 |--------|----------------|
 | **`cmd_reboot` = `1`** (or `boat-p2:cmd_reboot`) | Next **successful** Power_Log POST — does **not** help if the Pico is wedged and never finishes a log cycle. |
 | **Firmware 1.1.38+** | Boot OTA capped at **90s** (`BOOT_OTA_MAX_SECONDS`). Stall reboot writes **`pending_stall_reboot.json`**, tries Events upload for **≤12s**, then **always** resets; next boot flushes pending stall. Standby checks **stale every ~2s** (not only on heartbeat). Hardware **WDT** (~8s, fed via `diag_log` + loop). |
-| **Firmware 1.1.35+** | Standby reboots if no successful auto-log for **2×** the current `interval_engine_*_s` (sheet overrides included), if one log runs longer than that same limit, or after **3** consecutive failures. Posts **`standby_stall_reboot`** on Events with `boat_diag.log` tail when possible. |
+| **Firmware 1.1.45+** | While Power_Log is quiet but standby is running: **`auto_log_degraded`** (ENOMEM/POST soft-fails) and **`standby_overdue`** (alive past interval) on **Events**, rate-limited so fail loops do not spam the sheet. **1.1.44** still reduces how often those fire. |
+| **Firmware 1.1.35+** | Standby reboots if no successful auto-log for **2×** the current `interval_engine_*_s` (sheet overrides included), if one log runs longer than that same limit, or after **4** consecutive soft-fails (`AUTO_LOG_FAIL_REBOOT_COUNT`). Posts **`standby_stall_reboot`** on Events with `boat_diag.log` tail when possible. |
 | **Power cycle** | Immediate — unplug Pico/USB path ~10s if the REPL or auto-log is hung. |
 
 After a stall, check **Events** for `diag_log` uploads (standby posts tail on exceptions) or Thonny `diag_log.tail(80)` if you have USB.
