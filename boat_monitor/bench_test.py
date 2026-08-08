@@ -144,8 +144,8 @@ Per-wire simulation:
   Aft bilge wire     → Ch2 IN+  → pin 29 / GP22
   Mid water return   → Ch3 IN+  → pin 25 (float hot needs house +)
   Aft water return   → Ch4 IN+  → pin 24
-  Switch wire        → Ch5 IN+  → pin 26 (+ PlusRoc IN+ when powered)
-  Key wire           → Ch6 IN+  → pin 27
+  Switch wire        → Ch5 IN+  → header pin 26 / GP20
+  Key wire           → Ch6 IN+  → header pin 27 / GP21
 
 Float shortcut (no house + yet): 12V (+) to float return wire, (−) to ground.
 
