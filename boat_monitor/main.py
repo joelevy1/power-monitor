@@ -1,4 +1,11 @@
 try:
+    import gc
+
+    gc.collect()
+except Exception:
+    pass
+
+try:
     import diag_log
     import version
 

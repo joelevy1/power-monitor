@@ -257,8 +257,32 @@ class SheetsLogger:
         (e.g. {"ok": True, "tab": ..., "row": N}); raises SheetsLogError on
         a non-200 HTTP status or a malformed transport-level response.
         """
+        try:
+            import mem_guard
+
+            mem_guard.collect_aggressive()
+        except Exception:
+            pass
+
         body = {"tab": tab, "token": self.token, "data": data}
-        body_text = json.dumps(body)
+        last_exc = None
+        for attempt in range(2):
+            try:
+                body_text = json.dumps(body)
+                break
+            except OSError as exc:
+                last_exc = exc
+                try:
+                    import mem_guard
+
+                    if mem_guard.is_enomem(exc) and attempt == 0:
+                        mem_guard.collect_aggressive()
+                        continue
+                except Exception:
+                    pass
+                raise SheetsLogError(str(exc))
+        else:
+            raise SheetsLogError(str(last_exc or "json.dumps failed"))
 
         try:
             import diag_log
@@ -267,32 +291,48 @@ class SheetsLogger:
         except Exception:
             pass
 
-        if self._wifi_ssid:
-            import wifi_uplink
-
+        for attempt in range(2):
             try:
-                response_text = wifi_uplink.WifiHttp().http_post_json(self.url, body_text)
-            except wifi_uplink.WifiError as exc:
+                if self._wifi_ssid:
+                    import wifi_uplink
+
+                    response_text = wifi_uplink.WifiHttp().http_post_json(self.url, body_text)
+                else:
+                    from cellular import CellularError
+
+                    response_text = self._cellular.http_post_json(self.url, body_text.encode())
+                break
+            except Exception as exc:
+                wrapped = exc
+                if self._wifi_ssid:
+                    import wifi_uplink
+
+                    if isinstance(exc, wifi_uplink.WifiError):
+                        wrapped = SheetsLogError(str(exc))
+                else:
+                    from cellular import CellularError
+
+                    if isinstance(exc, CellularError):
+                        wrapped = SheetsLogError(str(exc))
+                try:
+                    import mem_guard
+
+                    if attempt == 0 and mem_guard.is_enomem(exc):
+                        mem_guard.collect_aggressive()
+                        continue
+                except Exception:
+                    pass
                 try:
                     import diag_log
 
-                    diag_log.log("log_row wifi POST FAIL %s" % exc)
+                    diag_log.log("log_row POST FAIL %s" % exc)
                 except Exception:
                     pass
+                if isinstance(wrapped, SheetsLogError):
+                    raise wrapped
                 raise SheetsLogError(str(exc))
         else:
-            from cellular import CellularError
-
-            try:
-                response_text = self._cellular.http_post_json(self.url, body_text.encode())
-            except CellularError as exc:
-                try:
-                    import diag_log
-
-                    diag_log.log("log_row cellular POST FAIL %s" % exc)
-                except Exception:
-                    pass
-                raise SheetsLogError(str(exc))
+            raise SheetsLogError("log_row POST failed after retry")
 
         try:
             import diag_log
@@ -357,7 +397,12 @@ class SheetsLogger:
         )
         if snap:
             try:
-                self.log_v50_bank(device, v50, snap, note=note)
+                import mem_guard
+
+                if mem_guard.free_bytes() >= mem_guard.low_heap_threshold():
+                    self.log_v50_bank(device, v50, snap, note=note)
+                else:
+                    print("SheetsLogger: skip V50_Bank row (low heap)")
             except Exception as exc:
                 print("SheetsLogger: V50_Bank:", exc)
         return result

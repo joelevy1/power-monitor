@@ -96,3 +96,16 @@ After a stall, check **Events** for `diag_log` uploads (standby posts tail on ex
 With **switch/key off**, the modem should be **off** (`AT+CPOF` after each cellular session; standby watchdog also powers off if AT responds). The HAT may still show **solid red** (5 V present on the modem rail from the V50/USB feed) — that is not necessarily “cellular active.”
 
 **Solid + flashing red** usually means the module is **powered and doing network activity** (registering, data, or stuck between states) — **not** the desired idle state when you are only logging over **Levy-Guest** Wi‑Fi. If lights stay that way for hours with `uplink` = Wi‑Fi in the sheet, treat it as a bug/leak; 1.1.34+ tries `AT+CPOF` from standby when the UART still answers.
+
+## At the boat (recommended order)
+
+Use this when the sheet has gone quiet or you are upgrading after a stuck session.
+
+1. **Home / marina Wi‑Fi first (if available)** — Join **Levy-Guest** or **Seattle Boat** so the Pico can reach the internet without burning cellular during OTA.
+2. **Power** — Prefer a **healthy V50 bank** or boat feed; if moving from bank-only to boat house power with switch/key still **off**, firmware **1.1.44+** may do one **power-transition reboot** (clears RAM).
+3. **Force firmware** — In Config set **`cmd_ota` = `1`** once (or ensure **`min_fw_version`** ≥ ship version, e.g. **1.1.44**). Unplug USB data / close Thonny so `main.py` auto-runs.
+4. **Wait one cycle** — Up to **~5 min** on docked standby (**300 s** off-interval) for a row; confirm **Power_Log `fw`** bumped.
+5. **Underway / BLE** — Turn **battery switch ON** (then key if you use it) **before** or right after power-up so the Pico enters **BLE mode**. Connect in the app; **`inputs.switch` / `inputs.key`** should be true. **Log Now** uses **cellular** (no Wi‑Fi handoff). **1.1.43+** auto-log in BLE mode matches that.
+6. **Verify** — Power_Log **`mode=key_on`**, **`uplink=cellular`**, timestamps ~**1 min** apart with engine on.
+
+Overnight on **power bank only** away from home: expect **cellular fallback**; success still depends on memory and signal. If the sheet is silent for **>15 min** with **300 s** Config, the unit is likely in a fail/reboot loop — repeat from step 3 when you return.

@@ -21,6 +21,7 @@ MODEM_WATCHDOG_QUIET_S = 150
 # Minimum gap between auto-log attempts after a failure (success resets the
 # Config interval timer via last_successful_log_ms).
 MIN_ATTEMPT_GAP_S = 60
+MIN_ATTEMPT_GAP_ENOMEM_S = 30
 
 
 def _reboot_after_stall(reason, mode, device_id):
@@ -81,6 +82,12 @@ def main():
                 v50_energy.tick(status.get("v50"))
             except Exception:
                 pass
+            try:
+                import power_transition
+
+                power_transition.maybe_reboot_on_power_transition(status, mode)
+            except Exception:
+                pass
 
         stale_s = time.ticks_diff(now, last_successful_log_ms) / 1000
         if stale_s >= stale_limit_s:
@@ -122,9 +129,14 @@ def main():
                 diag_log.log("modem watchdog skipped: %s" % exc)
 
         since_attempt_s = time.ticks_diff(now, last_attempt_ms) / 1000
+        min_gap = MIN_ATTEMPT_GAP_S
+        if auto_log_failures > 0:
+            min_gap = MIN_ATTEMPT_GAP_ENOMEM_S
 
-        if auto_log_started_ms is None and since_attempt_s >= MIN_ATTEMPT_GAP_S and auto_log.should_log_now(
-            mode, since_success_s, last_auto_log_mode
+        if (
+            auto_log_started_ms is None
+            and since_attempt_s >= min_gap
+            and auto_log.should_log_now(mode, since_success_s, last_auto_log_mode)
         ):
             last_auto_log_mode = mode
             auto_log_started_ms = now
@@ -142,6 +154,8 @@ def main():
                 else:
                     auto_log_failures += 1
                     diag_log.log("auto-log soft-fail count=%s" % auto_log_failures)
+                    if summary and "ENOMEM" in str(summary):
+                        last_attempt_ms = time.ticks_add(now, -int((MIN_ATTEMPT_GAP_S - MIN_ATTEMPT_GAP_ENOMEM_S) * 1000))
                 if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
                     reason = "auto-log failed %s times in a row" % auto_log_failures
                     print("standby_monitor: %s — rebooting" % reason)

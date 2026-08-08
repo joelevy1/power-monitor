@@ -1,6 +1,6 @@
 {
-  "version": "1.1.43",
-  "notes": "BLE mode auto-log uses cellular (no Wi-Fi handoff); fixes boat BLE + logging.",
+  "version": "1.1.44",
+  "notes": "ENOMEM retries, skip V50_Bank when low heap, power-transition reboot, BLE cell auto-log.",
   "files": [
     {
       "path": "version.py",
@@ -77,6 +77,14 @@
     {
       "path": "config.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/config.py"
+    },
+    {
+      "path": "mem_guard.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/mem_guard.py"
+    },
+    {
+      "path": "power_transition.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/power_transition.py"
     },
     {
       "path": "standby_monitor.py",

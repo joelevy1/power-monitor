@@ -141,7 +141,7 @@ def _stall_report_detail(reason, mode=None, lines=40):
 
 
 def upload_stall_report_bounded(
-    device, reason, mode=None, lines=40, max_total_s=12, event="standby_stall_reboot"
+    device, reason, mode=None, lines=12, max_total_s=12, event="standby_stall_reboot"
 ):
     """Best-effort Events POST with a wall-clock cap (never blocks reboot long)."""
     try:
@@ -175,7 +175,7 @@ def upload_stall_report_bounded(
             if elapsed_s() >= max_total_s:
                 log("stall upload skipped after ensure_data (timeout)")
                 return False
-            logger.log_event(device, event, detail[:1500])
+            logger.log_event(device, event, detail[:800])
         finally:
             try:
                 logger.close_data()
