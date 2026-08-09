@@ -8,6 +8,8 @@ Metrics per round (from Google Sheet Events `ota_lifecycle` + Power_Log):
   - success / timeout
 
 Requires: service account, device on boat power, BLE off, auto-log enabled.
+Device must be on firmware **≥ 1.1.61** (post-log OTA reboot). If stuck on 1.1.60
+with `ota_action=1` and no log gap, use app **Reboot to Update** once, then re-run.
 
   python3 ota_stress_harness.py --rounds 6
   python3 ota_stress_harness.py --rounds 6 --dry-run   # sheet poll only, no git ship
@@ -178,7 +180,10 @@ def _wait_until_fw_at_least(min_fw: str, timeout_s: int = 3600, nudge_ota: bool 
             )
             print("Bootstrap: set min_fw=%s + cmd_ota=1 (device was fw=%s)" % (min_fw, fw))
             nudged = True
-        print("  … bootstrap fw=%s need>=%s +%ds" % (fw or "?", min_fw, int(time.time() - start)))
+        print(
+            "  … bootstrap fw=%s need>=%s +%ds" % (fw or "?", min_fw, int(time.time() - start)),
+            flush=True,
+        )
         time.sleep(45)
     print("Bootstrap TIMEOUT — device never reached %s" % min_fw)
     return False
@@ -194,7 +199,7 @@ def _parse_ver_tuple(text):
     return tuple(parts)
 
 
-def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 960):
+def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 1200):
     start = time.time()
     ev_base = _fetch_events()
     ev_skip = len(ev_base)
@@ -328,7 +333,7 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         else:
             _set_min_fw_only(ver)
         pl_before, _ = _fetch_power_tail()
-        rep = _wait_for_target_fw(ver, pl_before, timeout_s=960)
+        rep = _wait_for_target_fw(ver, pl_before, timeout_s=1200)
         rep["round"] = i + 1
         results.append(rep)
         print("ROUND RESULT:", json.dumps(rep, indent=2))
