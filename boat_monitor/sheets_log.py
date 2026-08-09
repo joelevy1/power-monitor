@@ -494,6 +494,12 @@ class SheetsLogger:
             on_progress("logging_modem")
         self._last_remote_actions = []
         self.ensure_data()
+        try:
+            import ota_telemetry
+
+            ota_telemetry.flush_pending_inline(self, device)
+        except Exception:
+            pass
         if on_progress:
             on_progress("logging_power")
         status_note = note
