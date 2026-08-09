@@ -264,7 +264,6 @@ class Sim7600Modem:
             return False
 
         print("Modem is off; pulsing PWRKEY on GP%d..." % self._cfg.PIN_MODEM_PWRKEY)
-        last_err = None
         for attempt in range(1, 4):
             if attempt > 1:
                 print("PWRKEY wake retry %d/3..." % attempt)
