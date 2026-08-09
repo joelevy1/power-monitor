@@ -474,9 +474,15 @@ class BoatMonitorBle:
     def _scheduled_on_connect(self, conn_handle):
         self._request_conn_params(conn_handle)
         try:
-            time.sleep_ms(250)
+            time.sleep_ms(600)
         except AttributeError:
-            time.sleep(0.25)
+            time.sleep(0.6)
+        # Small notify before MTU/param settle can drop iOS/LightBlue in ~1–2 s.
+        self.update_status(sensors=False)
+        try:
+            time.sleep_ms(400)
+        except AttributeError:
+            time.sleep(0.4)
         self.update_status(sensors=True)
 
     def _scheduled_conn_params(self, conn_handle):
@@ -524,7 +530,7 @@ class BoatMonitorBle:
             try:
                 self.ble.gatts_notify(conn, self.status_handle, data)
             except Exception as exc:
-                print("Notify failed:", exc)
+                print("Notify failed (%d bytes):" % len(data), exc)
         return status
 
     def handle_command(self, raw):
@@ -704,6 +710,12 @@ class BoatMonitorBle:
 
             status = self.update_status(sensors=not self.connections)
             self._maybe_auto_log(status["mode"])
+            try:
+                import resilience
+
+                resilience.feed_watchdog()
+            except Exception:
+                pass
             time.sleep(tick_s)
 
 
