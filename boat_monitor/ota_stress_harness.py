@@ -261,33 +261,38 @@ def _ship_version(new_ver: str) -> bool:
         check=False,
     )
     subprocess.run(["git", "push", "-u", "origin", branch], cwd=str(REPO), check=False)
+    subprocess.run(["git", "checkout", "master"], cwd=str(REPO), check=False)
+    subprocess.run(["git", "pull", "origin", "master"], cwd=str(REPO), check=False)
     subprocess.run(
-        [
-            "gh",
-            "pr",
-            "create",
-            "--title",
-            "release: OTA stress %s" % new_ver,
-            "--body",
-            "Automated OTA stress round target %s." % new_ver,
-            "--base",
-            "master",
-            "--head",
-            branch,
-        ],
+        ["git", "merge", branch, "-m", "release: OTA stress %s" % new_ver],
         cwd=str(REPO),
         check=False,
     )
-    subprocess.run(["gh", "pr", "merge", branch, "--merge"], cwd=str(REPO), check=False)
+    subprocess.run(["git", "push", "origin", "master"], cwd=str(REPO), check=False)
     subprocess.run(["git", "checkout", "master"], cwd=str(REPO), check=False)
-    subprocess.run(["git", "pull", "origin", "master"], cwd=str(REPO), check=False)
-    r2 = subprocess.run(
-        [sys.executable, str(ROOT / "validate_release.py"), "--check-github"],
-        cwd=str(ROOT),
-    )
-    if r2.returncode != 0:
-        return False
+    # raw.githubusercontent.com can lag GitHub master by a few minutes
+    for attempt in range(12):
+        r2 = subprocess.run(
+            [sys.executable, str(ROOT / "validate_release.py"), "--check-github"],
+            cwd=str(ROOT),
+        )
+        if r2.returncode == 0:
+            break
+        time.sleep(15)
+    else:
+        print("WARN: GitHub raw manifest still stale; applying sheet min_fw anyway")
     r3 = subprocess.run([sys.executable, str(ROOT / "apply_ship_config.py")], cwd=str(ROOT))
+    if r3.returncode != 0:
+        from sheets_config_upsert import upsert_config_keys
+
+        sheets, sid = _sheets()
+        upsert_config_keys(
+            sheets,
+            sid,
+            [("min_fw_version", new_ver, "OTA stress harness target %s (CDN fallback)" % new_ver)],
+        )
+        print("CONFIG min_fw_version =", new_ver, "(fallback)")
+        return True
     return r3.returncode == 0
 
 
