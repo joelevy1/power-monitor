@@ -28,6 +28,7 @@ except ImportError:
     import json
 
 import ota_config
+import ota_state
 
 
 class OtaError(Exception):
@@ -96,21 +97,42 @@ def write_file(path, data):
         raise OtaError("failed replacing %s: %s" % (path, exc))
 
 
-def apply_manifest(client, manifest):
-    files = manifest.get("files", [])
+def apply_manifest(client, manifest, extra_entries=None):
+    files = list(manifest.get("files", []))
+    if extra_entries:
+        for entry in extra_entries:
+            if isinstance(entry, dict):
+                files.append(entry)
+            else:
+                path, url = entry
+                files.append({"path": path, "url": url, "min_size": 1})
+    files = ota_state.sort_manifest_files(files)
     if not files:
         raise OtaError("manifest has no files")
 
-    for entry in files:
-        path = entry["path"]
-        url = entry["url"]
-        min_size = entry.get("min_size", 1)
+    paths = [entry["path"] for entry in files]
+    target_version = manifest.get("version", "unknown")
+    ota_state.begin(target_version, paths)
 
-        print("Updating", path)
-        data = _http_get_retry(client, url)
-        if len(data) < min_size:
-            raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
-        write_file(path, data)
+    try:
+        for entry in files:
+            path = entry["path"]
+            url = entry["url"]
+            min_size = entry.get("min_size", 1)
+
+            print("Updating", path)
+            data = _http_get_retry(client, url)
+            if len(data) < min_size:
+                raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
+            write_file(path, data)
+            ota_state.mark_done(path)
+
+        if not ota_state.verify_manifest(manifest):
+            raise OtaError("manifest verify failed after write")
+        ota_state.complete(target_version)
+    except Exception as exc:
+        ota_state.fail(str(exc))
+        raise
 
 
 def _get_client(prefer_wifi=True):
@@ -215,20 +237,16 @@ def update(reboot=False, prefer_wifi=True, max_total_s=None):
         print("Target version:", target_version)
 
         if target_version == current_version():
-            print("Already at target version.")
-            return False
+            if ota_state.verify_manifest(manifest):
+                print("Already at target version.")
+                return False
+            print(
+                "OTA repair: VERSION matches %s but files incomplete; re-downloading."
+                % target_version
+            )
 
-        files = manifest.get("files", [])
-        for entry in files:
-            _check_ota_deadline(start, max_total_s, "before %s" % entry.get("path"))
-            path = entry["path"]
-            url = entry["url"]
-            min_size = entry.get("min_size", 1)
-            print("Updating", path)
-            data = _http_get_retry(client, url)
-            if len(data) < min_size:
-                raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
-            write_file(path, data)
+        _check_ota_deadline(start, max_total_s, "before apply")
+        apply_manifest(client, manifest)
 
         print("Update complete.")
         print("Reboot required to run new files.")

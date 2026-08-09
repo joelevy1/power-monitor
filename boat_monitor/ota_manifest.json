@@ -1,6 +1,6 @@
 {
-  "version": "1.1.47",
-  "notes": "BLE hold: faster adv, longer supervision, GPIO-off debounce, no auto-log while connected; ble_latch sheet cmd.",
+  "version": "1.1.48",
+  "notes": "OTA hardening: pending state, verify on complete, repair when VERSION matches but files missing; version.py/main.py written last.",
   "files": [
     {
       "path": "version.py",
@@ -65,6 +65,10 @@
     {
       "path": "diag_log.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/diag_log.py"
+    },
+    {
+      "path": "ota_state.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_state.py"
     },
     {
       "path": "ota.py",
