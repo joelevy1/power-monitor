@@ -93,32 +93,134 @@ def _lifecycle_since(ev_rows):
         kv = _parse_kv(row[3])
         kv["sheet_ts"] = row[0]
         kv["event"] = row[2]
+        if row[2] == "boot_ota" and "phase" not in kv:
+            kv["phase"] = kv.get("outcome", "boot_ota")
         items.append(kv)
     return items
+
+
+def _phase_key(item):
+    return (
+        item.get("event"),
+        item.get("phase"),
+        item.get("run_id"),
+        item.get("sheet_ts"),
+        item.get("target_fw"),
+    )
+
+
+def _summarize_lifecycle(phases, target_fw):
+    """Device-reported aware → confirmed timing for this target."""
+    relevant = []
+    for item in phases:
+        tfw = item.get("target_fw") or ""
+        ph = item.get("phase") or ""
+        if tfw == target_fw or (ph == "confirmed" and item.get("fw_reported") == target_fw):
+            relevant.append(item)
+    by_phase = {}
+    for item in relevant:
+        ph = item.get("phase") or item.get("event") or "?"
+        by_phase.setdefault(ph, []).append(item)
+    confirmed = (by_phase.get("confirmed") or [None])[-1]
+    aware = (by_phase.get("aware") or [None])[0]
+    boot_end = (by_phase.get("boot_end") or [None])[-1]
+    summary = {
+        "lifecycle_rows": len(relevant),
+        "phases_seen": sorted(by_phase.keys()),
+    }
+    if confirmed and confirmed.get("elapsed_total_s"):
+        summary["device_aware_to_confirmed_s"] = int(confirmed["elapsed_total_s"])
+    if boot_end and boot_end.get("elapsed_s"):
+        summary["boot_ota_elapsed_s"] = int(boot_end["elapsed_s"])
+    if aware:
+        summary["aware_sheet_ts"] = aware.get("sheet_ts")
+    if confirmed:
+        summary["confirmed_sheet_ts"] = confirmed.get("sheet_ts")
+    if aware and confirmed and aware.get("sheet_ts") and confirmed.get("sheet_ts"):
+        summary["lifecycle_log"] = [
+            {
+                "sheet_ts": it.get("sheet_ts"),
+                "phase": it.get("phase"),
+                "run_id": it.get("run_id"),
+                "detail_keys": {k: it[k] for k in it if k not in ("sheet_ts", "event")},
+            }
+            for it in sorted(relevant, key=lambda x: str(x.get("sheet_ts", "")))
+        ]
+    return summary
+
+
+def _current_device_fw():
+    _, tail = _fetch_power_tail()
+    return tail[-1].get("fw") if tail else ""
+
+
+def _wait_until_fw_at_least(min_fw: str, timeout_s: int = 3600, nudge_ota: bool = True):
+    """Block until Power_Log reports fw >= min_fw (bootstrap before stress rounds)."""
+    print("Bootstrap: waiting for device fw >= %s (timeout %ds)" % (min_fw, timeout_s))
+    nudged = False
+    start = time.time()
+    while time.time() - start < timeout_s:
+        fw = _current_device_fw()
+        if fw and _parse_ver_tuple(fw) >= _parse_ver_tuple(min_fw):
+            print("Bootstrap OK: device fw=%s" % fw)
+            return True
+        if nudge_ota and not nudged and fw:
+            from sheets_config_upsert import upsert_config_keys
+
+            sheets, sid = _sheets()
+            upsert_config_keys(
+                sheets,
+                sid,
+                [
+                    ("min_fw_version", min_fw, "OTA stress bootstrap"),
+                    ("boat-p2:cmd_ota", "1", "OTA stress bootstrap one-shot"),
+                ],
+            )
+            print("Bootstrap: set min_fw=%s + cmd_ota=1 (device was fw=%s)" % (min_fw, fw))
+            nudged = True
+        print("  … bootstrap fw=%s need>=%s +%ds" % (fw or "?", min_fw, int(time.time() - start)))
+        time.sleep(45)
+    print("Bootstrap TIMEOUT — device never reached %s" % min_fw)
+    return False
+
+
+def _parse_ver_tuple(text):
+    parts = []
+    for p in str(text or "").split("."):
+        try:
+            parts.append(int(p))
+        except Exception:
+            parts.append(0)
+    return tuple(parts)
 
 
 def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 960):
     start = time.time()
     ev_base = _fetch_events()
     ev_skip = len(ev_base)
-    run_report = {"target": target_fw, "phases": [], "success": False}
+    run_report = {"target": target_fw, "phases": [], "phase_keys": set(), "success": False}
 
     while time.time() - start < timeout_s:
         count, tail = _fetch_power_tail()
-        ev_new = _fetch_events(0)
-        # full scan lifecycle each loop
         all_ev = _fetch_events()
         life = _lifecycle_since(all_ev)
         for item in life:
-            if item.get("target_fw") == target_fw or item.get("phase") == "confirmed":
-                if item not in run_report["phases"]:
+            if item.get("target_fw") == target_fw or (
+                item.get("phase") == "confirmed" and item.get("fw_reported") == target_fw
+            ):
+                pk = _phase_key(item)
+                if pk not in run_report["phase_keys"]:
+                    run_report["phase_keys"].add(pk)
                     run_report["phases"].append(item)
 
         if tail and tail[-1].get("fw") == target_fw and count > baseline_pl_rows:
             run_report["success"] = True
             run_report["confirmed_fw"] = tail[-1]["fw"]
             run_report["confirmed_ts"] = tail[-1]["ts"]
-            run_report["elapsed_s"] = int(time.time() - start)
+            run_report["wall_elapsed_s"] = int(time.time() - start)
+            run_report["elapsed_s"] = run_report["wall_elapsed_s"]
+            run_report.update(_summarize_lifecycle(run_report["phases"], target_fw))
+            del run_report["phase_keys"]
             return run_report
 
         if tail:
@@ -129,6 +231,9 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
         time.sleep(30)
 
     run_report["timeout_s"] = timeout_s
+    run_report.update(_summarize_lifecycle(run_report.get("phases", []), target_fw))
+    if "phase_keys" in run_report:
+        del run_report["phase_keys"]
     return run_report
 
 
@@ -198,9 +303,15 @@ def _set_min_fw_only(ver: str):
     print("CONFIG min_fw_version =", ver)
 
 
-def run_rounds(n: int, dry_run: bool):
+def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int):
     start_ver = _read_local_version()
     print("Local master version:", start_ver)
+    if bootstrap and not dry_run:
+        if not _wait_until_fw_at_least(start_ver, timeout_s=bootstrap_timeout_s):
+            return 1
+    elif bootstrap:
+        fw = _current_device_fw()
+        print("Dry-run bootstrap skip (device fw=%s, need>=%s)" % (fw, start_ver))
     baseline_rows, _ = _fetch_power_tail()
     results = []
     ver = start_ver
@@ -225,9 +336,23 @@ def run_rounds(n: int, dry_run: bool):
             print("Stopping stress pass after failed round.")
             break
     out = REPO / "ota_stress_results.json"
-    out.write_text(json.dumps({"started": start_ver, "results": results}, indent=2), encoding="utf-8")
+    payload = {
+        "started": start_ver,
+        "finished_utc": datetime.now(timezone.utc).isoformat(),
+        "rounds_requested": n,
+        "results": results,
+    }
+    ok = [r for r in results if r.get("success")]
+    payload["summary"] = {
+        "success_count": len(ok),
+        "fail_count": len(results) - len(ok),
+        "wall_times_s": [r.get("wall_elapsed_s") for r in ok],
+        "device_aware_to_confirmed_s": [r.get("device_aware_to_confirmed_s") for r in ok if r.get("device_aware_to_confirmed_s")],
+    }
+    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print("\nWrote", out)
-    return 0 if all(r.get("success") for r in results) else 1
+    print("SUMMARY:", json.dumps(payload["summary"], indent=2))
+    return 0 if results and all(r.get("success") for r in results) else 1
 
 
 def watch():
@@ -248,12 +373,19 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--rounds", type=int, default=6)
     p.add_argument("--dry-run", action="store_true", help="only bump min_fw on sheet, no git ship")
+    p.add_argument("--no-bootstrap", action="store_true", help="skip wait for device fw >= repo VERSION")
+    p.add_argument("--bootstrap-timeout", type=int, default=7200, help="seconds to wait for bootstrap (default 2h)")
     p.add_argument("--watch", action="store_true")
     args = p.parse_args()
     if args.watch:
         watch()
         return 0
-    return run_rounds(args.rounds, args.dry_run)
+    return run_rounds(
+        args.rounds,
+        args.dry_run,
+        bootstrap=not args.no_bootstrap,
+        bootstrap_timeout_s=args.bootstrap_timeout,
+    )
 
 
 if __name__ == "__main__":
