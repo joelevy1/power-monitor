@@ -47,6 +47,11 @@ def run(reboot=False, files=None):
             gc.collect()
             url = _base() + name
             print("GET", name, "heap", gc.mem_free())
+            if name == "ble_service.py" and hasattr(client, "download_to_file"):
+                nbytes = client.download_to_file(url, name, timeout_s=HTTP_TIMEOUT_S)
+                print("  ok", nbytes, "bytes (streamed)")
+                gc.collect()
+                continue
             data = client.http_get(url, timeout_s=HTTP_TIMEOUT_S)
             if len(data) < 50:
                 raise OSError("%s too small (%d)" % (name, len(data)))
