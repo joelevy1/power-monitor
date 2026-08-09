@@ -85,6 +85,7 @@ else:
         if ble_policy.wait_for_ble_wanted(timeout_s=3.0):
             print("Starting BLE service (switch or key on)")
             try:
+                import time
                 from ble_service import ensure_wifi_off
 
                 ensure_wifi_off()
