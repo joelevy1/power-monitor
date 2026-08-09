@@ -29,12 +29,10 @@ try:
                 diag_log.log("boot OTA start %s" % remote_boot_config.boot_ota_status_line())
             except Exception:
                 pass
-            prefer_wifi = True
-            try:
-                if remote_boot_config.load().get("pending_ota"):
-                    prefer_wifi = False
-            except Exception:
-                pass
+            # Boot runs before BLE/Wi-Fi console. Cellular-first avoids burning the
+            # boot OTA time budget scanning saved marina SSIDs that are unreachable
+            # on the water (common reason 1.1.52 never left old fw via sheet alone).
+            prefer_wifi = False
             try:
                 ota.update(reboot=reboot, prefer_wifi=prefer_wifi, max_total_s=max_s)
             except TypeError:

@@ -481,6 +481,7 @@ class SheetsLogger:
         power_outcome = "ok"
         last_response = None
         remote_actions = []
+        power_remote_actions = []
         try:
             import diag_log
 
@@ -499,6 +500,7 @@ class SheetsLogger:
                 uplink=self.uplink_label(),
             )
             remote_actions = self._apply_remote_from_response(last_response, device)
+            power_remote_actions = list(remote_actions or [])
             if "ota" in (remote_actions or []):
                 try:
                     import diag_log
@@ -570,7 +572,9 @@ class SheetsLogger:
                     gps_actions = self._apply_remote_from_response(
                         gps_result, device, log_event=False
                     )
-                    remote_actions = self._merge_remote_actions(remote_actions, gps_actions)
+                    remote_actions = self._merge_remote_actions(
+                        power_remote_actions, gps_actions
+                    )
             except Exception as exc:
                 gps_outcome = "failed: %s" % exc
 

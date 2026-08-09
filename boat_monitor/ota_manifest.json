@@ -1,6 +1,6 @@
 {
-  "version": "1.1.55",
-  "notes": "OTA: bypass 60s auto-log wait when sheet min_fw is newer; persist min_fw on Pico.",
+  "version": "1.1.56",
+  "notes": "Boot OTA cellular-first; GPS cannot drop OTA action from Power_Log response.",
   "files": [
     {
       "path": "version.py",
