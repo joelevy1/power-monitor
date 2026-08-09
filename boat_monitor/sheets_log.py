@@ -254,6 +254,12 @@ class SheetsLogger:
                     ota_reboot.maybe_reboot_for_ota(actions, source="sheets_log.close_data")
                 except Exception as exc:
                     print("SheetsLogger: ota reboot:", exc)
+            try:
+                import ota_reboot
+
+                ota_reboot.reboot_if_upgrade_pending(source="sheets_log.close_data_wifi")
+            except Exception as exc:
+                print("SheetsLogger: upgrade pending reboot:", exc)
             return
 
         if self._cellular is not None:
@@ -275,6 +281,12 @@ class SheetsLogger:
                 ota_reboot.maybe_reboot_for_ota(actions, source="sheets_log.close_data")
             except Exception as exc:
                 print("SheetsLogger: ota reboot:", exc)
+        try:
+            import ota_reboot
+
+            ota_reboot.reboot_if_upgrade_pending(source="sheets_log.close_data")
+        except Exception as exc:
+            print("SheetsLogger: upgrade pending reboot:", exc)
 
     def log_row(self, tab, data):
         """POST one row to the given Sheets tab via the Apps Script Web App.

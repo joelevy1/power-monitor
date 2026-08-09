@@ -199,7 +199,28 @@ def _parse_ver_tuple(text):
     return tuple(parts)
 
 
-def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 1200):
+def _write_results(path, start_ver, n, results, final=False):
+    ok = [r for r in results if r.get("success")]
+    payload = {
+        "started": start_ver,
+        "finished_utc": datetime.now(timezone.utc).isoformat(),
+        "rounds_requested": n,
+        "complete": final,
+        "results": results,
+        "summary": {
+            "success_count": len(ok),
+            "fail_count": len(results) - len(ok),
+            "wall_times_s": [r.get("wall_elapsed_s") for r in ok],
+            "device_aware_to_confirmed_s": [
+                r.get("device_aware_to_confirmed_s") for r in ok if r.get("device_aware_to_confirmed_s")
+            ],
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload
+
+
+def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 1800):
     start = time.time()
     ev_base = _fetch_events()
     ev_skip = len(ev_base)
@@ -338,29 +359,16 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         else:
             _set_min_fw_only(ver)
         pl_before, _ = _fetch_power_tail()
-        rep = _wait_for_target_fw(ver, pl_before, timeout_s=1200)
+        rep = _wait_for_target_fw(ver, pl_before, timeout_s=1800)
         rep["round"] = i + 1
         results.append(rep)
         print("ROUND RESULT:", json.dumps(rep, indent=2))
+        _write_results(REPO / "ota_stress_results.json", start_ver, n, results, final=False)
         if not rep.get("success"):
             print("Stopping stress pass after failed round.")
             break
-    out = REPO / "ota_stress_results.json"
-    payload = {
-        "started": start_ver,
-        "finished_utc": datetime.now(timezone.utc).isoformat(),
-        "rounds_requested": n,
-        "results": results,
-    }
-    ok = [r for r in results if r.get("success")]
-    payload["summary"] = {
-        "success_count": len(ok),
-        "fail_count": len(results) - len(ok),
-        "wall_times_s": [r.get("wall_elapsed_s") for r in ok],
-        "device_aware_to_confirmed_s": [r.get("device_aware_to_confirmed_s") for r in ok if r.get("device_aware_to_confirmed_s")],
-    }
-    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print("\nWrote", out)
+    payload = _write_results(REPO / "ota_stress_results.json", start_ver, n, results, final=True)
+    print("\nWrote", REPO / "ota_stress_results.json")
     print("SUMMARY:", json.dumps(payload["summary"], indent=2))
     return 0 if results and all(r.get("success") for r in results) else 1
 
