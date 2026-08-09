@@ -122,6 +122,43 @@ def upload_result(payload, device=None, prefer_wifi=None, max_total_s=None):
     )
 
 
+def flush_pending_inline(logger, device=None):
+    """POST queued boot_ota row on an open Sheets session (cellular/Wi-Fi up)."""
+    pending = _load_pending()
+    if not pending:
+        return False
+    if not getattr(logger, "_data_open", False):
+        return False
+    device = device or pending.get("device") or DEFAULT_DEVICE
+    body = _format_detail(pending)
+    try:
+        import diag_log
+
+        tail = "\n".join(diag_log.recent_lines(10))
+        if tail:
+            body = body + "\n--- boat_diag.log ---\n" + tail
+    except Exception:
+        pass
+    try:
+        logger.log_event(device, "boot_ota", body[:1500])
+        _clear_pending()
+        try:
+            import diag_log
+
+            diag_log.log("boot_ota inline Events (%d chars)" % len(body))
+        except Exception:
+            pass
+        return True
+    except Exception as exc:
+        try:
+            import diag_log
+
+            diag_log.log("boot_ota inline failed: %s" % exc)
+        except Exception:
+            pass
+        return False
+
+
 def flush_pending_on_boot(device=None):
     """POST queued OTA report from prior boot (success after reboot, or failed upload)."""
     pending = _load_pending()
