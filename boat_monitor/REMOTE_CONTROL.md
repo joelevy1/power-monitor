@@ -152,3 +152,5 @@ ota.update(reboot=True, prefer_wifi=False)
 **Or:** Full power cycle (~10 s unplug) with **battery switch ON** and **`auto_ota_on_boot=1`** on Config — on **1.1.56+** boot OTA uses **cellular first**; on **1.1.52** prefer marina **Levy-Guest** / **Seattle Boat** Wi‑Fi for that one boot if cellular boot OTA fails.
 
 After **`fw` ≥ 1.1.54**, raising `min_fw_version` should cause **one Power row → reboot → new `fw`**, not endless minute pings.
+
+**1.1.57+:** Boot OTA and `ota.update()` use **`ble_policy.ota_prefer_wifi()`** — **cellular only** when master switch or key is on; Wi‑Fi only when both are off (dock standby).

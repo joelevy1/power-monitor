@@ -196,10 +196,18 @@ def _close_client(client, used_wifi):
     client.close_data()  # cellular.py handles HTTPTERM/NETCLOSE (Phase 2.4 discipline)
 
 
-def update(reboot=False, prefer_wifi=True, max_total_s=None):
+def update(reboot=False, prefer_wifi=None, max_total_s=None):
     print("Boat Monitor OTA update")
     print("Current version:", current_version())
     print("Manifest:", ota_config.OTA_MANIFEST_URL)
+    if prefer_wifi is None:
+        try:
+            import ble_policy
+
+            prefer_wifi = ble_policy.ota_prefer_wifi()
+        except Exception:
+            prefer_wifi = True
+    print("OTA prefer_wifi:", prefer_wifi)
     if max_total_s is not None:
         print("OTA max_total_s:", max_total_s)
 
@@ -244,7 +252,14 @@ def update(reboot=False, prefer_wifi=True, max_total_s=None):
         _close_client(client, used_wifi)
 
 
-def check(prefer_wifi=True):
+def check(prefer_wifi=None):
+    if prefer_wifi is None:
+        try:
+            import ble_policy
+
+            prefer_wifi = ble_policy.ota_prefer_wifi()
+        except Exception:
+            prefer_wifi = True
     client, used_wifi = _get_client(prefer_wifi=prefer_wifi)
     try:
         manifest = load_manifest(client)
