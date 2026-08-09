@@ -1,6 +1,6 @@
 {
-  "version": "1.1.62",
-  "notes": "boot_ota Events on first cellular log; OTA test bump 1.1.61→1.1.62.",
+  "version": "1.1.63",
+  "notes": "OTA stress: ota_lifecycle Events (aware→confirmed timing); hardened auto-reboot path.",
   "files": [
     {
       "path": "version.py",
@@ -77,6 +77,10 @@
     {
       "path": "ota.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+    },
+    {
+      "path": "ota_lifecycle.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_lifecycle.py"
     },
     {
       "path": "ota_reboot.py",
