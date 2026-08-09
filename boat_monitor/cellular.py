@@ -37,6 +37,9 @@ import time
 
 import ota_config
 
+# Set when close_data(power_off=False) — next ensure_data must not RST.
+_modem_warm_session = False
+
 
 class CellularError(Exception):
     pass
@@ -526,21 +529,30 @@ class Sim7600Modem:
         if self._data_open:
             return
 
+        global _modem_warm_session
+
         # A modem deliberately shut down after the prior logging cycle needs
         # PWRKEY, not RST. Preserve the established reset-first behavior only
         # when the modem was already running; a freshly PWRKEY-started module
         # has just completed its own clean boot.
         newly_started = self.ensure_awake()
-        _diag("ensure_awake newly_started=%s" % newly_started)
-        if not newly_started:
+        _diag("ensure_awake newly_started=%s warm=%s" % (newly_started, _modem_warm_session))
+        if newly_started:
+            _modem_warm_session = False
+        elif not _modem_warm_session:
             self.reset()
             _diag("modem reset pulse")
+        else:
+            _diag("warm modem — skip reset")
 
         self.check_alive()
         _diag("modem AT ok")
         self.check_sim()
         _diag("SIM ready")
-        self.wait_for_registration(seconds=registration_timeout_s)
+        reg_s = registration_timeout_s
+        if _modem_warm_session and not newly_started:
+            reg_s = min(reg_s, 12)
+        self.wait_for_registration(seconds=reg_s)
         _diag("registered")
 
         apn = ota_config.OTA_APN
@@ -573,7 +585,7 @@ class Sim7600Modem:
         _diag("data open ip=%s" % one_line(ip)[:80])
         self._data_open = True
 
-    def close_data(self):
+    def close_data(self, power_off=True):
         # NOTE: this deliberately does NOT send AT+CFUN=0 anymore.
         # modem_cfun_test.py's standalone bench run (CFUN=0 -> confirm
         # still AT-responsive -> CFUN=1 -> re-register) passed cleanly, so
@@ -602,13 +614,21 @@ class Sim7600Modem:
         except Exception:
             pass
         self._data_open = False
-        try:
-            self.power_off()
-        except Exception as exc:
-            # Teardown must not turn an otherwise successful Sheet/OTA
-            # transaction into a reported failure. Leaving the modem on is
-            # the safe fallback; the next session can reset it as before.
-            print("WARNING: modem power-off failed:", exc)
+        global _modem_warm_session
+        if power_off:
+            _modem_warm_session = False
+            try:
+                self.power_off()
+            except Exception as exc:
+                print("WARNING: modem power-off failed:", exc)
+        else:
+            _modem_warm_session = True
+            try:
+                import diag_log
+
+                diag_log.log("modem left powered (warm session)")
+            except Exception:
+                pass
 
     def read_http_head(self, timeout_ms=15000):
         """Read the response headers for the just-completed AT+HTTPACTION

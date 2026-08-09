@@ -229,9 +229,12 @@ class SheetsLogger:
         except Exception:
             pass
 
-    def close_data(self):
+    def close_data(self, mode=None):
         """Tear down whichever transport is open. Always call this when
         done (Phase 2.4/2.11).
+
+        When `mode` is underway (key_on / engine_on) and sheet policy allows,
+        cellular stays powered (warm) so the next log skips PWRKEY + registration.
         """
         if self._wifi_ssid:
             try:
@@ -245,7 +248,14 @@ class SheetsLogger:
             return
 
         if self._cellular is not None:
-            self._cellular.close_data()
+            power_off = True
+            try:
+                import modem_policy
+
+                power_off = not modem_policy.keep_modem_awake_for_mode(mode)
+            except Exception:
+                pass
+            self._cellular.close_data(power_off=power_off)
         self._data_open = False
 
     def log_row(self, tab, data):
