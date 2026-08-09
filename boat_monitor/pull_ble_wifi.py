@@ -29,19 +29,24 @@ def _base():
     )
 
 
-def run(reboot=False):
+def run(reboot=False, files=None):
+    import gc
+
+    gc.collect()
     import wifi_uplink
 
+    names = files or FILES
     ssid = wifi_uplink.connect(timeout_s=WIFI_TIMEOUT_S)
     if not ssid:
         raise OSError("Wi-Fi did not connect")
-    print("Wi-Fi:", ssid)
+    print("Wi-Fi:", ssid, "heap", gc.mem_free())
 
     client = wifi_uplink.WifiHttp()
     try:
-        for name in FILES:
+        for name in names:
+            gc.collect()
             url = _base() + name
-            print("GET", name)
+            print("GET", name, "heap", gc.mem_free())
             data = client.http_get(url, timeout_s=HTTP_TIMEOUT_S)
             if len(data) < 50:
                 raise OSError("%s too small (%d)" % (name, len(data)))
@@ -63,11 +68,14 @@ def run(reboot=False):
             except Exception as exc:
                 raise OSError("write %s: %s" % (name, exc)) from exc
             print("  ok", len(data), "bytes")
+            data = None
+            gc.collect()
     finally:
         try:
             wifi_uplink.disconnect()
         except Exception:
             pass
+        gc.collect()
 
     import sys
 
