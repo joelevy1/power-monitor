@@ -65,21 +65,22 @@ def main():
         if shown >= 30:
             break
 
-    print("\n=== Events (last 50) ===")
+    print("\n=== Events (last 50; boot_ota / ota highlighted) ===")
     ev = get_tab("Events", "A:D")
     for row in ev[-50:]:
         detail = row[3] if len(row) > 3 else ""
         if len(str(detail)) > 300:
             detail = str(detail)[:300] + "…"
+        evname = row[2] if len(row) > 2 else ""
+        mark = " <<" if evname in ("boot_ota",) or "ota_action" in str(detail) else ""
         print(
             " ",
             row[0] if row else "",
             "|",
-            row[1] if len(row) > 1 else "",
-            "|",
-            row[2] if len(row) > 2 else "",
+            evname,
             "|",
             detail,
+            mark,
         )
 
     print("\n=== Config ===")

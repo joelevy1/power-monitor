@@ -1,6 +1,6 @@
 {
-  "version": "1.1.58",
-  "notes": "Boot OTA: 420s min on cellular; keep pending_ota on failure; BLE reboot sets pending.",
+  "version": "1.1.59",
+  "notes": "Events boot_ota rows over cellular/Wi-Fi (no USB); OTA telemetry + queued flush on boot.",
   "files": [
     {
       "path": "version.py",
@@ -77,6 +77,10 @@
     {
       "path": "ota.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+    },
+    {
+      "path": "ota_telemetry.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_telemetry.py"
     },
     {
       "path": "ota_config.py",
