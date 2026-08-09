@@ -1,6 +1,6 @@
 {
   "version": "1.1.50",
-  "notes": "BLE Log Now: clearer failures, cellular stage diag, Events ble_log_failed + diag command.",
+  "notes": "BLE log diag + Events; modem PWRKEY retries; auto-log interval from log end.",
   "files": [
     {
       "path": "version.py",

@@ -726,7 +726,6 @@ class BoatMonitorBle:
             return
 
         self._last_auto_log_mode = mode
-        self._last_auto_log_ms = now
 
         print("Auto-log: mode=%s, elapsed=%.0fs" % (mode, elapsed_s))
         try:
@@ -739,6 +738,9 @@ class BoatMonitorBle:
         except Exception as exc:
             self.command_result = "auto_log_failed: %s" % exc
             print("Auto-log failed:", exc)
+        finally:
+            # Interval is measured from end of each cycle (modem off), not start.
+            self._last_auto_log_ms = time.ticks_ms()
         self.update_status()
 
     def run(self):

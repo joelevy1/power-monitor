@@ -264,20 +264,26 @@ class Sim7600Modem:
             return False
 
         print("Modem is off; pulsing PWRKEY on GP%d..." % self._cfg.PIN_MODEM_PWRKEY)
-        self.pwrkey.value(1)
-        time.sleep(1.2)
-        self.pwrkey.value(0)
+        last_err = None
+        for attempt in range(1, 4):
+            if attempt > 1:
+                print("PWRKEY wake retry %d/3..." % attempt)
+                time.sleep(8)
+            self.pwrkey.value(1)
+            time.sleep(1.2)
+            self.pwrkey.value(0)
 
-        start = time.ticks_ms()
-        while time.ticks_diff(time.ticks_ms(), start) < boot_timeout_s * 1000:
-            time.sleep(1)
-            if "OK" in self.at("AT", 900, quiet=True):
-                print("Modem woke via PWRKEY.")
-                return True
+            wait_s = boot_timeout_s if attempt == 1 else 18
+            start = time.ticks_ms()
+            while time.ticks_diff(time.ticks_ms(), start) < wait_s * 1000:
+                time.sleep(1)
+                if "OK" in self.at("AT", 900, quiet=True):
+                    print("Modem woke via PWRKEY.")
+                    return True
 
         raise CellularError(
-            "Modem did not wake after GP%d PWRKEY pulse within %ds"
-            % (self._cfg.PIN_MODEM_PWRKEY, boot_timeout_s)
+            "Modem did not wake after GP%d PWRKEY (3 pulses)"
+            % self._cfg.PIN_MODEM_PWRKEY
         )
 
     def power_off(self):
@@ -292,10 +298,8 @@ class Sim7600Modem:
             print("WARNING: modem refused AT+CPOF; leaving it powered.")
             return False
 
-        # The bench test showed current returning to the Pico-only baseline
-        # after shutdown. Five seconds is ample before the next 5+ minute
-        # logging cycle and avoids blocking for the full UART-off interval.
-        time.sleep(5)
+        # Allow UART/power rail to settle after CPOF before the next PWRKEY wake.
+        time.sleep(8)
         print("Modem power-off accepted.")
         return True
 
