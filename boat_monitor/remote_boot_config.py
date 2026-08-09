@@ -65,6 +65,10 @@ def apply_settings(settings):
         applied.append(
             "keep_modem_awake_underway=%s" % (1 if data["keep_modem_awake_underway"] else 0)
         )
+    min_fw = settings.get("min_fw_version") or settings.get("target_fw_version")
+    if min_fw is not None and str(min_fw).strip() != "":
+        data["min_fw_version"] = str(min_fw).strip()
+        applied.append("min_fw_persisted=%s" % data["min_fw_version"])
     if applied:
         save(data)
     return applied
@@ -123,3 +127,34 @@ def boot_ota_status_line():
         data.get("auto_ota_on_boot", "(file default)"),
         effective_auto_ota_on_boot(),
     )
+
+
+def _parse_version(text):
+    parts = []
+    for piece in str(text or "").strip().split("."):
+        try:
+            parts.append(int(piece))
+        except Exception:
+            parts.append(0)
+    return tuple(parts)
+
+
+def _version_lt(current, minimum):
+    return _parse_version(current) < _parse_version(minimum)
+
+
+def needs_firmware_upgrade():
+    """True when sheet min_fw is newer than version.py or OTA is already queued."""
+    data = load()
+    if data.get("pending_ota"):
+        return True
+    min_fw = data.get("min_fw_version")
+    if not min_fw:
+        return False
+    try:
+        import version
+
+        current = getattr(version, "VERSION", "0")
+        return _version_lt(current, min_fw)
+    except Exception:
+        return False
