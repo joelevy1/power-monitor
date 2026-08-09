@@ -1,6 +1,6 @@
 {
   "version": "1.1.53",
-  "notes": "Underway: keep cellular modem warm between logs (faster cycles, fewer PWRKEY failures).",
+  "notes": "Underway: warm modem between logs; no auto-log while BLE connected; reject overlapping modem BLE commands during log.",
   "files": [
     {
       "path": "version.py",

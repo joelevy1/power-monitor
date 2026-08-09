@@ -189,50 +189,8 @@ def log_power_and_gps(
     """
     import sheets_log
 
-    try:
-        import diag_log
-
-        diag_log.log(
-            "log_power_and_gps entry note=%s prefer_wifi=%s ble=%s"
-            % (note, prefer_wifi, ble_monitor is not None)
-        )
-    except Exception:
-        pass
-
-    def _run(prefer):
-        logger = sheets_log.SheetsLogger(prefer_wifi=prefer)
-        actions = []
-        log_mode = None
-        try:
-            import version
-
-            fw = getattr(version, "VERSION", "")
-            status = read_status()
-            log_mode = status.get("mode")
-            try:
-                import gpio_probe
-
-                log_note = gpio_probe.enrich_note(note, status)
-            except Exception:
-                log_note = note
-            summary = logger.log_power_and_gps(
-                device=status["device"],
-                mode=status["mode"],
-                engine=status["engine"],
-                house=status["house"],
-                v50=status["v50"],
-                note=log_note,
-                fw=fw,
-                gps_timeout_s=gps_timeout_s,
-                on_progress=on_progress,
-            )
-            actions = getattr(logger, "_last_remote_actions", []) or []
-            return summary, actions
-        finally:
-            logger.close_data(mode=log_mode)
-
-    if prefer_wifi and not _wifi_uplink_configured():
-        msg = "power: failed: no Wi-Fi networks on Pico, gps: skipped"
+    if ble_monitor is not None and getattr(ble_monitor, "_cellular_busy", False):
+        msg = "power: failed: cellular session busy, gps: skipped"
         print("log_power_and_gps:", msg)
         try:
             import diag_log
@@ -242,26 +200,85 @@ def log_power_and_gps(
             pass
         return msg
 
-    use_wifi = prefer_wifi and _wifi_uplink_configured()
-    if use_wifi and ble_monitor is not None and ble_monitor.connections:
-        use_wifi = False
-
-    if use_wifi and ble_monitor is not None:
-        summary, actions = _wifi_handoff_log(ble_monitor, lambda: _run(True))
-    else:
-        summary, actions = _run(prefer_wifi if ble_monitor is None else use_wifi)
-
-    if actions:
+    if ble_monitor is not None:
+        ble_monitor._cellular_busy = True
+    try:
         try:
             import diag_log
 
-            diag_log.log("log_power_and_gps remote actions %s" % actions)
+            diag_log.log(
+                "log_power_and_gps entry note=%s prefer_wifi=%s ble=%s"
+                % (note, prefer_wifi, ble_monitor is not None)
+            )
         except Exception:
             pass
-        from remote_control import run_actions
 
-        run_actions(actions, prefer_wifi=False)
-    return summary
+        def _run(prefer):
+            logger = sheets_log.SheetsLogger(prefer_wifi=prefer)
+            actions = []
+            log_mode = None
+            try:
+                import version
+
+                fw = getattr(version, "VERSION", "")
+                status = read_status()
+                log_mode = status.get("mode")
+                try:
+                    import gpio_probe
+
+                    log_note = gpio_probe.enrich_note(note, status)
+                except Exception:
+                    log_note = note
+                summary = logger.log_power_and_gps(
+                    device=status["device"],
+                    mode=status["mode"],
+                    engine=status["engine"],
+                    house=status["house"],
+                    v50=status["v50"],
+                    note=log_note,
+                    fw=fw,
+                    gps_timeout_s=gps_timeout_s,
+                    on_progress=on_progress,
+                )
+                actions = getattr(logger, "_last_remote_actions", []) or []
+                return summary, actions
+            finally:
+                logger.close_data(mode=log_mode)
+
+        if prefer_wifi and not _wifi_uplink_configured():
+            msg = "power: failed: no Wi-Fi networks on Pico, gps: skipped"
+            print("log_power_and_gps:", msg)
+            try:
+                import diag_log
+
+                diag_log.log(msg)
+            except Exception:
+                pass
+            return msg
+
+        use_wifi = prefer_wifi and _wifi_uplink_configured()
+        if use_wifi and ble_monitor is not None and ble_monitor.connections:
+            use_wifi = False
+
+        if use_wifi and ble_monitor is not None:
+            summary, actions = _wifi_handoff_log(ble_monitor, lambda: _run(True))
+        else:
+            summary, actions = _run(prefer_wifi if ble_monitor is None else use_wifi)
+
+        if actions:
+            try:
+                import diag_log
+
+                diag_log.log("log_power_and_gps remote actions %s" % actions)
+            except Exception:
+                pass
+            from remote_control import run_actions
+
+            run_actions(actions, prefer_wifi=False)
+        return summary
+    finally:
+        if ble_monitor is not None:
+            ble_monitor._cellular_busy = False
 
 
 def _wifi_uplink_configured():
@@ -404,6 +421,7 @@ class BoatMonitorBle:
         self.ble.irq(self.irq)
         self.connections = set()
         self.command_result = None
+        self._cellular_busy = False
 
         service = (
             SERVICE_UUID,
@@ -575,6 +593,10 @@ class BoatMonitorBle:
             time.sleep(0.5)
             machine.reset()
         elif cmd in ("log", "log_now"):
+            if self._cellular_busy:
+                self.command_result = "busy_logging"
+                self.update_status()
+                return
             self.command_result = "logging"
             self.update_status()
 
@@ -608,6 +630,10 @@ class BoatMonitorBle:
             self._remote_after_log(mode, outcome)
             self.update_status()
         elif cmd in ("diag", "upload_diag"):
+            if self._cellular_busy:
+                self.command_result = "diag_busy: logging in progress"
+                self.update_status()
+                return
             self.command_result = "diag_uploading"
             self.update_status()
             try:
@@ -626,6 +652,10 @@ class BoatMonitorBle:
                 self.command_result = "diag_failed: %s" % exc
             self.update_status()
         elif cmd in ("signal", "modem_status", "cell_status"):
+            if self._cellular_busy:
+                self.command_result = "signal_busy: logging in progress"
+                self.update_status()
+                return
             # A lightweight cellular diagnostic -- registration + signal
             # quality only, no AT+NETOPEN/data session -- so it's quick
             # (a few seconds, not the 30-60s a full "log"/"ota" cellular
@@ -727,7 +757,11 @@ class BoatMonitorBle:
             self._last_auto_log_mode = mode
             return
 
-        # Do not start a multi-minute cellular log while the phone is connected.
+        # Stability: do not start a long cellular session while the phone is
+        # connected. Manual "Log Now" is fine (user-initiated, cellular-only);
+        # background auto-log would block the single-threaded BLE loop for
+        # minutes and can overlap scheduled BLE commands (signal/diag) that
+        # would otherwise open a second modem session on the same UART.
         if self.connections:
             self._last_auto_log_mode = mode
             return

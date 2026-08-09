@@ -128,7 +128,10 @@ Use this when the sheet has gone quiet or you are upgrading after a stuck sessio
 2. **Power** — Prefer a **healthy V50 bank** or boat feed; if moving from bank-only to boat house power with switch/key still **off**, firmware **1.1.44+** may do one **power-transition reboot** (clears RAM).
 3. **Force firmware** — In Config set **`cmd_ota` = `1`** once (or ensure **`min_fw_version`** ≥ ship version, e.g. **1.1.44**). Unplug USB data / close Thonny so `main.py` auto-runs.
 4. **Wait one cycle** — Up to **~5 min** on docked standby (**300 s** off-interval) for a row; confirm **Power_Log `fw`** bumped.
-5. **Underway / BLE** — Turn **battery switch ON** (then key if you use it) **before** or right after power-up so the Pico enters **BLE mode**. Connect in the app; **`inputs.switch` / `inputs.key`** should be true. **Log Now** uses **cellular** (no Wi‑Fi handoff). **1.1.43+** auto-log in BLE mode matches that.
-6. **Verify** — Power_Log **`mode=key_on`**, **`uplink=cellular`**, timestamps ~**1 min** apart with engine on.
+5. **Underway / BLE** — Turn **battery switch ON** (then key if you use it) **before** or right after power-up so the Pico enters **BLE mode**. Connect in the app; **`inputs.switch` / `inputs.key`** should be true. **Log Now** uses **cellular** (no Wi‑Fi handoff).
+
+   **Auto-log while the app is connected:** intentionally **off** (stability). Background cellular logs block the only BLE thread for 1–2 minutes; overlapping **Signal** / **Diag** during a log could corrupt modem UART use. For steady sheet rows with the phone open, **disconnect BLE** (Pico keeps logging) or tap **Log Now** when you want a row. Power is not the issue on boat 12V — this is overlap/UX, not saving mAh.
+
+6. **Verify** — Power_Log **`mode=key_on`**, **`uplink=cellular`**, timestamps ~**1 min** apart with engine on **when the app is not connected**.
 
 Overnight on **power bank only** away from home: expect **cellular fallback**; success still depends on memory and signal. If the sheet is silent for **>15 min** with **300 s** Config, the unit is likely in a fail/reboot loop — repeat from step 3 when you return.
