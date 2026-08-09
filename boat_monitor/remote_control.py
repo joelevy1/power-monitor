@@ -78,6 +78,12 @@ def apply_commands_payload(payload, device_id=""):
         if key in ("ota", "update", "firmware"):
             actions.append("ota")
             applied.append("one_shot=ota")
+            try:
+                import remote_boot_config
+
+                remote_boot_config.set_pending_ota(True)
+            except Exception as exc:
+                print("remote_control: set_pending_ota:", exc)
         elif key in ("reboot", "reset"):
             actions.append("reboot")
             applied.append("one_shot=reboot")
@@ -91,12 +97,24 @@ def apply_commands_payload(payload, device_id=""):
             applied.append("min_fw_version=%s current=%s" % (min_fw, current))
             if _version_lt(current, min_fw):
                 actions.append("ota")
+                try:
+                    import remote_boot_config
+
+                    remote_boot_config.set_pending_ota(True)
+                except Exception as exc:
+                    print("remote_control: set_pending_ota:", exc)
         except Exception as exc:
             print("remote_control: min_fw_version check failed:", exc)
 
     if _truthy(settings.get("cmd_ota")) or _truthy(settings.get("force_ota")):
         actions.append("ota")
         applied.append("cmd_ota=1")
+        try:
+            import remote_boot_config
+
+            remote_boot_config.set_pending_ota(True)
+        except Exception as exc:
+            print("remote_control: set_pending_ota:", exc)
     if _truthy(settings.get("cmd_reboot")) or _truthy(settings.get("force_reboot")):
         actions.append("reboot")
         applied.append("cmd_reboot=1")
@@ -171,27 +189,39 @@ def run_actions(actions, prefer_wifi=False):
             except Exception as exc:
                 print("remote_control: set_pending_ota:", exc)
 
-            # Post-log heap is usually highest; try cellular OTA before reboot-only.
-            try:
-                import ota
-                import remote_boot_config
+            # On boat (cellular / BLE path) inline OTA after a full log+GPS cycle
+            # usually fails (heap, time budget) and the device kept logging every
+            # interval — many sheet rows on old fw. Reboot immediately and let
+            # main.py boot OTA run with a clean heap (pending_ota set).
+            try_inline = prefer_wifi
+            if try_inline:
+                try:
+                    import ota
+                    import remote_boot_config
 
-                max_s = remote_boot_config.effective_boot_ota_max_seconds()
+                    max_s = remote_boot_config.effective_boot_ota_max_seconds()
+                    try:
+                        import diag_log
+
+                        diag_log.log("run_actions inline OTA start max_s=%s" % max_s)
+                    except Exception:
+                        pass
+                    changed = ota.update(reboot=True, prefer_wifi=True, max_total_s=max_s)
+                    if changed:
+                        return
+                except Exception as exc:
+                    print("remote_control: inline OTA failed:", exc)
+                    try:
+                        import diag_log
+
+                        diag_log.log("run_actions inline OTA failed %s -> reboot" % exc)
+                    except Exception:
+                        pass
+            else:
                 try:
                     import diag_log
 
-                    diag_log.log("run_actions inline OTA start max_s=%s" % max_s)
-                except Exception:
-                    pass
-                changed = ota.update(reboot=True, prefer_wifi=False, max_total_s=max_s)
-                if changed:
-                    return
-            except Exception as exc:
-                print("remote_control: inline OTA failed:", exc)
-                try:
-                    import diag_log
-
-                    diag_log.log("run_actions inline OTA failed %s -> reboot" % exc)
+                    diag_log.log("run_actions OTA -> immediate reboot (cellular path)")
                 except Exception:
                     pass
 

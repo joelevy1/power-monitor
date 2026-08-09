@@ -12,7 +12,7 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 |-----|----------------|--------|
 | `interval_engine_on_s` | `60` | Auto-log interval while mode is `key_on` (min 60) |
 | `interval_engine_off_s` | `300` | Auto-log when engine off / docked (min 60); use `3600` for long storage |
-| `min_fw_version` | `1.1.7` | If Pico `version.py` is older, run **OTA** on that log cycle |
+| `min_fw_version` | `1.1.7` | If Pico `version.py` is older, **OTA on that log cycle** — **1.1.54+:** cellular/BLE path **reboots right after** the Power_Log POST (skips GPS for that cycle) instead of logging every minute on old firmware |
 | `auto_ota_on_boot` | `1` | **1.1.52+:** Persist on Pico (`remote_boot_config.json`); overrides `ota_config.py` every boot |
 | `boot_ota_max_seconds` | `180` | **1.1.52+:** Max seconds for boot-time OTA (default 90 from `ota_config.py`) |
 | `keep_modem_awake_underway` | `1` | **1.1.53+:** On boat power (`key_on` / `engine_on`), leave SIM7600 on after each cellular log (default **on**). Set `0` to power off every cycle (saves mA, slower next log). |

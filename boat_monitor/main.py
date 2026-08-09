@@ -29,10 +29,16 @@ try:
                 diag_log.log("boot OTA start %s" % remote_boot_config.boot_ota_status_line())
             except Exception:
                 pass
+            prefer_wifi = True
             try:
-                ota.update(reboot=reboot, max_total_s=max_s)
+                if remote_boot_config.load().get("pending_ota"):
+                    prefer_wifi = False
+            except Exception:
+                pass
+            try:
+                ota.update(reboot=reboot, prefer_wifi=prefer_wifi, max_total_s=max_s)
             except TypeError:
-                ota.update(reboot=reboot)
+                ota.update(reboot=reboot, prefer_wifi=prefer_wifi)
             remote_boot_config.clear_pending_ota()
         except Exception as exc:
             print("Boot OTA skipped/failed:", exc)

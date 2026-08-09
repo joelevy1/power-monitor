@@ -356,12 +356,20 @@ class SheetsLogger:
         except Exception:
             return {"raw": response_text}
 
-    def _apply_remote_from_response(self, response, device_id):
+    @staticmethod
+    def _merge_remote_actions(primary, secondary):
+        merged = list(primary or [])
+        for action in secondary or []:
+            if action not in merged:
+                merged.append(action)
+        return merged
+
+    def _apply_remote_from_response(self, response, device_id, log_event=True):
         try:
             from remote_control import apply_from_log_response
 
             actions, detail = apply_from_log_response(response, device_id=device_id)
-            if detail:
+            if detail and log_event:
                 try:
                     self.log_event(device_id, "remote_config", detail)
                 except Exception as exc:
@@ -491,6 +499,22 @@ class SheetsLogger:
                 uplink=self.uplink_label(),
             )
             remote_actions = self._apply_remote_from_response(last_response, device)
+            if "ota" in (remote_actions or []):
+                try:
+                    import diag_log
+
+                    diag_log.log("log_power_and_gps skip GPS (OTA pending)")
+                except Exception:
+                    pass
+                self._last_remote_actions = remote_actions
+                summary = "power: %s, gps: skipped_ota_pending" % power_outcome
+                try:
+                    import diag_log
+
+                    diag_log.log("log_power_and_gps done %s actions=%s" % (summary, remote_actions))
+                except Exception:
+                    pass
+                return summary
         except Exception as exc:
             power_outcome = "failed: %s" % exc
             try:
@@ -543,7 +567,10 @@ class SheetsLogger:
                     gps_result = self.log_gps_now(device, timeout_s=gps_timeout_s, note=status_note)
                     gps_outcome = "ok" if gps_result.get("ok") else gps_result.get("error", "no_fix")
                 if isinstance(gps_result, dict) and gps_result.get("commands"):
-                    remote_actions = self._apply_remote_from_response(gps_result, device)
+                    gps_actions = self._apply_remote_from_response(
+                        gps_result, device, log_event=False
+                    )
+                    remote_actions = self._merge_remote_actions(remote_actions, gps_actions)
             except Exception as exc:
                 gps_outcome = "failed: %s" % exc
 
