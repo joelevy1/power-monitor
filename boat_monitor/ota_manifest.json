@@ -1,6 +1,6 @@
 {
-  "version": "1.1.59",
-  "notes": "Events boot_ota rows over cellular/Wi-Fi (no USB); OTA telemetry + queued flush on boot.",
+  "version": "1.1.60",
+  "notes": "Remote OTA test release — verify 1.1.59 → 1.1.60 over cellular boot OTA.",
   "files": [
     {
       "path": "version.py",
