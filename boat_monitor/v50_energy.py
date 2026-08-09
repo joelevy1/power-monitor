@@ -98,6 +98,8 @@ def tick(v50, now_ms=None):
     """Integrate discharge mAh since last sample. v50: {v, a} from read_v50()."""
     if not v50 or not v50.get("ok", True):
         return
+    if v50.get("bank_idle"):
+        return
     a = v50.get("a")
     if a is None:
         return

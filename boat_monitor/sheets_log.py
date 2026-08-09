@@ -245,6 +245,15 @@ class SheetsLogger:
                 print("SheetsLogger: wifi_uplink.disconnect() warning:", exc)
             self._wifi_ssid = None
             self._data_open = False
+            actions = getattr(self, "_last_remote_actions", None) or []
+            self._last_remote_actions = []
+            if actions:
+                try:
+                    import ota_reboot
+
+                    ota_reboot.maybe_reboot_for_ota(actions, source="sheets_log.close_data")
+                except Exception as exc:
+                    print("SheetsLogger: ota reboot:", exc)
             return
 
         if self._cellular is not None:
@@ -257,6 +266,15 @@ class SheetsLogger:
                 pass
             self._cellular.close_data(power_off=power_off)
         self._data_open = False
+        actions = getattr(self, "_last_remote_actions", None) or []
+        self._last_remote_actions = []
+        if actions:
+            try:
+                import ota_reboot
+
+                ota_reboot.maybe_reboot_for_ota(actions, source="sheets_log.close_data")
+            except Exception as exc:
+                print("SheetsLogger: ota reboot:", exc)
 
     def log_row(self, tab, data):
         """POST one row to the given Sheets tab via the Apps Script Web App.
@@ -474,6 +492,7 @@ class SheetsLogger:
             pass
         if on_progress:
             on_progress("logging_modem")
+        self._last_remote_actions = []
         self.ensure_data()
         if on_progress:
             on_progress("logging_power")
