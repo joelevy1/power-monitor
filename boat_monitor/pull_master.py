@@ -28,6 +28,112 @@ FILES = (
 STREAM_FILES = frozenset(("ble_service.py", "wifi_uplink.py"))
 
 
+def _parse_url(url):
+    if url.startswith("https://"):
+        is_https = True
+        rest = url[8:]
+        default_port = 443
+    elif url.startswith("http://"):
+        is_https = False
+        rest = url[7:]
+        default_port = 80
+    else:
+        raise ValueError("bad url")
+    if "/" in rest:
+        host_port, path = rest.split("/", 1)
+        path = "/" + path
+    else:
+        host_port, path = rest, "/"
+    if ":" in host_port:
+        host, port_s = host_port.split(":", 1)
+        port = int(port_s)
+    else:
+        host, port = host_port, default_port
+    return host, port, path, is_https
+
+
+def _raw_https_to_file(url, dest_path, timeout_s=90):
+    """Bootstrap download when wifi_uplink has no WifiHttp (streams to disk)."""
+    import os
+    import socket
+
+    host, port, req_path, is_https = _parse_url(url)
+    addr = socket.getaddrinfo(host, port)[0][-1]
+    sock = socket.socket()
+    sock.settimeout(timeout_s)
+    try:
+        sock.connect(addr)
+        if is_https:
+            try:
+                import ussl as ssl
+            except ImportError:
+                import ssl
+            try:
+                sock = ssl.wrap_socket(sock, server_hostname=host)
+            except TypeError:
+                sock = ssl.wrap_socket(sock)
+        req = (
+            "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n"
+            % (req_path, host)
+        )
+        sock.write(req.encode())
+        header = b""
+        while b"\r\n\r\n" not in header:
+            chunk = sock.recv(256)
+            if not chunk:
+                raise OSError("no headers")
+            header += chunk
+        end = header.find(b"\r\n\r\n")
+        status_line = header[: end].split(b"\r\n", 1)[0]
+        status = int(status_line.split(b" ")[1])
+        if status != 200:
+            raise OSError("HTTP %s" % status)
+        body = header[end + 4 :]
+        tmp = dest_path + ".new"
+        with open(tmp, "w") as out:
+            if body:
+                out.write(body.decode("utf-8", "ignore"))
+            while True:
+                chunk = sock.recv(1024)
+                if not chunk:
+                    break
+                out.write(chunk.decode("utf-8", "ignore"))
+        try:
+            os.remove(dest_path + ".bak")
+        except OSError:
+            pass
+        try:
+            os.rename(dest_path, dest_path + ".bak")
+        except OSError:
+            pass
+        os.rename(tmp, dest_path)
+        return os.stat(dest_path)[6]
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+def _ensure_http_client():
+    import sys
+
+    import wifi_uplink
+
+    if hasattr(wifi_uplink, "WifiHttp"):
+        return wifi_uplink.WifiHttp(), wifi_uplink
+    print("wifi_uplink is old (no WifiHttp) — bootstrapping from GitHub")
+    url = _base() + "wifi_uplink.py"
+    nbytes = _raw_https_to_file(url, "wifi_uplink.py", timeout_s=HTTP_TIMEOUT_S)
+    print("  wifi_uplink.py", nbytes, "bytes")
+    sys.modules.pop("wifi_uplink", None)
+    import wifi_uplink
+
+    if not hasattr(wifi_uplink, "WifiHttp"):
+        raise OSError("wifi_uplink.py still has no WifiHttp after bootstrap")
+    return wifi_uplink.WifiHttp(), wifi_uplink
+
+
 def _base():
     return (
         "https://raw.githubusercontent.com/joelevy1/power-monitor/"
@@ -96,7 +202,7 @@ def run(reboot=False, files=None):
         raise OSError("Wi-Fi did not connect")
     print("Wi-Fi:", ssid, "branch", BRANCH, "heap", gc.mem_free())
 
-    client = wifi_uplink.WifiHttp()
+    client, wifi_uplink = _ensure_http_client()
     try:
         client = _ensure_stream_client(client)
         for name in names:
