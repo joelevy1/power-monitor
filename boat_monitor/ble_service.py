@@ -580,6 +580,8 @@ class BoatMonitorBle:
                 self.command_result = stage
                 self.update_status()
 
+            mode = read_status().get("mode", "key_on")
+            outcome = None
             try:
                 summary = self._log_power_and_gps(
                     note="ble_log_now",
@@ -587,29 +589,21 @@ class BoatMonitorBle:
                     gps_timeout_s=10,
                     prefer_wifi=False,
                 )
+                outcome = summary
                 if "failed" in str(summary).lower():
                     self.command_result = "log_failed: %s" % summary
-                    try:
-                        import diag_log
-
-                        diag_log.report_ble_log_failure(
-                            read_status().get("device", "boat-p2"), summary
-                        )
-                    except Exception as exc:
-                        print("report_ble_log_failure:", exc)
                 else:
                     self.command_result = "logged (%s)" % summary
             except Exception as exc:
+                outcome = exc
                 self.command_result = "log_failed: %s" % exc
                 try:
                     import diag_log
 
                     diag_log.log("ble_log_now exception %s" % exc)
-                    diag_log.report_ble_log_failure(
-                        read_status().get("device", "boat-p2"), exc
-                    )
-                except Exception as report_exc:
-                    print("report_ble_log_failure:", report_exc)
+                except Exception:
+                    pass
+            self._remote_after_log(mode, outcome)
             self.update_status()
         elif cmd in ("diag", "upload_diag"):
             self.command_result = "diag_uploading"
@@ -677,6 +671,17 @@ class BoatMonitorBle:
             self.command_result = "unknown_command: %s" % cmd
             self.update_status()
 
+    def _remote_after_log(self, mode, outcome):
+        try:
+            import remote_telemetry
+
+            device = read_status().get("device", "boat-p2")
+            remote_telemetry.after_logging_session(
+                device, mode, outcome, prefer_wifi=False
+            )
+        except Exception as exc:
+            print("remote_after_log:", exc)
+
     def _log_power_and_gps(self, note, on_progress=None, gps_timeout_s=20, prefer_wifi=True):
         return log_power_and_gps(
             note,
@@ -728,19 +733,23 @@ class BoatMonitorBle:
         self._last_auto_log_mode = mode
 
         print("Auto-log: mode=%s, elapsed=%.0fs" % (mode, elapsed_s))
+        outcome = None
         try:
             # Cellular only while BLE service is up — same as manual "Log Now".
             # prefer_wifi=True would call _wifi_handoff_log(), turn the radio off,
             # and hunt home SSIDs (minutes on the water with no BLE advertising).
             summary = self._log_power_and_gps(note="auto_log", prefer_wifi=False)
+            outcome = summary
             self.command_result = "auto_logged (%s)" % summary
             print("Auto-log result:", summary)
         except Exception as exc:
+            outcome = exc
             self.command_result = "auto_log_failed: %s" % exc
             print("Auto-log failed:", exc)
         finally:
             # Interval is measured from end of each cycle (modem off), not start.
             self._last_auto_log_ms = time.ticks_ms()
+            self._remote_after_log(mode, outcome)
         self.update_status()
 
     def run(self):
@@ -764,6 +773,17 @@ class BoatMonitorBle:
 
             status = self.update_status(sensors=not self.connections)
             self._maybe_auto_log(status["mode"])
+            if not self.connections:
+                try:
+                    import remote_telemetry
+
+                    remote_telemetry.maybe_boat_heartbeat(
+                        status.get("device", "boat-p2"),
+                        status["mode"],
+                        prefer_wifi=False,
+                    )
+                except Exception:
+                    pass
             try:
                 import resilience
 

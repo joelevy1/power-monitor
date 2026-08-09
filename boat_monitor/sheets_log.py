@@ -545,6 +545,18 @@ class SheetsLogger:
             diag_log.log("log_power_and_gps done %s actions=%s" % (summary, remote_actions))
         except Exception:
             pass
+        if power_outcome == "ok":
+            try:
+                import remote_telemetry
+
+                remote_telemetry.maybe_inline_session_diag(self, device, mode, summary)
+            except Exception as exc:
+                try:
+                    import diag_log
+
+                    diag_log.log("inline session diag skip: %s" % exc)
+                except Exception:
+                    pass
         return summary
 
     def log_gps_now(self, device, timeout_s=20, poll_interval_s=2, note=""):

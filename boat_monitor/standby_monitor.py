@@ -99,6 +99,7 @@ def main():
                     since_success_s,
                     auto_log.interval_for_mode(mode),
                 )
+                remote_telemetry.maybe_standby_heartbeat(device_id, mode, prefer_wifi=True)
             except Exception as exc:
                 diag_log.log("standby_overdue telemetry skipped: %s" % exc)
 
@@ -168,7 +169,9 @@ def main():
                     auto_log_failures += 1
                     diag_log.log("auto-log soft-fail count=%s" % auto_log_failures)
                     if summary and "ENOMEM" in str(summary):
-                        last_attempt_ms = time.ticks_add(now, -int((MIN_ATTEMPT_GAP_S - MIN_ATTEMPT_GAP_ENOMEM_S) * 1000))
+                        last_attempt_ms = time.ticks_add(
+                            now, -int((MIN_ATTEMPT_GAP_S - MIN_ATTEMPT_GAP_ENOMEM_S) * 1000)
+                        )
                     try:
                         import remote_telemetry
 
@@ -186,6 +189,14 @@ def main():
                             )
                     except Exception as exc:
                         diag_log.log("auto_log_degraded telemetry skipped: %s" % exc)
+                try:
+                    import remote_telemetry
+
+                    remote_telemetry.after_logging_session(
+                        device_id, mode, summary, prefer_wifi=True
+                    )
+                except Exception as exc:
+                    diag_log.log("after_logging_session skipped: %s" % exc)
                 if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
                     reason = "auto-log failed %s times in a row" % auto_log_failures
                     print("standby_monitor: %s — rebooting" % reason)

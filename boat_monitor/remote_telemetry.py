@@ -18,6 +18,22 @@ except ImportError:
 STATE_PATH = "telemetry_throttle.json"
 DEFAULT_MIN_GAP_S = 600
 
+# Modes where the boat is "on" (switch/key/engine) — verbose remote diag.
+BOAT_ACTIVE_MODES = frozenset(
+    ("key_on", "switch_on_key_off", "float_alert", "bilge_active")
+)
+
+# Verbose Events uploads while underway (seconds between heartbeats if no log).
+BOAT_HEARTBEAT_GAP_S = 90
+BOAT_SESSION_DIAG_LINES = 55
+BOAT_HEARTBEAT_DIAG_LINES = 40
+
+# Power-bank / docked standby — keep sheet noise low.
+STANDBY_DIAG_GAP_S = 1800
+STANDBY_SESSION_DIAG_LINES = 22
+STANDBY_HEARTBEAT_GAP_S = 3600
+STANDBY_HEARTBEAT_DIAG_LINES = 18
+
 
 def _ticks_ms():
     try:
@@ -72,6 +88,147 @@ def _fw_version():
         return getattr(version, "VERSION", "?")
     except Exception:
         return "?"
+
+
+def _boat_active(mode):
+    return mode in BOAT_ACTIVE_MODES
+
+
+def _upload_diag_event(device, event, header, lines, prefer_wifi, max_total_s=45):
+    import diag_log
+
+    tail = "\n".join(diag_log.recent_lines(lines))
+    body = header
+    if tail:
+        body = body + "\n--- boat_diag.log ---\n" + tail
+    return diag_log.upload_event_bounded(
+        device,
+        event,
+        body,
+        diag_tail_lines=0,
+        max_total_s=max_total_s,
+        prefer_wifi=prefer_wifi,
+    )
+
+
+def maybe_inline_session_diag(logger, device, mode, summary):
+    """Attach a verbose diag Events row before close_data (same modem session)."""
+    if not getattr(logger, "_data_open", False):
+        return False
+    summary = str(summary or "")
+    if "failed" in summary.lower():
+        return False
+    active = _boat_active(mode)
+    if active:
+        event = "boat_log_session"
+        lines = BOAT_SESSION_DIAG_LINES
+    else:
+        if not should_upload("standby_log_session", STANDBY_DIAG_GAP_S):
+            return False
+        event = "standby_log_session"
+        lines = STANDBY_SESSION_DIAG_LINES
+    header = "session ok mode=%s fw=%s summary=%s" % (
+        mode,
+        _fw_version(),
+        summary[:200],
+    )
+    import diag_log
+
+    tail = "\n".join(diag_log.recent_lines(lines))
+    body = header
+    if tail:
+        body = body + "\n--- boat_diag.log ---\n" + tail
+    try:
+        logger.log_event(device, event, body[:1500])
+        mark_uploaded(event)
+        diag_log.log("inline Events %s (%d chars)" % (event, len(body)))
+        return True
+    except Exception as exc:
+        diag_log.log("inline session diag failed: %s" % exc)
+        return False
+
+
+def after_logging_session(device, mode, summary, prefer_wifi=False):
+    """Push diag to Events after a log attempt (failures open a new session)."""
+    summary = str(summary or "")
+    failed = "failed" in summary.lower() or summary.startswith("power: failed")
+
+    if failed:
+        try:
+            import diag_log
+
+            diag_log.report_ble_log_failure(device, summary, prefer_wifi=prefer_wifi)
+        except Exception:
+            pass
+        return
+
+    # Success path: boat/standby verbose Events row is posted inline in
+    # sheets_log.log_power_and_gps() before close_data when possible.
+    if _boat_active(mode):
+        return
+
+    if not should_upload("standby_log_session", STANDBY_DIAG_GAP_S):
+        return
+    header = "standby ok mode=%s fw=%s summary=%s" % (
+        mode,
+        _fw_version(),
+        summary[:200],
+    )
+    _upload_diag_event(
+        device,
+        "standby_log_session",
+        header,
+        STANDBY_SESSION_DIAG_LINES,
+        prefer_wifi,
+        max_total_s=35,
+    )
+    mark_uploaded("standby_log_session")
+
+
+def maybe_boat_heartbeat(device, mode, prefer_wifi=False):
+    """While boat is on and BLE loop is idle, push diag between log intervals."""
+    if not _boat_active(mode):
+        return False
+    if not should_upload("boat_diag_heartbeat", BOAT_HEARTBEAT_GAP_S):
+        return False
+    try:
+        import diag_log
+
+        heap = diag_log.mem_kb()
+    except Exception:
+        heap = -1
+    header = "heartbeat mode=%s fw=%s heap=%sK" % (mode, _fw_version(), heap)
+    ok = _upload_diag_event(
+        device,
+        "boat_diag_heartbeat",
+        header,
+        BOAT_HEARTBEAT_DIAG_LINES,
+        prefer_wifi,
+        max_total_s=50,
+    )
+    if ok:
+        mark_uploaded("boat_diag_heartbeat")
+    return ok
+
+
+def maybe_standby_heartbeat(device, mode, prefer_wifi=True):
+    """Rare diag while on power-bank standby."""
+    if _boat_active(mode):
+        return False
+    if not should_upload("standby_diag_heartbeat", STANDBY_HEARTBEAT_GAP_S):
+        return False
+    header = "standby heartbeat mode=%s fw=%s" % (mode, _fw_version())
+    ok = _upload_diag_event(
+        device,
+        "standby_diag_heartbeat",
+        header,
+        STANDBY_HEARTBEAT_DIAG_LINES,
+        prefer_wifi,
+        max_total_s=30,
+    )
+    if ok:
+        mark_uploaded("standby_diag_heartbeat")
+    return ok
 
 
 def maybe_report_auto_log_fail(device, mode, since_success_s, failures, summary, min_gap_s=600):
