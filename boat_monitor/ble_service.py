@@ -136,7 +136,7 @@ def current_mode(inputs):
     return "docked_off"
 
 
-def read_status(command_result=None):
+def read_status(command_result=None, sensors=True):
     inputs = {
         "switch": input_on(cfg.PIN_BATTERY_SWITCH),
         "key": input_on(cfg.PIN_KEY),
@@ -150,12 +150,17 @@ def read_status(command_result=None):
         "device": "boat-p2",
         "fw": getattr(version, "VERSION", "unknown") if version else "unknown",
         "mode": current_mode(inputs),
-        "engine": read_ina260(cfg.I2C_ENGINE_SDA, cfg.I2C_ENGINE_SCL, 0, cfg.INA260_ENGINE_ADDR),
-        "house": read_ina260(cfg.I2C_HOUSE_SDA, cfg.I2C_HOUSE_SCL, 1, cfg.INA260_HOUSE_ADDR),
-        "v50": read_v50(),
         "inputs": inputs,
         "note": "negative current means solar charging",
     }
+    if sensors:
+        status["engine"] = read_ina260(
+            cfg.I2C_ENGINE_SDA, cfg.I2C_ENGINE_SCL, 0, cfg.INA260_ENGINE_ADDR
+        )
+        status["house"] = read_ina260(
+            cfg.I2C_HOUSE_SDA, cfg.I2C_HOUSE_SCL, 1, cfg.INA260_HOUSE_ADDR
+        )
+        status["v50"] = read_v50()
 
     if command_result:
         status["command_result"] = command_result
@@ -442,8 +447,9 @@ class BoatMonitorBle:
             print("BLE connected", conn_handle)
             self.connections.add(conn_handle)
             self._gpio_low_accum_s = 0
-            self._schedule(self._scheduled_update_status, 0)
-            self._schedule(self._scheduled_conn_params, conn_handle)
+            # Conn params before any I2C/status notify — iOS drops ~1–2s if the
+            # link is busy with sensor reads before supervision is extended.
+            self._schedule(self._scheduled_on_connect, conn_handle)
         elif event == _IRQ_CENTRAL_DISCONNECT:
             conn_handle, addr_type, addr = data
             print("BLE disconnected", conn_handle)
@@ -464,6 +470,14 @@ class BoatMonitorBle:
             # rather than crash; the periodic run() loop will still update
             # status on its own 2s cadence.
             print("schedule failed (dropped):", exc)
+
+    def _scheduled_on_connect(self, conn_handle):
+        self._request_conn_params(conn_handle)
+        try:
+            time.sleep_ms(250)
+        except AttributeError:
+            time.sleep(0.25)
+        self.update_status(sensors=True)
 
     def _scheduled_conn_params(self, conn_handle):
         self._request_conn_params(conn_handle)
@@ -500,8 +514,10 @@ class BoatMonitorBle:
             return
         print("BLE advertising as BoatMonitor")
 
-    def update_status(self):
-        status = read_status(self.command_result)
+    def update_status(self, sensors=None):
+        if sensors is None:
+            sensors = not self.connections
+        status = read_status(self.command_result, sensors=sensors)
         data = json.dumps(status).encode()
         self.ble.gatts_write(self.status_handle, data)
         for conn in self.connections:
@@ -520,7 +536,7 @@ class BoatMonitorBle:
 
         if cmd == "refresh":
             self.command_result = "refreshed"
-            self.update_status()
+            self.update_status(sensors=True)
         elif cmd == "reboot":
             self.command_result = "rebooting"
             self.update_status()
@@ -668,8 +684,8 @@ class BoatMonitorBle:
         self.update_status()
 
     def run(self):
-        tick_s = 2
         while True:
+            tick_s = 5 if self.connections else 2
             hold_s = ble_policy.gpio_off_hold_s()
             if self.connections or ble_policy.ble_latched():
                 self._gpio_low_accum_s = 0
@@ -686,7 +702,7 @@ class BoatMonitorBle:
                 time.sleep(0.3)
                 machine.reset()
 
-            status = self.update_status()
+            status = self.update_status(sensors=not self.connections)
             self._maybe_auto_log(status["mode"])
             time.sleep(tick_s)
 
