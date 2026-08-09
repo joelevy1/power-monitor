@@ -1,6 +1,6 @@
 {
-  "version": "1.1.57",
-  "notes": "OTA: skip Wi-Fi when boat switch/key on (cellular); ble_policy.ota_prefer_wifi().",
+  "version": "1.1.58",
+  "notes": "Boot OTA: 420s min on cellular; keep pending_ota on failure; BLE reboot sets pending.",
   "files": [
     {
       "path": "version.py",

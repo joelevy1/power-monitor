@@ -440,7 +440,7 @@ export default function BoatBleScreen({ onBack }) {
       `Pico firmware is ${picoFirmware || 'unknown'} and GitHub has ${latestFirmware}. The Pico will disconnect, reboot, and run OTA before BLE starts.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reboot to Update', style: 'destructive', onPress: () => sendCommand('reboot') },
+        { text: 'Reboot to Update', style: 'destructive', onPress: () => sendCommand('ota') },
       ],
     );
   }
