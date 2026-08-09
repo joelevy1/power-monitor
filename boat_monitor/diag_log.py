@@ -21,6 +21,15 @@ Clear the file (fresh capture after a fix):
     diag_log.clear()
 
 If auto-log throws, standby_monitor already calls upload_tail_to_events().
+
+BLE Log Now failures (1.1.50+): firmware logs stages to boat_diag.log and tries
+an Events row with event=ble_log_failed (cellular). Check the Events tab or:
+
+    import diag_log
+    diag_log.tail(40)
+
+From the app (1.1.50+), send BLE command ``diag`` to print tail to serial and
+attempt the same Events upload.
 """
 
 try:
@@ -89,6 +98,15 @@ def tail(n=60):
     return out
 
 
+def recent_lines(n=8):
+    """Last n diag lines (no print) — for BLE status JSON."""
+    try:
+        with open(LOG_PATH, "r") as f:
+            return f.read().splitlines()[-n:]
+    except Exception:
+        return []
+
+
 def clear():
     try:
         import os
@@ -99,7 +117,7 @@ def clear():
         print("clear failed:", exc)
 
 
-def upload_tail_to_events(device="boat-p2", lines=15, event="diag"):
+def upload_tail_to_events(device="boat-p2", lines=15, event="diag", prefer_wifi=True):
     """Best-effort: post last diag lines to Events tab (one row)."""
     try:
         with open(LOG_PATH, "r") as f:
@@ -109,15 +127,39 @@ def upload_tail_to_events(device="boat-p2", lines=15, event="diag"):
     try:
         import sheets_log
 
-        logger = sheets_log.SheetsLogger(prefer_wifi=True)
+        logger = sheets_log.SheetsLogger(prefer_wifi=prefer_wifi)
         try:
             logger.ensure_data()
             logger.log_event(device, event, text[:1500])
         finally:
             logger.close_data()
-        log("uploaded tail to Events tab event=%s" % event)
+        log("uploaded tail to Events tab event=%s prefer_wifi=%s" % (event, prefer_wifi))
     except Exception as exc:
         log("upload_tail failed: %s" % exc)
+
+
+def report_ble_log_failure(device, reason, lines=18, prefer_wifi=False):
+    """After a failed BLE Log Now: keep local diag and try Events upload (cellular default)."""
+    reason = str(reason)[:400]
+    log("ble_log_failed reason=%s" % reason)
+    try:
+        import version
+
+        fw = getattr(version, "VERSION", "?")
+    except Exception:
+        fw = "?"
+    detail = "fw=%s heap=%sK reason=%s" % (fw, mem_kb(), reason)
+    tail_text = "\n".join(recent_lines(lines))
+    if tail_text:
+        detail = detail + "\n--- boat_diag.log ---\n" + tail_text
+    upload_event_bounded(
+        device,
+        "ble_log_failed",
+        detail,
+        diag_tail_lines=0,
+        max_total_s=28,
+        prefer_wifi=prefer_wifi,
+    )
 
 
 def _stall_report_detail(reason, mode=None, lines=40):
@@ -141,7 +183,7 @@ def _stall_report_detail(reason, mode=None, lines=40):
 
 
 def upload_event_bounded(
-    device, event, detail, diag_tail_lines=0, max_total_s=20
+    device, event, detail, diag_tail_lines=0, max_total_s=20, prefer_wifi=True
 ):
     """Best-effort Events POST with a wall-clock cap (custom detail text)."""
     try:
@@ -176,13 +218,13 @@ def upload_event_bounded(
     try:
         import sheets_log
 
-        logger = sheets_log.SheetsLogger(prefer_wifi=True)
+        logger = sheets_log.SheetsLogger(prefer_wifi=prefer_wifi)
         try:
             logger.ensure_data()
             if elapsed_s() >= max_total_s:
                 log("event upload skipped after ensure_data (timeout)")
                 return False
-            logger.log_event(device, event, body[:800])
+            logger.log_event(device, event, body[:1500])
         finally:
             try:
                 logger.close_data()

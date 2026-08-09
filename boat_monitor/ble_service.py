@@ -164,6 +164,14 @@ def read_status(command_result=None, sensors=True):
 
     if command_result:
         status["command_result"] = command_result
+        low = str(command_result).lower()
+        if "fail" in low or "logged (power:" in low:
+            try:
+                import diag_log
+
+                status["diag_tail"] = diag_log.recent_lines(8)
+            except Exception:
+                pass
 
     return status
 
@@ -579,9 +587,47 @@ class BoatMonitorBle:
                     gps_timeout_s=10,
                     prefer_wifi=False,
                 )
-                self.command_result = "logged (%s)" % summary
+                if "failed" in str(summary).lower():
+                    self.command_result = "log_failed: %s" % summary
+                    try:
+                        import diag_log
+
+                        diag_log.report_ble_log_failure(
+                            read_status().get("device", "boat-p2"), summary
+                        )
+                    except Exception as exc:
+                        print("report_ble_log_failure:", exc)
+                else:
+                    self.command_result = "logged (%s)" % summary
             except Exception as exc:
                 self.command_result = "log_failed: %s" % exc
+                try:
+                    import diag_log
+
+                    diag_log.log("ble_log_now exception %s" % exc)
+                    diag_log.report_ble_log_failure(
+                        read_status().get("device", "boat-p2"), exc
+                    )
+                except Exception as report_exc:
+                    print("report_ble_log_failure:", report_exc)
+            self.update_status()
+        elif cmd in ("diag", "upload_diag"):
+            self.command_result = "diag_uploading"
+            self.update_status()
+            try:
+                import diag_log
+
+                lines = diag_log.recent_lines(12)
+                preview = " | ".join(lines[-4:])[:220]
+                diag_log.upload_tail_to_events(
+                    device=read_status().get("device", "boat-p2"),
+                    lines=25,
+                    event="ble_diag",
+                    prefer_wifi=False,
+                )
+                self.command_result = "diag_ok: %s" % (preview or "(empty log)")
+            except Exception as exc:
+                self.command_result = "diag_failed: %s" % exc
             self.update_status()
         elif cmd in ("signal", "modem_status", "cell_status"):
             # A lightweight cellular diagnostic -- registration + signal
@@ -612,6 +658,12 @@ class BoatMonitorBle:
                     modem.close_data()
             except Exception as exc:
                 self.command_result = "signal_failed: %s" % exc
+                try:
+                    import diag_log
+
+                    diag_log.log("ble_signal_failed %s" % exc)
+                except Exception:
+                    pass
             self.update_status()
         elif cmd in ("gps", "check_gps", "gps_status"):
             self.command_result = "checking_gps"

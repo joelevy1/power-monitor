@@ -483,6 +483,12 @@ class SheetsLogger:
             remote_actions = self._apply_remote_from_response(last_response, device)
         except Exception as exc:
             power_outcome = "failed: %s" % exc
+            try:
+                import diag_log
+
+                diag_log.log("log_power FAILED %s" % exc)
+            except Exception:
+                pass
 
         if on_progress:
             on_progress("logging_power_ok")

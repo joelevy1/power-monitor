@@ -42,6 +42,15 @@ class CellularError(Exception):
     pass
 
 
+def _diag(msg):
+    try:
+        import diag_log
+
+        diag_log.log("cell %s" % msg)
+    except Exception:
+        pass
+
+
 # SIMCom's official SIM7500_SIM7600 Series AT Command Manual (HTTP(S) AT
 # Commands chapter) documents "Maximum Response Time: 120000ms" for
 # AT+HTTPINIT, AT+HTTPTERM, AT+HTTPACTION, and AT+HTTPREAD. This code was
@@ -519,12 +528,17 @@ class Sim7600Modem:
         # when the modem was already running; a freshly PWRKEY-started module
         # has just completed its own clean boot.
         newly_started = self.ensure_awake()
+        _diag("ensure_awake newly_started=%s" % newly_started)
         if not newly_started:
             self.reset()
+            _diag("modem reset pulse")
 
         self.check_alive()
+        _diag("modem AT ok")
         self.check_sim()
+        _diag("SIM ready")
         self.wait_for_registration(seconds=registration_timeout_s)
+        _diag("registered")
 
         apn = ota_config.OTA_APN
         cid = ota_config.OTA_CONTEXT_ID
@@ -545,6 +559,7 @@ class Sim7600Modem:
             if "+NETOPEN:" not in netopen:
                 raise CellularError("AT+NETOPEN failed twice: %s" % one_line(netopen))
 
+        _diag("NETOPEN ok")
         ip = self.at("AT+IPADDR", 5000)
         if "+IP ERROR" in ip or "ERROR" in ip or not ip.strip():
             raise CellularError(
@@ -552,6 +567,7 @@ class Sim7600Modem:
             )
 
         print("Cellular data open. IP:", one_line(ip))
+        _diag("data open ip=%s" % one_line(ip)[:80])
         self._data_open = True
 
     def close_data(self):
