@@ -43,6 +43,7 @@ def main():
     rows = [
         ("interval_engine_on_s", "60", "1 min while key_on (engine charging)"),
         ("interval_engine_off_s", "300", "5 min docked / standby battery test"),
+        ("boot_ota_max_seconds", "420", "cellular full manifest needs 3–7 min"),
         ("min_fw_version", v, "OTA floor (= GitHub master manifest %s)" % v),
     ]
 

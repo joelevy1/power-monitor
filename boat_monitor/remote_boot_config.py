@@ -89,13 +89,24 @@ def effective_auto_ota_on_boot():
 def effective_boot_ota_max_seconds():
     data = load()
     if "boot_ota_max_seconds" in data:
-        return int(data["boot_ota_max_seconds"])
-    try:
-        import ota_config
+        seconds = int(data["boot_ota_max_seconds"])
+    else:
+        try:
+            import ota_config
 
-        return int(getattr(ota_config, "BOOT_OTA_MAX_SECONDS", 90))
+            seconds = int(getattr(ota_config, "BOOT_OTA_MAX_SECONDS", 420))
+        except Exception:
+            seconds = 420
+    seconds = max(90, seconds)
+    # Full manifest (~26 files) over cellular AT+HTTP often exceeds 180s.
+    try:
+        import ble_policy
+
+        if not ble_policy.ota_prefer_wifi():
+            seconds = max(seconds, 420)
     except Exception:
-        return 90
+        seconds = max(seconds, 420)
+    return seconds
 
 
 def set_pending_ota(value=True):
