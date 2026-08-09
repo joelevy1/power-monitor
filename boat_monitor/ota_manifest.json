@@ -1,6 +1,6 @@
 {
-  "version": "1.1.50",
-  "notes": "BLE log diag + Events; modem PWRKEY retries; auto-log interval from log end.",
+  "version": "1.1.51",
+  "notes": "Remote diag: boat_log_session + 90s heartbeats underway; standby throttled; modem PWRKEY retries.",
   "files": [
     {
       "path": "version.py",
