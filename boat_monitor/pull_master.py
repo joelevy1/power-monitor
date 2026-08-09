@@ -118,6 +118,7 @@ def _raw_https_to_file(url, dest_path, timeout_s=90):
 def _ensure_http_client():
     import sys
 
+    sys.modules.pop("wifi_uplink", None)
     import wifi_uplink
 
     if hasattr(wifi_uplink, "WifiHttp"):
@@ -282,7 +283,12 @@ def run(reboot=False, files=None):
 
     import version
 
-    print("VERSION", getattr(version, "VERSION", "?"))
+    ver = getattr(version, "VERSION", None)
+    if ver is None:
+        try:
+            ver = open("version.py").read().strip().split("=")[-1].strip().strip('"').strip("'")
+        except Exception:
+            ver = "?"
     try:
         with open("ble_service.py") as f:
             has_fix = "_scheduled_on_connect" in f.read()
