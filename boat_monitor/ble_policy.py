@@ -124,6 +124,18 @@ def ble_wanted():
     return ble_inputs_on()
 
 
+def ota_prefer_wifi():
+    """Whether boot/OTA should try Wi-Fi before cellular.
+
+    Boat power (master switch or key on) or BLE latch: cellular only — marina
+    Wi-Fi is almost never available when those are on. Standby / docked with
+    switch and key off: try saved Wi-Fi first (Levy-Guest, Seattle Boat).
+    """
+    if ble_latched() or ble_inputs_on():
+        return False
+    return True
+
+
 def wait_for_ble_wanted(timeout_s=3.0, poll_s=0.2):
     """Deprecated wait for USB CDC; kept for API compatibility — switch/key only."""
     import time
