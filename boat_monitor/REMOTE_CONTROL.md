@@ -135,3 +135,20 @@ Use this when the sheet has gone quiet or you are upgrading after a stuck sessio
 6. **Verify** — Power_Log **`mode=key_on`**, **`uplink=cellular`**, timestamps ~**1 min** apart with engine on **when the app is not connected**.
 
 Overnight on **power bank only** away from home: expect **cellular fallback**; success still depends on memory and signal. If the sheet is silent for **>15 min** with **300 s** Config, the unit is likely in a fail/reboot loop — repeat from step 3 when you return.
+
+## Stuck on old `fw` while Events show `min_fw_version` newer
+
+**Firmware before 1.1.54** can keep logging every minute on the old version and **will not** self-heal from the sheet alone (OTA action lost after GPS POST on some builds; boot OTA wasted time on unreachable Wi‑Fi SSIDs).
+
+**You need one manual upgrade**, then sheet-driven OTA works again (**1.1.54+**).
+
+**Fastest (boat, USB once):** Thonny → Pico running `main.py` → paste:
+
+```python
+import ota
+ota.update(reboot=True, prefer_wifi=False)
+```
+
+**Or:** Full power cycle (~10 s unplug) with **battery switch ON** and **`auto_ota_on_boot=1`** on Config — on **1.1.56+** boot OTA uses **cellular first**; on **1.1.52** prefer marina **Levy-Guest** / **Seattle Boat** Wi‑Fi for that one boot if cellular boot OTA fails.
+
+After **`fw` ≥ 1.1.54**, raising `min_fw_version` should cause **one Power row → reboot → new `fw`**, not endless minute pings.
