@@ -4,6 +4,7 @@ MODULES = (
     "version",
     "ota",
     "ota_config",
+    "ota_state",
     # Do not import main here — main.py runs boot OTA on import (reboots / drops USB).
     "resilience",
     "diag_log",
@@ -18,6 +19,7 @@ MODULES = (
     "ble_service",
     "standby_monitor",
     "auto_log",
+    "gpio_probe",
 )
 
 

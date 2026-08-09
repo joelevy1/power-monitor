@@ -77,6 +77,8 @@ bench_resilience.one_log(prefer_wifi=False)
 
 ### 5. OTA / self-update
 
+**Thonny + full pull:** Run `stop_main` (or rename `main.py`) before `bench_pull_firmware.run(reboot=False)` so rewriting `main.py` does not reboot into boot OTA and drop USB (EOF). The pull logs `ota_state: OTA begin…`, writes `version.py` and `main.py` last, and verifies every manifest file before clearing `ota_pending.json`. After **1.1.48+**, boot OTA also **repairs** when `VERSION` matches GitHub but a manifest file is missing (your partial 1.1.47 pull).
+
 **Wi‑Fi bench (Thonny):**
 
 ```python

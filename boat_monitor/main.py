@@ -14,6 +14,13 @@ except Exception:
     pass
 
 try:
+    import ota_state
+
+    ota_state.on_boot_check()
+except Exception as exc:
+    print("ota_state boot check:", exc)
+
+try:
     import ota_config
 
     if getattr(ota_config, "AUTO_OTA_ON_BOOT", False):
