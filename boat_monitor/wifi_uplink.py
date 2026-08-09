@@ -412,6 +412,99 @@ class WifiHttp:
             )
         return body
 
+    def download_to_file(self, url, path, timeout_s=20):
+        """Stream HTTP GET body to a file (lower peak RAM than http_get)."""
+        import socket
+
+        host, port, req_path, is_https = split_url(url)
+        request_text = (
+            "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: boat-monitor-pico\r\n\r\n"
+            % (req_path, host)
+        )
+        addr = socket.getaddrinfo(host, port)[0][-1]
+        sock = socket.socket()
+        sock.settimeout(timeout_s)
+        try:
+            sock.connect(addr)
+            if is_https:
+                try:
+                    import ussl as ssl
+                except ImportError:
+                    import ssl
+                try:
+                    sock = ssl.wrap_socket(sock, server_hostname=host)
+                except TypeError:
+                    sock = ssl.wrap_socket(sock)
+
+            sock.write(request_text.encode())
+
+            header = b""
+            while b"\r\n\r\n" not in header:
+                chunk = sock.recv(256)
+                if not chunk:
+                    raise WifiError("connection closed before HTTP headers")
+                header += chunk
+                if len(header) > 8192:
+                    raise WifiError("HTTP headers too large")
+
+            header_end = header.find(b"\r\n\r\n")
+            header_text = header[:header_end].decode("utf-8", "ignore")
+            status_line = header_text.split("\r\n", 1)[0]
+            try:
+                status = int(status_line.split(" ")[1])
+            except (IndexError, ValueError):
+                raise WifiError("bad status line: %s" % status_line)
+            if status != 200:
+                raise WifiError("HTTP %s for %s" % (status, url))
+
+            resp_headers = {}
+            for line in header_text.split("\r\n")[1:]:
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    resp_headers[k.strip().lower()] = v.strip()
+
+            body = header[header_end + 4 :]
+            te = resp_headers.get("transfer-encoding", "").lower()
+            if "chunked" in te:
+                raise WifiError("chunked response — use BOOTSEL or update wifi_uplink on PC")
+            cl = resp_headers.get("content-length")
+            if cl is None:
+                raise WifiError("no Content-Length — use BOOTSEL copy")
+            try:
+                need = int(cl)
+            except ValueError:
+                raise WifiError("bad Content-Length")
+
+            tmp_path = path + ".new"
+            got = len(body)
+            with open(tmp_path, "w") as out:
+                if body:
+                    out.write(body.decode("utf-8", "ignore"))
+                while got < need:
+                    chunk = sock.recv(min(1024, need - got))
+                    if not chunk:
+                        raise WifiError("short read %d/%d" % (got, need))
+                    got += len(chunk)
+                    out.write(chunk.decode("utf-8", "ignore"))
+
+            import os
+
+            try:
+                os.remove(path + ".bak")
+            except OSError:
+                pass
+            try:
+                os.rename(path, path + ".bak")
+            except OSError:
+                pass
+            os.rename(tmp_path, path)
+            return os.stat(path)[6]
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
     def http_post_json(self, url, body_text, timeout_s=20):
         headers = {"Content-Type": "application/json"}
         status, body, final_url = self._request(

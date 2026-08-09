@@ -54,11 +54,11 @@ def enable_watchdog(timeout_ms=None):
 
 
 def feed_watchdog():
-    wdt = _wdt or enable_watchdog()
-    if wdt is None:
+    """Feed the hardware WDT only if standby already enabled it."""
+    if _wdt is None:
         return
     try:
-        wdt.feed()
+        _wdt.feed()
     except Exception:
         pass
 
