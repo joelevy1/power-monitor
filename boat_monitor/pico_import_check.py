@@ -13,6 +13,7 @@ MODULES = (
     "cellular",
     "v50_energy",
     "remote_control",
+    "remote_boot_config",
     "mem_guard",
     "power_transition",
     "ble_service",

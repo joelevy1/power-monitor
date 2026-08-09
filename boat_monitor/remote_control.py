@@ -127,6 +127,14 @@ def apply_commands_payload(payload, device_id=""):
     except Exception as exc:
         print("remote_control: v50_energy:", exc)
 
+    try:
+        import remote_boot_config
+
+        boot_applied = remote_boot_config.apply_settings(settings)
+        applied.extend(boot_applied)
+    except Exception as exc:
+        print("remote_control: remote_boot_config:", exc)
+
     out = []
     if "ota" in actions:
         out.append("ota")
@@ -156,11 +164,38 @@ def run_actions(actions, prefer_wifi=False):
 
     for action in actions:
         if action == "ota":
-            # Full OTA download while ble_service.main() is running often fails
-            # (MemoryError or long hangs) because BLE and cellular compete for heap
-            # and the log handler blocks status updates. Boot-time OTA in main.py
-            # runs before BLE starts and is the reliable path for sheet/cmd_ota.
-            print("remote_control: reboot for boot-time OTA (AUTO_OTA_ON_BOOT)")
+            try:
+                import remote_boot_config
+
+                remote_boot_config.set_pending_ota(True)
+            except Exception as exc:
+                print("remote_control: set_pending_ota:", exc)
+
+            # Post-log heap is usually highest; try cellular OTA before reboot-only.
+            try:
+                import ota
+                import remote_boot_config
+
+                max_s = remote_boot_config.effective_boot_ota_max_seconds()
+                try:
+                    import diag_log
+
+                    diag_log.log("run_actions inline OTA start max_s=%s" % max_s)
+                except Exception:
+                    pass
+                changed = ota.update(reboot=True, prefer_wifi=False, max_total_s=max_s)
+                if changed:
+                    return
+            except Exception as exc:
+                print("remote_control: inline OTA failed:", exc)
+                try:
+                    import diag_log
+
+                    diag_log.log("run_actions inline OTA failed %s -> reboot" % exc)
+                except Exception:
+                    pass
+
+            print("remote_control: reboot for boot-time OTA (pending_ota set)")
             try:
                 import diag_log
 

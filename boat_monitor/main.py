@@ -15,17 +15,25 @@ except Exception:
 
 try:
     import ota_config
+    import remote_boot_config
 
-    if getattr(ota_config, "AUTO_OTA_ON_BOOT", False):
+    if remote_boot_config.should_run_boot_ota():
         try:
             import ota
 
-            max_s = getattr(ota_config, "BOOT_OTA_MAX_SECONDS", 90)
+            max_s = remote_boot_config.effective_boot_ota_max_seconds()
             reboot = getattr(ota_config, "AUTO_OTA_REBOOT_AFTER_UPDATE", True)
+            try:
+                import diag_log
+
+                diag_log.log("boot OTA start %s" % remote_boot_config.boot_ota_status_line())
+            except Exception:
+                pass
             try:
                 ota.update(reboot=reboot, max_total_s=max_s)
             except TypeError:
                 ota.update(reboot=reboot)
+            remote_boot_config.clear_pending_ota()
         except Exception as exc:
             print("Boot OTA skipped/failed:", exc)
             try:
@@ -34,6 +42,15 @@ try:
                 diag_log.log("boot OTA failed: %s" % exc)
             except Exception:
                 pass
+    else:
+        try:
+            import diag_log
+
+            diag_log.log(
+                "boot OTA skipped %s" % remote_boot_config.boot_ota_status_line()
+            )
+        except Exception:
+            pass
 except Exception as exc:
     print("OTA config unavailable:", exc)
 

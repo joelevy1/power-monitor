@@ -13,6 +13,8 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 | `interval_engine_on_s` | `60` | Auto-log interval while mode is `key_on` (min 60) |
 | `interval_engine_off_s` | `300` | Auto-log when engine off / docked (min 60); use `3600` for long storage |
 | `min_fw_version` | `1.1.7` | If Pico `version.py` is older, run **OTA** on that log cycle |
+| `auto_ota_on_boot` | `1` | **1.1.52+:** Persist on Pico (`remote_boot_config.json`); overrides `ota_config.py` every boot |
+| `boot_ota_max_seconds` | `180` | **1.1.52+:** Max seconds for boot-time OTA (default 90 from `ota_config.py`) |
 | `cmd_ota` | `1` | **One-shot:** OTA + reboot after this log; cell cleared by script |
 | `cmd_reboot` | `1` | **One-shot:** reboot after this log; cell cleared |
 | `wifi_networks` | see below | Saves networks on the Pico (`wifi_sheet.json`); used on next Wi-Fi connect |
@@ -51,7 +53,12 @@ Keys without a prefix apply to **all** devices.
 
 ## What still happens on boot
 
-`AUTO_OTA_ON_BOOT` in `ota_config.py` still checks GitHub on every **power-on / reset**. Sheet commands add:
+`AUTO_OTA_ON_BOOT` in `ota_config.py` is the **default** when the sheet has not set
+`auto_ota_on_boot`. **1.1.52+** also reads **`remote_boot_config.json`** (written from
+Config on each log) and runs boot OTA when **`pending_ota`** is set after
+`min_fw_version` / `cmd_ota` — even if `ota_config.py` on disk still says `False`.
+
+Sheet commands also add:
 
 - OTA **between** logs (no boat visit)
 - Interval changes **without** reflashing
