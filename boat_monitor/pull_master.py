@@ -190,14 +190,63 @@ def _ensure_stream_client(client):
     return wifi_uplink.WifiHttp()
 
 
+def _wifi_connect(timeout_s):
+    import sys
+
+    sys.modules.pop("wifi_uplink", None)
+    try:
+        import wifi_uplink
+
+        if hasattr(wifi_uplink, "connect"):
+            return wifi_uplink.connect(timeout_s=timeout_s), wifi_uplink
+    except Exception:
+        pass
+
+    import network
+    import time
+
+    networks = []
+    try:
+        import wifi_known_networks
+
+        networks = getattr(wifi_known_networks, "WIFI_NETWORKS", []) or []
+    except ImportError:
+        pass
+    if not networks:
+        try:
+            import wifi_credentials
+
+            networks = getattr(wifi_credentials, "WIFI_NETWORKS", []) or []
+        except ImportError:
+            pass
+    if not networks:
+        raise OSError("no Wi-Fi networks configured")
+
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    deadline = time.time() + timeout_s
+    for ssid, password in networks:
+        if wlan.isconnected():
+            wlan.disconnect()
+            time.sleep(0.2)
+        wlan.connect(ssid, password)
+        while time.time() < deadline:
+            if wlan.isconnected():
+                print("wifi (fallback):", ssid)
+                return ssid, None
+            time.sleep(0.25)
+    return None, None
+
+
 def run(reboot=False, files=None):
     import gc
+    import sys
 
     gc.collect()
-    import wifi_uplink
+    sys.modules.pop("wifi_uplink", None)
 
     names = files or FILES
-    ssid = wifi_uplink.connect(timeout_s=WIFI_TIMEOUT_S)
+    ssid, wifi_uplink = _wifi_connect(WIFI_TIMEOUT_S)
     if not ssid:
         raise OSError("Wi-Fi did not connect")
     print("Wi-Fi:", ssid, "branch", BRANCH, "heap", gc.mem_free())
@@ -216,7 +265,12 @@ def run(reboot=False, files=None):
             gc.collect()
     finally:
         try:
-            wifi_uplink.disconnect()
+            if wifi_uplink is not None:
+                wifi_uplink.disconnect()
+            else:
+                import network
+
+                network.WLAN(network.STA_IF).disconnect()
         except Exception:
             pass
         gc.collect()
