@@ -431,6 +431,12 @@ class SheetsLogger:
             "Power_Log",
             payload,
         )
+        try:
+            import ota_lifecycle
+
+            ota_lifecycle.maybe_confirm_after_log(self, device, fw)
+        except Exception:
+            pass
         if snap:
             try:
                 import mem_guard
@@ -500,6 +506,12 @@ class SheetsLogger:
             ota_telemetry.flush_pending_inline(self, device)
         except Exception:
             pass
+        try:
+            import ota_lifecycle
+
+            ota_lifecycle.flush_pending(self, device)
+        except Exception:
+            pass
         if on_progress:
             on_progress("logging_power")
         status_note = note
@@ -526,6 +538,25 @@ class SheetsLogger:
             )
             remote_actions = self._apply_remote_from_response(last_response, device)
             power_remote_actions = list(remote_actions or [])
+            if "ota" in (remote_actions or []):
+                min_fw = None
+                if isinstance(last_response, dict):
+                    cmds = (last_response.get("commands") or {})
+                    st = cmds.get("settings") or {}
+                    min_fw = st.get("min_fw_version") or st.get("target_fw_version")
+                try:
+                    import ota_lifecycle
+
+                    ota_lifecycle.phase(
+                        "aware",
+                        logger=self,
+                        device=device,
+                        target_fw=min_fw,
+                        inline=True,
+                        source="power_post",
+                    )
+                except Exception:
+                    pass
             if "ota" in (remote_actions or []):
                 try:
                     import diag_log

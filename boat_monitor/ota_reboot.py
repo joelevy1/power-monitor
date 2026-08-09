@@ -20,6 +20,24 @@ def maybe_reboot_for_ota(actions, source=""):
     except Exception:
         pass
     try:
+        import ota_lifecycle
+
+        data = {}
+        try:
+            import remote_boot_config
+
+            data = remote_boot_config.load()
+        except Exception:
+            pass
+        ota_lifecycle.phase(
+            "reboot_queued",
+            inline=False,
+            target_fw=data.get("min_fw_version"),
+            source=source,
+        )
+    except Exception:
+        pass
+    try:
         from remote_control import run_actions
 
         run_actions(actions, prefer_wifi=False)
@@ -43,6 +61,24 @@ def reboot_if_upgrade_pending(source=""):
         import diag_log
 
         diag_log.log("reboot_if_upgrade_pending source=%s" % source)
+    except Exception:
+        pass
+    try:
+        import ota_lifecycle
+
+        data = {}
+        try:
+            import remote_boot_config
+
+            data = remote_boot_config.load()
+        except Exception:
+            pass
+        ota_lifecycle.phase(
+            "reboot_queued",
+            inline=False,
+            target_fw=data.get("min_fw_version"),
+            source=source,
+        )
     except Exception:
         pass
     import machine

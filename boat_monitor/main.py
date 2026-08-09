@@ -60,6 +60,24 @@ try:
             ota_error = None
             ota_target = None
             try:
+                import remote_boot_config as _rbc
+
+                ota_target = _rbc.load().get("min_fw_version")
+            except Exception:
+                pass
+            try:
+                import ota_lifecycle
+
+                ota_lifecycle.phase(
+                    "boot_start",
+                    inline=False,
+                    target_fw=ota_target,
+                    max_s=max_s,
+                    prefer_wifi=prefer_wifi,
+                )
+            except Exception:
+                pass
+            try:
                 import time as _time
 
                 ota_started = _time.time()
@@ -91,6 +109,21 @@ try:
                 except Exception:
                     pass
             if not success:
+                try:
+                    import ota_lifecycle
+
+                    outcome = "failed" if ota_error else "no_upgrade"
+                    ota_lifecycle.phase(
+                        "boot_end",
+                        inline=False,
+                        target_fw=ota_target,
+                        outcome=outcome,
+                        max_s=max_s,
+                        elapsed_s=elapsed,
+                        error=str(ota_error)[:200] if ota_error else None,
+                    )
+                except Exception:
+                    pass
                 try:
                     import ota_telemetry
 
