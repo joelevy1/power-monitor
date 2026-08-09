@@ -4,6 +4,7 @@ Sheet-driven boot / OTA policy (persists on the Pico filesystem).
 Config tab keys (via Apps Script commands on each log POST):
   auto_ota_on_boot     — 1/true/yes overrides ota_config.py on every boot
   boot_ota_max_seconds — cap for boot-time OTA (default from ota_config)
+  keep_modem_awake_underway — 1|0: skip AT+CPOF after cellular log while underway
 
 When the sheet requests OTA (min_fw_version, cmd_ota, …), remote_control sets
 pending_ota so the next boot runs ota.update() even if ota_config.py still
@@ -57,6 +58,13 @@ def apply_settings(settings):
             applied.append("boot_ota_max_seconds=%s" % data["boot_ota_max_seconds"])
         except ValueError:
             pass
+    if "keep_modem_awake_underway" in settings and str(
+        settings.get("keep_modem_awake_underway")
+    ).strip() != "":
+        data["keep_modem_awake_underway"] = _truthy(settings["keep_modem_awake_underway"])
+        applied.append(
+            "keep_modem_awake_underway=%s" % (1 if data["keep_modem_awake_underway"] else 0)
+        )
     if applied:
         save(data)
     return applied

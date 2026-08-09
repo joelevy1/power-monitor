@@ -1,6 +1,6 @@
 {
-  "version": "1.1.52",
-  "notes": "Sheet-managed boot OTA (auto_ota_on_boot, pending_ota); inline cellular OTA after log.",
+  "version": "1.1.53",
+  "notes": "Underway: keep cellular modem warm between logs (faster cycles, fewer PWRKEY failures).",
   "files": [
     {
       "path": "version.py",
@@ -45,6 +45,10 @@
     {
       "path": "remote_boot_config.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+    },
+    {
+      "path": "modem_policy.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_policy.py"
     },
     {
       "path": "v50_energy.py",

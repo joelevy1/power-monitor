@@ -202,11 +202,13 @@ def log_power_and_gps(
     def _run(prefer):
         logger = sheets_log.SheetsLogger(prefer_wifi=prefer)
         actions = []
+        log_mode = None
         try:
             import version
 
             fw = getattr(version, "VERSION", "")
             status = read_status()
+            log_mode = status.get("mode")
             try:
                 import gpio_probe
 
@@ -227,7 +229,7 @@ def log_power_and_gps(
             actions = getattr(logger, "_last_remote_actions", []) or []
             return summary, actions
         finally:
-            logger.close_data()
+            logger.close_data(mode=log_mode)
 
     if prefer_wifi and not _wifi_uplink_configured():
         msg = "power: failed: no Wi-Fi networks on Pico, gps: skipped"

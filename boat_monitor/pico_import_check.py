@@ -14,6 +14,7 @@ MODULES = (
     "v50_energy",
     "remote_control",
     "remote_boot_config",
+    "modem_policy",
     "mem_guard",
     "power_transition",
     "ble_service",
