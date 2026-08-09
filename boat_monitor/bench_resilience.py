@@ -6,7 +6,7 @@ Copy to the Pico with config.py + secrets.py (for real sheet posts).
 IMPORTANT:
   - While Thonny has the USB REPL open, main.py may not be running (depends how
     you boot). For “real” BLE/standby behavior: close Thonny and power-cycle,
-    or use Soft reboot after closing the serial connection.
+    or use oSoft reboot after closing the serial connection.
   - USB to PC does NOT enable BLE; switch/key GPIO (or ble_latch) does.
 
 Run in Thonny:
