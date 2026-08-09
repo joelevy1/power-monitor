@@ -197,6 +197,12 @@ def main():
                     )
                 except Exception as exc:
                     diag_log.log("after_logging_session skipped: %s" % exc)
+                try:
+                    import ota_reboot
+
+                    ota_reboot.reboot_if_upgrade_pending(source="standby_auto_log")
+                except Exception:
+                    pass
                 if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
                     reason = "auto-log failed %s times in a row" % auto_log_failures
                     print("standby_monitor: %s — rebooting" % reason)

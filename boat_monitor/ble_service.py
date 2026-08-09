@@ -111,9 +111,15 @@ def read_ina260(sda, scl, bus_id, addr):
 def read_v50():
     try:
         sensor = INA219(i2c_bus(cfg.I2C_V50_SDA, cfg.I2C_V50_SCL, 0), cfg.INA219_V50_ADDR)
+        a = round(sensor.current_a(), 4)
+        v = round(sensor.voltage_v(), 3)
+        # With no USB bank on the harness, TPS IN1 can still show ~5 V at near-zero
+        # amps (ghost on the unused leg). Treat as "not on bank" for logging/SOC.
+        if abs(a) < 0.02:
+            return {"v": 0.0, "a": 0.0, "ok": True, "bank_idle": True}
         return {
-            "v": round(sensor.voltage_v(), 3),
-            "a": round(sensor.current_a(), 4),
+            "v": v,
+            "a": a,
             "ok": True,
         }
     except Exception as exc:
@@ -265,16 +271,12 @@ def log_power_and_gps(
         else:
             summary, actions = _run(prefer_wifi if ble_monitor is None else use_wifi)
 
-        if actions:
-            try:
-                import diag_log
+        try:
+            import ota_reboot
 
-                diag_log.log("log_power_and_gps remote actions %s" % actions)
-            except Exception:
-                pass
-            from remote_control import run_actions
-
-            run_actions(actions, prefer_wifi=False)
+            ota_reboot.reboot_if_upgrade_pending(source="log_power_and_gps")
+        except Exception:
+            pass
         return summary
     finally:
         if ble_monitor is not None:
@@ -798,6 +800,12 @@ class BoatMonitorBle:
             # Interval is measured from end of each cycle (modem off), not start.
             self._last_auto_log_ms = time.ticks_ms()
             self._remote_after_log(mode, outcome)
+            try:
+                import ota_reboot
+
+                ota_reboot.reboot_if_upgrade_pending(source="ble_auto_log")
+            except Exception:
+                pass
         self.update_status()
 
     def run(self):

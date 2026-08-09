@@ -1,6 +1,6 @@
 {
-  "version": "1.1.60",
-  "notes": "Remote OTA test release — verify 1.1.59 → 1.1.60 over cellular boot OTA.",
+  "version": "1.1.61",
+  "notes": "Auto OTA: run_actions after modem close; reboot if min_fw pending. V50 idle reads 0 V/A.",
   "files": [
     {
       "path": "version.py",
@@ -77,6 +77,10 @@
     {
       "path": "ota.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+    },
+    {
+      "path": "ota_reboot.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_reboot.py"
     },
     {
       "path": "ota_telemetry.py",
