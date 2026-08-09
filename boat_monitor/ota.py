@@ -242,6 +242,18 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         print("Reboot required to run new files.")
 
         if reboot:
+            try:
+                import ota_telemetry
+
+                ota_telemetry.report_boot_ota(
+                    "success_pending_reboot",
+                    fw_target=target_version,
+                    max_s=max_total_s,
+                    prefer_wifi=prefer_wifi,
+                    source="ota.update",
+                )
+            except Exception:
+                pass
             import machine
 
             time.sleep(1)

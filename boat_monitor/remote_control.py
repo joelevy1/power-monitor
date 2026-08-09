@@ -78,6 +78,7 @@ def apply_commands_payload(payload, device_id=""):
         if key in ("ota", "update", "firmware"):
             actions.append("ota")
             applied.append("one_shot=ota")
+            applied.append("ota_action=1")
             try:
                 import remote_boot_config
 
@@ -97,6 +98,7 @@ def apply_commands_payload(payload, device_id=""):
             applied.append("min_fw_version=%s current=%s" % (min_fw, current))
             if _version_lt(current, min_fw):
                 actions.append("ota")
+                applied.append("ota_action=1")
                 try:
                     import remote_boot_config
 
@@ -109,6 +111,7 @@ def apply_commands_payload(payload, device_id=""):
     if _truthy(settings.get("cmd_ota")) or _truthy(settings.get("force_ota")):
         actions.append("ota")
         applied.append("cmd_ota=1")
+        applied.append("ota_action=1")
         try:
             import remote_boot_config
 
@@ -226,6 +229,15 @@ def run_actions(actions, prefer_wifi=False):
                     pass
 
             print("remote_control: reboot for boot-time OTA (pending_ota set)")
+            try:
+                import ota_telemetry
+
+                ota_telemetry.note_ota_reboot_queued(
+                    source="run_actions",
+                    detail="cellular=%s" % (not prefer_wifi),
+                )
+            except Exception:
+                pass
             try:
                 import diag_log
 

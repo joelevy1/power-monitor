@@ -1,35 +1,12 @@
 """
 Append-only diagnostic log on the Pico filesystem (boat_diag.log).
 
-Firmware 1.1.23+ writes stage lines during standby auto-log, Wi-Fi connect,
-Sheets POST, and sheet-driven reboot/OTA. Each line is also printed as
-DIAG: ... on the USB serial console (Thonny).
+Primary visibility is the Google Sheet **Events** tab (cellular or Wi-Fi):
+  event=boot_ota — OTA start/finish/timeout (1.1.59+)
+  event=remote_config — Config applied each log (includes ota_action=1 when OTA queued)
+  event=boat_log_session / ble_log_failed — logging path
 
-Thonny (device still running or after a soft hang — power-cycle first if
-the REPL is wedged):
-
-    import diag_log
-    diag_log.tail(80)
-
-Push the last lines to the sheet Events tab (needs Wi-Fi + secrets):
-
-    import diag_log
-    diag_log.upload_tail_to_events(lines=25)
-
-Clear the file (fresh capture after a fix):
-
-    diag_log.clear()
-
-If auto-log throws, standby_monitor already calls upload_tail_to_events().
-
-BLE Log Now failures (1.1.50+): firmware logs stages to boat_diag.log and tries
-an Events row with event=ble_log_failed (cellular). Check the Events tab or:
-
-    import diag_log
-    diag_log.tail(40)
-
-From the app (1.1.50+), send BLE command ``diag`` to print tail to serial and
-attempt the same Events upload.
+USB serial (Thonny) is last-resort only; firmware still prints DIAG: lines there.
 """
 
 try:

@@ -86,7 +86,8 @@ No TestFlight or Wi-Fi console required for Pico updates.
 |--------|--------|------------------|
 | Firmware version | **Power_Log** `fw` column | e.g. `1.1.16` |
 | Upload path | **Power_Log** `uplink` column | Wi-Fi SSID or `cellular` |
-| Config applied | **Events** tab | `event=remote_config`, `detail` lists intervals / `cmd_ota` / `min_fw_version` |
+| OTA boot / remote (1.1.59+) | **Events** tab | `boot_ota` — outcome, `max_s`, `prefer_wifi`, errors, diag tail (cellular default on boat) |
+| Config applied | **Events** tab | `event=remote_config`, `detail` lists intervals / `cmd_ota` / `ota_action=1` / `min_fw_version` |
 | Degraded logging (1.1.45+) | **Events** tab | `auto_log_degraded` — soft-fail summary + diag tail (throttled ~10 min) |
 | GPIO opto test (1.1.46+) | **Power_Log** `note` | Suffix `gpio sw=0 key=0 gp20=1 gp21=1` — firmware ON when `sw`/`key`=1; raw `gp*=0` means pin LOW (opto active). Header pins **26/27** = GP20/GP21. |
 | Overdue but alive (1.1.45+) | **Events** tab | `standby_overdue` — past log interval, no Power_Log yet (throttled ~15 min) |
@@ -112,7 +113,7 @@ Interval overrides are **in RAM only** (lost on reboot until Config is read agai
 | **Firmware 1.1.35+** | Standby reboots if no successful auto-log for **2×** the current `interval_engine_*_s` (sheet overrides included), if one log runs longer than that same limit, or after **4** consecutive soft-fails (`AUTO_LOG_FAIL_REBOOT_COUNT`). Posts **`standby_stall_reboot`** on Events with `boat_diag.log` tail when possible. |
 | **Power cycle** | Immediate — unplug Pico/USB path ~10s if the REPL or auto-log is hung. |
 
-After a stall, check **Events** for `diag_log` uploads (standby posts tail on exceptions) or Thonny `diag_log.tail(80)` if you have USB.
+After a stall, check **Events** for `boot_ota`, `standby_stall_reboot`, or `boat_log_session` rows. USB `diag_log.tail()` is last resort only.
 
 ## Modem LEDs (SIM7600 HAT) in Wi‑Fi-only standby
 

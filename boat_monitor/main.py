@@ -14,10 +14,19 @@ except Exception:
     pass
 
 try:
+    import ota_telemetry
+
+    ota_telemetry.flush_pending_on_boot()
+except Exception:
+    pass
+
+try:
     import ota_config
     import remote_boot_config
 
     if remote_boot_config.should_run_boot_ota():
+        max_s = None
+        prefer_wifi = False
         try:
             import ota
 
@@ -48,10 +57,29 @@ try:
             except Exception:
                 prefer_wifi = False
             success = False
+            ota_error = None
+            ota_target = None
+            try:
+                import time as _time
+
+                ota_started = _time.time()
+            except Exception:
+                ota_started = None
             try:
                 success = ota.update(reboot=reboot, prefer_wifi=prefer_wifi, max_total_s=max_s)
             except TypeError:
                 success = ota.update(reboot=reboot, prefer_wifi=prefer_wifi)
+            except Exception as exc:
+                ota_error = exc
+                success = False
+            elapsed = None
+            if ota_started is not None:
+                try:
+                    import time as _time
+
+                    elapsed = int(_time.time() - ota_started)
+                except Exception:
+                    pass
             if success:
                 remote_boot_config.clear_pending_ota()
             else:
@@ -60,6 +88,22 @@ try:
                     import diag_log
 
                     diag_log.log("boot OTA finished without upgrade (retry next boot)")
+                except Exception:
+                    pass
+            if not success:
+                try:
+                    import ota_telemetry
+
+                    outcome = "failed" if ota_error else "no_upgrade"
+                    ota_telemetry.report_boot_ota(
+                        outcome,
+                        fw_target=ota_target,
+                        max_s=max_s,
+                        prefer_wifi=prefer_wifi,
+                        error=ota_error,
+                        elapsed_s=elapsed,
+                        source="main.boot",
+                    )
                 except Exception:
                     pass
         except Exception as exc:
@@ -74,6 +118,18 @@ try:
                 import diag_log
 
                 diag_log.log("boot OTA failed: %s" % exc)
+            except Exception:
+                pass
+            try:
+                import ota_telemetry
+
+                ota_telemetry.report_boot_ota(
+                    "failed",
+                    max_s=max_s,
+                    prefer_wifi=prefer_wifi,
+                    error=exc,
+                    source="main.boot",
+                )
             except Exception:
                 pass
     else:
