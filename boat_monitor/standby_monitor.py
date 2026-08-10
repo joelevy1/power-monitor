@@ -77,7 +77,7 @@ def _finish_log_session(device_id, mode, summary, source):
 def main():
     diag_log.log("standby_monitor start")
     resilience.enable_watchdog()
-    print("standby_monitor: BLE off — Wi-Fi-first auto-log")
+    print("standby_monitor: BLE off — auto-log (Wi-Fi or cellular per remote_boot_config)")
     auto_log.load_persisted_overrides()
     try:
         import remote_boot_config
