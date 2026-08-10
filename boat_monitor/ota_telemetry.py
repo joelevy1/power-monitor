@@ -214,7 +214,7 @@ def report_boot_ota(
         queue_result(payload, device=device)
         return True
     prefer = False if prefer_wifi is False else _uplink_prefer_wifi()
-    if upload_result(payload, device=device, prefer_wifi=prefer):
+    if upload_result(payload, device=device, prefer_wifi=prefer, max_total_s=max_total_s or 90):
         return True
     queue_result(payload, device=device)
     return False

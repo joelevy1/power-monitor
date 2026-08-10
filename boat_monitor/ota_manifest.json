@@ -1,6 +1,6 @@
 {
-  "version": "1.1.74",
-  "notes": "OTA Events flush before modem close/reset; boot_end success telemetry; stress harness device timings.",
+  "version": "1.1.75",
+  "notes": "OTA Events: ota_lifecycle on every ota_action log; boot_ota flush 90s uplink.",
   "files": [
     {
       "path": "version.py",

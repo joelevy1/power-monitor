@@ -6,7 +6,7 @@ explicit flush they never appear on Events when the device reboots immediately.
 """
 
 DEFAULT_DEVICE = "boat-p2"
-UPLOAD_MAX_S = 45
+UPLOAD_MAX_S = 90
 
 
 def flush_ota_events(logger=None, device=None, prefer_wifi=False):

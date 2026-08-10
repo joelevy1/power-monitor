@@ -271,6 +271,16 @@ class SheetsLogger:
         actions = getattr(self, "_last_remote_actions", None) or []
         self._last_remote_actions = []
         device = getattr(self, "_last_device", None) or "boat-p2"
+        if actions and ("ota" in actions or "reboot" in actions):
+            try:
+                self.log_event(
+                    device,
+                    "ota_lifecycle",
+                    "phase=reboot_queued; source=sheets_log.close_data; fw=%s"
+                    % SheetsLogger._current_fw_label(),
+                )
+            except Exception as exc:
+                print("SheetsLogger: reboot_queued event:", exc)
         try:
             import ota_events_flush
 
@@ -400,12 +410,66 @@ class SheetsLogger:
             return {"raw": response_text}
 
     @staticmethod
+    def _current_fw_label():
+        try:
+            import version
+
+            return getattr(version, "VERSION", "?")
+        except Exception:
+            return "?"
+
+    @staticmethod
     def _merge_remote_actions(primary, secondary):
         merged = list(primary or [])
         for action in secondary or []:
             if action not in merged:
                 merged.append(action)
         return merged
+
+    def _emit_ota_lifecycle_from_detail(self, device_id, detail, response=None):
+        """Post ota_lifecycle on the same open session as remote_config (always works)."""
+        if not detail or ("ota_action=1" not in detail and "one_shot=ota" not in detail):
+            if not response:
+                return
+            try:
+                from remote_control import apply_from_log_response
+
+                actions, _ = apply_from_log_response(response, device_id=device_id)
+                if "ota" not in (actions or []):
+                    return
+            except Exception:
+                return
+        try:
+            import version
+
+            fw = getattr(version, "VERSION", "?")
+        except Exception:
+            fw = "?"
+        min_fw = ""
+        for part in str(detail or "").split(";"):
+            part = part.strip()
+            if part.startswith("min_fw_version="):
+                min_fw = part.split("=", 1)[1].strip()
+        if not min_fw and isinstance(response, dict):
+            st = (response.get("commands") or {}).get("settings") or {}
+            min_fw = str(st.get("min_fw_version") or st.get("target_fw_version") or "")
+        lc_detail = "phase=aware; fw=%s; target_fw=%s; source=sheet_post" % (fw, min_fw)
+        try:
+            import ota_lifecycle
+
+            ota_lifecycle.phase(
+                "aware",
+                logger=self,
+                device=device_id,
+                target_fw=min_fw,
+                inline=True,
+                source="sheet_post",
+            )
+        except Exception:
+            try:
+                self.log_event(device_id, "ota_lifecycle", lc_detail[:1500])
+            except Exception as exc:
+                print("SheetsLogger: ota_lifecycle aware:", exc)
 
     def _apply_remote_from_response(self, response, device_id, log_event=True):
         try:
@@ -417,6 +481,12 @@ class SheetsLogger:
                     self.log_event(device_id, "remote_config", detail)
                 except Exception as exc:
                     print("SheetsLogger: remote_config event:", exc)
+                try:
+                    self._emit_ota_lifecycle_from_detail(device_id, detail, response=response)
+                except Exception as exc:
+                    print("SheetsLogger: ota_lifecycle:", exc)
+            elif log_event and response:
+                self._emit_ota_lifecycle_from_detail(device_id, "", response=response)
             return actions
         except Exception as exc:
             print("SheetsLogger: remote_control:", exc)
