@@ -26,6 +26,9 @@ REPO = ROOT.parent
 LOG_PATH = REPO / "boat_p2_watch.log"
 STATE_PATH = REPO / "boat_p2_watch_state.json"
 DEVICE = "boat-p2"
+# Power on + min_fw set but Power_Log fw unchanged → escalate (cellular OTA stuck).
+GIVE_UP_STUCK_MINUTES = 45
+BOOT_OTA_MAX_S = 420
 
 
 def _log(msg):
@@ -200,6 +203,50 @@ def poll_once():
         status = "watch"
         detail.append("lifecycle_fw=%s log_fw=%s" % (lifecycle_fw, last_fw))
 
+    now = datetime.now(timezone.utc)
+    stuck_since = prev.get("ota_stuck_since_utc")
+    give_up_logged = prev.get("give_up_logged", False)
+    has_file_done = any(
+        len(r) > 3 and r[2] == "ota_lifecycle" and "phase=file_done" in str(r[3]) for r in events[-50:]
+    )
+    has_new_telemetry = any(
+        len(r) > 3 and r[2] in ("device_stats", "ota_trace") for r in events[-30:]
+    )
+    ota_behind = (
+        last_fw != "?"
+        and min_fw != "?"
+        and _version_lt(last_fw, min_fw)
+    )
+    if ota_behind:
+        if not stuck_since:
+            stuck_since = now.isoformat()
+        else:
+            try:
+                t0 = datetime.fromisoformat(stuck_since.replace("Z", "+00:00"))
+                stuck_min = int((now - t0).total_seconds() / 60)
+            except Exception:
+                stuck_min = 0
+            if stuck_min >= GIVE_UP_STUCK_MINUTES and not give_up_logged:
+                _log(
+                    "ESCALATE give_up: pl_fw=%s < min_fw=%s for %s+ min "
+                    "(boot OTA budget %ss; file_done=%s new_telemetry=%s). "
+                    "Next: dock WiFi/BLE OTA or USB — cellular boot path not completing."
+                    % (
+                        last_fw,
+                        min_fw,
+                        GIVE_UP_STUCK_MINUTES,
+                        BOOT_OTA_MAX_S,
+                        has_file_done,
+                        has_new_telemetry,
+                    )
+                )
+                give_up_logged = True
+            elif stuck_min > 0 and stuck_min % 15 == 0 and stuck_min < GIVE_UP_STUCK_MINUTES:
+                detail.append("ota_stuck %s min (give_up at %s)" % (stuck_min, GIVE_UP_STUCK_MINUTES))
+    else:
+        stuck_since = None
+        give_up_logged = False
+
     summary = (
         "STATUS=%s min_fw=%s pl_fw=%s pl_ts=%s mode=%s | %s | last_event: %s"
         % (status, min_fw, last_fw, last_ts, last_mode, "; ".join(detail), last_ev_line)
@@ -216,6 +263,8 @@ def poll_once():
                     "power_log_fw": last_fw,
                     "power_log_ts": last_ts,
                     "lifecycle_fw": lifecycle_fw,
+                    "ota_stuck_since_utc": stuck_since,
+                    "give_up_logged": give_up_logged,
                     "summary": summary,
                 },
                 indent=2,
