@@ -105,7 +105,14 @@ def main(argv=None):
     patch_local = ROOT / ".usb_recovery_patch_run.py"
     patch_local.write_text(patch_text, encoding="utf-8")
 
-    steps = []
+    free_script = ROOT / "usb_recovery_free.py"
+    steps = [
+        (
+            _mp_args(port, "cp", str(free_script), ":usb_recovery_free.py"),
+            "copy flash cleanup script",
+        ),
+        (_mp_args(port, "run", "usb_recovery_free.py"), "free flash (.bak/.new/bundles/logs)"),
+    ]
     for name in RECOVERY_FILES:
         steps.append(
             (

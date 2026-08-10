@@ -42,9 +42,10 @@ If you see `failed to access cp`, update `usb_recovery_push.py` from PR #77+ (ol
 
 ## What it does
 
-1. Copies **13** recovery modules (`ota_health.py`, streaming OTA stack, `main.py`, `version.py`, …).
-2. **Merges** `remote_boot_config.json` on the Pico: clears `pending_ota`, `ota_degraded`, fail counts; sets `boot_ota_prefer_wifi=1` (unless `--no-prefer-wifi`). **Keeps** sheet keys like `min_fw_version`.
-3. **Soft-resets** so `main.py` runs automatically.
+1. Runs **flash cleanup** on the Pico (`.bak` / `.new`, OTA bundle leftovers, large logs).
+2. Copies **13** recovery modules (`ota_health.py`, streaming OTA stack, `main.py`, `version.py`, …).
+3. **Merges** `remote_boot_config.json` on the Pico: clears `pending_ota`, `ota_degraded`, fail counts; sets `boot_ota_prefer_wifi=1` (unless `--no-prefer-wifi`). **Keeps** sheet keys like `min_fw_version`.
+4. **Soft-resets** so `main.py` runs automatically.
 
 After recovery, leave the unit on **home Wi‑Fi** (switch/key off) so boot OTA can pull **1.1.87+** from GitHub. Clear sheet `ota_degraded` / `boot_ota_prefer_wifi` overrides once Power_Log shows the new fw.
 
