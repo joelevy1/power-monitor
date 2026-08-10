@@ -30,7 +30,7 @@ boat_monitor\run_usb_recovery.bat
 
 After success: **unplug USB**, power-cycle once, **switch/key OFF**, do not open BLE for 15 minutes; watch for `auto_log` rows on the sheet.
 
-**Note:** Standby does **not** log instantly on boot — first `auto_log` is due within about **one interval** (~5 minutes with your sheet `interval_engine_off_s=300`). Silence for **10+ minutes** after USB is unplugged is not normal.
+**Note:** Standby **1.1.89+** posts one **`boot_log`** row as soon as standby starts (when boot OTA is not running), then continues on the normal `auto_log` interval. Older firmware waits up to one interval (~5 minutes with `interval_engine_off_s=300`) before the first row.
 
 **Bench test (USB, switch/key off):** force one upload without the phone app:
 

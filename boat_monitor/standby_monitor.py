@@ -35,6 +35,35 @@ def _in_progress_limit_s(mode):
     return auto_log.stale_reboot_threshold_s(mode)
 
 
+def _boot_log_wanted():
+    """One sheet row right after standby starts so boot is visible without waiting an interval."""
+    try:
+        import remote_boot_config
+
+        if remote_boot_config.should_run_boot_ota():
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _finish_log_session(device_id, mode, summary, source):
+    try:
+        import remote_telemetry
+
+        remote_telemetry.after_logging_session(
+            device_id, mode, summary, prefer_wifi=True
+        )
+    except Exception as exc:
+        diag_log.log("after_logging_session skipped: %s" % exc)
+    try:
+        import ota_reboot
+
+        ota_reboot.reboot_if_upgrade_pending(source=source)
+    except Exception:
+        pass
+
+
 def main():
     diag_log.log("standby_monitor start")
     resilience.enable_watchdog()
@@ -54,6 +83,30 @@ def main():
     auto_log_failures = 0
     auto_log_started_ms = None
     device_id = "boat-p2"
+
+    if _boot_log_wanted():
+        try:
+            status = read_status()
+            mode = status["mode"]
+            device_id = status.get("device") or device_id
+            diag_log.log("boot_log START mode=%s" % mode)
+            print("standby_monitor: boot_log (online heartbeat)")
+            summary = log_power_and_gps(note="boot_log", prefer_wifi=True, ble_monitor=None)
+            diag_log.log("boot_log DONE %s" % summary)
+            print("standby_monitor: boot_log result:", summary)
+            now_boot = time.ticks_ms()
+            last_attempt_ms = now_boot
+            if summary and str(summary).startswith("power: ok"):
+                last_successful_log_ms = now_boot
+                auto_log_failures = 0
+            else:
+                auto_log_failures = 1
+            _finish_log_session(device_id, mode, summary, "standby_boot_log")
+            last_auto_log_mode = mode
+        except Exception as exc:
+            auto_log_failures = 1
+            diag_log.log("boot_log FAIL %s" % exc)
+            print("standby_monitor: boot_log failed:", exc)
 
     while True:
         if ble_policy.ble_wanted():
@@ -172,37 +225,24 @@ def main():
                         last_attempt_ms = time.ticks_add(
                             now, -int((MIN_ATTEMPT_GAP_S - MIN_ATTEMPT_GAP_ENOMEM_S) * 1000)
                         )
-                    try:
-                        import remote_telemetry
-
-                        if auto_log_failures >= 1 and (
-                            auto_log_failures >= 2
-                            or (summary and "ENOMEM" in str(summary))
-                            or since_success_s >= auto_log.interval_for_mode(mode)
-                        ):
-                            remote_telemetry.maybe_report_auto_log_fail(
-                                device_id,
-                                mode,
-                                since_success_s,
-                                auto_log_failures,
-                                summary,
-                            )
-                    except Exception as exc:
-                        diag_log.log("auto_log_degraded telemetry skipped: %s" % exc)
                 try:
                     import remote_telemetry
 
-                    remote_telemetry.after_logging_session(
-                        device_id, mode, summary, prefer_wifi=True
-                    )
+                    if auto_log_failures >= 1 and (
+                        auto_log_failures >= 2
+                        or (summary and "ENOMEM" in str(summary))
+                        or since_success_s >= auto_log.interval_for_mode(mode)
+                    ):
+                        remote_telemetry.maybe_report_auto_log_fail(
+                            device_id,
+                            mode,
+                            since_success_s,
+                            auto_log_failures,
+                            summary,
+                        )
                 except Exception as exc:
-                    diag_log.log("after_logging_session skipped: %s" % exc)
-                try:
-                    import ota_reboot
-
-                    ota_reboot.reboot_if_upgrade_pending(source="standby_auto_log")
-                except Exception:
-                    pass
+                    diag_log.log("auto_log_degraded telemetry skipped: %s" % exc)
+                _finish_log_session(device_id, mode, summary, "standby_auto_log")
                 if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
                     reason = "auto-log failed %s times in a row" % auto_log_failures
                     print("standby_monitor: %s — rebooting" % reason)
