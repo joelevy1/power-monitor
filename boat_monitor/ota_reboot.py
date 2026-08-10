@@ -81,6 +81,12 @@ def reboot_if_upgrade_pending(source=""):
         )
     except Exception:
         pass
+    try:
+        import ota_events_flush
+
+        ota_events_flush.flush_ota_events_uplink(prefer_wifi=False, max_total_s=22)
+    except Exception:
+        pass
     import machine
     import time
 

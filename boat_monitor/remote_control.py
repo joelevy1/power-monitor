@@ -244,6 +244,12 @@ def run_actions(actions, prefer_wifi=False):
                 diag_log.log("run_actions -> reboot for boot OTA")
             except Exception:
                 pass
+            try:
+                import ota_events_flush
+
+                ota_events_flush.flush_ota_events_uplink(prefer_wifi=False, max_total_s=22)
+            except Exception:
+                pass
             import machine
             import time
 

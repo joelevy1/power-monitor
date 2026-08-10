@@ -220,6 +220,34 @@ def report_boot_ota(
     return False
 
 
+def upload_pending_uplink(device=None, prefer_wifi=False, max_total_s=35):
+    pending = _load_pending()
+    if not pending:
+        return False
+    device = device or pending.get("device") or DEFAULT_DEVICE
+    body = _format_detail(pending)
+    try:
+        import diag_log
+
+        tail = "\n".join(diag_log.recent_lines(8))
+        if tail:
+            body = body + "\n--- boat_diag.log ---\n" + tail
+    except Exception:
+        pass
+    try:
+        if upload_result(
+            pending,
+            device=device,
+            prefer_wifi=prefer_wifi,
+            max_total_s=max_total_s,
+        ):
+            _clear_pending()
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def note_ota_reboot_queued(source="run_actions", device=None, detail=""):
     """Before reset for sheet/app OTA: queue + best-effort cellular Events row."""
     payload = {

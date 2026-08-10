@@ -364,6 +364,14 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         results.append(rep)
         print("ROUND RESULT:", json.dumps(rep, indent=2))
         _write_results(REPO / "ota_stress_results.json", start_ver, n, results, final=False)
+        try:
+            subprocess.run(
+                [sys.executable, str(ROOT / "ota_stress_analyze.py"), "--since", "Aug 9, 2026 4:00 PM"],
+                cwd=str(ROOT),
+                timeout=120,
+            )
+        except Exception:
+            pass
         if not rep.get("success"):
             print("Stopping stress pass after failed round.")
             break

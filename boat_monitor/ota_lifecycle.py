@@ -161,6 +161,42 @@ def flush_pending(logger, device=None):
     return posted
 
 
+def upload_pending_uplink(device=None, prefer_wifi=False, max_total_s=35):
+    """POST pending lifecycle rows via a short cellular/Wi-Fi session."""
+    items = _load_pending()
+    if not items:
+        return 0
+    device = device or "boat-p2"
+    try:
+        import diag_log
+    except Exception:
+        return 0
+    posted = 0
+    keep = []
+    budget = max_total_s
+    for item in items:
+        detail = (item.get("detail") or "")[:1500]
+        if not detail:
+            continue
+        try:
+            ok = diag_log.upload_event_bounded(
+                device,
+                EVENT_NAME,
+                detail,
+                diag_tail_lines=0,
+                max_total_s=budget,
+                prefer_wifi=prefer_wifi,
+            )
+            if ok:
+                posted += 1
+            else:
+                keep.append(item)
+        except Exception:
+            keep.append(item)
+    _save_pending(keep)
+    return posted
+
+
 def maybe_confirm_after_log(logger, device, fw_reported):
     """Call after Power_Log POST when fw column matches persisted target."""
     data = _load()

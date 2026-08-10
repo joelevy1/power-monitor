@@ -1,6 +1,6 @@
 {
-  "version": "1.1.68",
-  "notes": "OTA stress: ota_lifecycle Events (aware→confirmed timing); hardened auto-reboot path.",
+  "version": "1.1.69",
+  "notes": "OTA Events flush before modem close/reset; boot_end success telemetry; stress harness device timings.",
   "files": [
     {
       "path": "version.py",
@@ -89,6 +89,10 @@
     {
       "path": "ota_telemetry.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_telemetry.py"
+    },
+    {
+      "path": "ota_events_flush.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_events_flush.py"
     },
     {
       "path": "ota_config.py",

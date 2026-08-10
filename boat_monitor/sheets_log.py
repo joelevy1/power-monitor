@@ -247,6 +247,12 @@ class SheetsLogger:
             self._data_open = False
             actions = getattr(self, "_last_remote_actions", None) or []
             self._last_remote_actions = []
+            try:
+                import ota_events_flush
+
+                ota_events_flush.flush_ota_events(self, device=getattr(self, "_last_device", None) or "boat-p2")
+            except Exception as exc:
+                print("SheetsLogger: ota events flush:", exc)
             if actions:
                 try:
                     import ota_reboot
@@ -262,6 +268,22 @@ class SheetsLogger:
                 print("SheetsLogger: upgrade pending reboot:", exc)
             return
 
+        actions = getattr(self, "_last_remote_actions", None) or []
+        self._last_remote_actions = []
+        device = getattr(self, "_last_device", None) or "boat-p2"
+        try:
+            import ota_events_flush
+
+            ota_events_flush.flush_ota_events(self, device=device)
+        except Exception as exc:
+            print("SheetsLogger: ota events flush:", exc)
+        if actions:
+            try:
+                import ota_reboot
+
+                ota_reboot.maybe_reboot_for_ota(actions, source="sheets_log.close_data")
+            except Exception as exc:
+                print("SheetsLogger: ota reboot:", exc)
         if self._cellular is not None:
             power_off = True
             try:
@@ -272,15 +294,6 @@ class SheetsLogger:
                 pass
             self._cellular.close_data(power_off=power_off)
         self._data_open = False
-        actions = getattr(self, "_last_remote_actions", None) or []
-        self._last_remote_actions = []
-        if actions:
-            try:
-                import ota_reboot
-
-                ota_reboot.maybe_reboot_for_ota(actions, source="sheets_log.close_data")
-            except Exception as exc:
-                print("SheetsLogger: ota reboot:", exc)
         try:
             import ota_reboot
 
@@ -511,6 +524,7 @@ class SheetsLogger:
         if on_progress:
             on_progress("logging_modem")
         self._last_remote_actions = []
+        self._last_device = device
         self.ensure_data()
         try:
             import ota_telemetry

@@ -100,6 +100,32 @@ try:
                     pass
             if success:
                 remote_boot_config.clear_pending_ota()
+                try:
+                    import ota_lifecycle
+
+                    ota_lifecycle.phase(
+                        "boot_end",
+                        inline=False,
+                        target_fw=ota_target,
+                        outcome="success",
+                        max_s=max_s,
+                        elapsed_s=elapsed,
+                    )
+                except Exception:
+                    pass
+                try:
+                    import ota_telemetry
+
+                    ota_telemetry.report_boot_ota(
+                        "success",
+                        fw_target=ota_target,
+                        max_s=max_s,
+                        prefer_wifi=prefer_wifi,
+                        elapsed_s=elapsed,
+                        source="main.boot",
+                    )
+                except Exception:
+                    pass
             else:
                 remote_boot_config.set_pending_ota(True)
                 try:
@@ -139,6 +165,12 @@ try:
                     )
                 except Exception:
                     pass
+            try:
+                import ota_events_flush
+
+                ota_events_flush.flush_ota_events_uplink(prefer_wifi=False)
+            except Exception:
+                pass
         except Exception as exc:
             print("Boot OTA skipped/failed:", exc)
             try:
