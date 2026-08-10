@@ -27,6 +27,19 @@ Optional:
 - `--no-prefer-wifi` to leave boot OTA transport unchanged
 - `--dry-run` to print steps only
 
+### Windows troubleshooting
+
+1. **Quit Thonny** completely (not just disconnect).
+2. Find the Pico COM port:
+
+   ```bat
+   python -m mpremote connect list
+   ```
+
+3. Re-run with that port, e.g. `python3 boat_monitor/usb_recovery_push.py --port COM7`
+
+If you see `failed to access cp`, update `usb_recovery_push.py` from PR #77+ (older script passed `connect cp`, which mpremote mis-read as a device named `cp`).
+
 ## What it does
 
 1. Copies **13** recovery modules (`ota_health.py`, streaming OTA stack, `main.py`, `version.py`, …).

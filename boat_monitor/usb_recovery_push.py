@@ -61,6 +61,16 @@ def _run(mpremote_base, args, description):
     subprocess.check_call(cmd)
 
 
+def _mp_args(port, *parts):
+    """mpremote CLI: without port use `mpremote cp ...`; with port use `mpremote connect COM3 cp ...`.
+
+    `mpremote connect cp ...` is wrong — mpremote treats `cp` as the device name.
+    """
+    if port:
+        return ["connect", port] + list(parts)
+    return list(parts)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="USB-push ram-fix firmware and reset OTA state")
     p.add_argument(
@@ -86,9 +96,7 @@ def main(argv=None):
         return 1
 
     mp = _ensure_mpremote()
-    connect = ["connect"]
-    if args.port:
-        connect.append(args.port)
+    port = (args.port or "").strip()
 
     patch_src = ROOT / "usb_recovery_patch.py"
     patch_text = patch_src.read_text(encoding="utf-8")
@@ -101,17 +109,22 @@ def main(argv=None):
     for name in RECOVERY_FILES:
         steps.append(
             (
-                connect + ["cp", str(ROOT / name), ":%s" % name],
+                _mp_args(port, "cp", str(ROOT / name), ":%s" % name),
                 "copy %s" % name,
             )
         )
     steps.append(
-        (connect + ["cp", str(patch_local), ":usb_recovery_patch.py"], "copy patch script"),
+        (
+            _mp_args(port, "cp", str(patch_local), ":usb_recovery_patch.py"),
+            "copy patch script",
+        ),
     )
-    steps.append((connect + ["run", "usb_recovery_patch.py"], "patch remote_boot_config"))
+    steps.append(
+        (_mp_args(port, "run", "usb_recovery_patch.py"), "patch remote_boot_config")
+    )
     steps.append(
         (
-            connect + ["exec", "import machine; machine.soft_reset()"],
+            _mp_args(port, "exec", "import machine; machine.soft_reset()"),
             "soft reset",
         ),
     )
@@ -124,6 +137,14 @@ def main(argv=None):
     try:
         for cmd, desc in steps:
             _run(mp, cmd, desc)
+    except subprocess.CalledProcessError:
+        print(
+            "\nmpremote failed. Close Thonny and any serial monitor, unplug/replug USB, then retry.\n"
+            "On Windows, list ports:  python -m mpremote connect list\n"
+            "Then pass the COM port:  python3 boat_monitor/usb_recovery_push.py --port COM5",
+            file=sys.stderr,
+        )
+        return 1
     finally:
         try:
             patch_local.unlink(missing_ok=True)
