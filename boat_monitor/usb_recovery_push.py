@@ -111,7 +111,7 @@ def main(argv=None):
             _mp_args(port, "cp", str(free_script), ":usb_recovery_free.py"),
             "copy flash cleanup script",
         ),
-        (_mp_args(port, "run", "usb_recovery_free.py"), "free flash (.bak/.new/bundles/logs)"),
+        (_mp_args(port, "run", str(free_script)), "free flash (.bak/.new/bundles/logs)"),
     ]
     for name in RECOVERY_FILES:
         steps.append(
@@ -148,7 +148,10 @@ def main(argv=None):
         print(
             "\nmpremote failed. Close Thonny and any serial monitor, unplug/replug USB, then retry.\n"
             "On Windows, list ports:  python -m mpremote connect list\n"
-            "Then pass the COM port:  python3 boat_monitor/usb_recovery_push.py --port COM5",
+            "Then pass the COM port:  python3 boat_monitor/usb_recovery_push.py --port COM5\n"
+            "If you see 'No space left on device', pull latest script (runs cleanup first) or run:\n"
+            "  python -m mpremote cp boat_monitor/usb_recovery_free.py :usb_recovery_free.py\n"
+            "  python -m mpremote run usb_recovery_free.py",
             file=sys.stderr,
         )
         return 1

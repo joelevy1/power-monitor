@@ -36,7 +36,11 @@ Optional:
    python -m mpremote connect list
    ```
 
-3. Re-run with that port, e.g. `python3 boat_monitor/usb_recovery_push.py --port COM7`
+3. Re-run with the **host path** (mpremote `run` reads from your PC, not the Pico):
+
+   ```bat
+   python -m mpremote run boat_monitor\usb_recovery_free.py
+   ```
 
 If you see `failed to access cp`, update `usb_recovery_push.py` from PR #77+ (older script passed `connect cp`, which mpremote mis-read as a device named `cp`).
 
