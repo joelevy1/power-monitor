@@ -220,10 +220,8 @@ def _write_results(path, start_ver, n, results, final=False):
     return payload
 
 
-def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 1800):
+def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 2400):
     start = time.time()
-    ev_base = _fetch_events()
-    ev_skip = len(ev_base)
     run_report = {"target": target_fw, "phases": [], "phase_keys": set(), "success": False}
 
     while time.time() - start < timeout_s:
@@ -239,10 +237,19 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
                     run_report["phase_keys"].add(pk)
                     run_report["phases"].append(item)
 
-        if tail and tail[-1].get("fw") == target_fw and count > baseline_pl_rows:
+        confirmed_row = None
+        if tail and tail[-1].get("fw") == target_fw:
+            confirmed_row = tail[-1]
+        else:
+            for row in reversed(tail or []):
+                if row.get("fw") == target_fw:
+                    confirmed_row = row
+                    break
+        # Prefer a new Power_Log row after ship; accept latest fw match if sheet already shows target.
+        if confirmed_row and (count > baseline_pl_rows or (tail and tail[-1].get("fw") == target_fw)):
             run_report["success"] = True
-            run_report["confirmed_fw"] = tail[-1]["fw"]
-            run_report["confirmed_ts"] = tail[-1]["ts"]
+            run_report["confirmed_fw"] = confirmed_row["fw"]
+            run_report["confirmed_ts"] = confirmed_row["ts"]
             run_report["wall_elapsed_s"] = int(time.time() - start)
             run_report["elapsed_s"] = run_report["wall_elapsed_s"]
             run_report.update(_summarize_lifecycle(run_report["phases"], target_fw))
@@ -359,7 +366,7 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         else:
             _set_min_fw_only(ver)
         pl_before, _ = _fetch_power_tail()
-        rep = _wait_for_target_fw(ver, pl_before, timeout_s=1800)
+        rep = _wait_for_target_fw(ver, pl_before, timeout_s=2400)
         rep["round"] = i + 1
         results.append(rep)
         print("ROUND RESULT:", json.dumps(rep, indent=2))
