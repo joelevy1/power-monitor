@@ -11,15 +11,37 @@ All output goes to the Thonny shell (print + DIAG: lines from diag_log).
 
 
 def _block_resets():
-    import machine
+    """Patch machine.reset/soft_reset when present (no-op if missing)."""
+    try:
+        import machine
+    except ImportError:
+        print("DEBUG: no machine module — reset blocking skipped")
+        return None
 
-    _real_reset = machine.reset
+    saved = {}
 
-    def _debug_reset():
-        print("DEBUG: machine.reset() BLOCKED (Thonny debug session)")
+    def _debug_reset(*_a, **_kw):
+        print("DEBUG: machine reset BLOCKED (Thonny debug session)")
 
-    machine.reset = _debug_reset
-    return _real_reset
+    for name in ("reset", "soft_reset"):
+        fn = getattr(machine, name, None)
+        if not callable(fn):
+            continue
+        saved[name] = fn
+
+        def _make_block(real_name, _real_fn):
+            def _block(*a, **kw):
+                print("DEBUG: machine.%s() BLOCKED (Thonny debug)" % real_name)
+
+            return _block
+
+        try:
+            setattr(machine, name, _make_block(name, fn))
+        except AttributeError:
+            pass
+    if not saved:
+        print("DEBUG: machine has no reset/soft_reset — blocking skipped")
+    return saved
 
 
 def _section(title):
