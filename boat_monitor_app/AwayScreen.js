@@ -15,7 +15,7 @@ import { formatDateTime12h } from './dateTimeFormat';
 import GpsMapView from './GpsMapView';
 import LocationActions from './LocationActions';
 import { fetchSheetDashboard, getSheetClientConfig, markV50BankFull } from './sheetDashboard';
-import { estimateV50State } from './v50Bank';
+import { describeFirmwareStatus, fetchGithubManifestVersion } from './firmwareStatus';
 
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
@@ -129,6 +129,19 @@ export default function AwayScreen({ onBack }) {
   const [error, setError] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [markingFull, setMarkingFull] = useState(false);
+  const [githubFw, setGithubFw] = useState(null);
+  const [githubFwError, setGithubFwError] = useState(null);
+
+  const loadGithubFirmware = useCallback(async () => {
+    const result = await fetchGithubManifestVersion();
+    if (result.ok) {
+      setGithubFw(result.version);
+      setGithubFwError(null);
+    } else {
+      setGithubFw(null);
+      setGithubFwError(result.error || 'check failed');
+    }
+  }, []);
 
   const load = useCallback(async (isRefresh) => {
     if (isRefresh) setRefreshing(true);
@@ -142,13 +155,14 @@ export default function AwayScreen({ onBack }) {
       } else {
         setDashboard(result.data);
       }
+      loadGithubFirmware();
     } catch (exc) {
       setError(exc?.message || String(exc));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [loadGithubFirmware]);
 
   useEffect(() => {
     load(false);
@@ -223,6 +237,13 @@ export default function AwayScreen({ onBack }) {
             ? 'Waiting for Pico v50_mah_used on Power_Log (OTA 1.1.37+)'
             : null;
 
+  const minFw = dashboard?.config?.min_fw_version;
+  const fwStatus = describeFirmwareStatus(power?.fw, {
+    minFw,
+    githubFw,
+    githubError: githubFwError,
+  });
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -293,7 +314,19 @@ export default function AwayScreen({ onBack }) {
             <Text style={styles.v50Hint}>
               Pico tracks cumulative mAh between logs. Charge state updates on each Power_Log row.
             </Text>
-            <Row label="Firmware" value={power.fw || '—'} />
+            <Row label="Firmware" value={power.fw || '—'} danger={fwStatus.danger} />
+            <Row
+              label="Firmware status"
+              value={
+                githubFw == null && !githubFwError && !loading
+                  ? `${fwStatus.label} · checking GitHub…`
+                  : fwStatus.label
+              }
+              danger={fwStatus.danger}
+            />
+            {fwStatus.detail ? <Text style={fwStatus.danger ? styles.overdueHint : styles.modeDetail}>{fwStatus.detail}</Text> : null}
+            {minFw ? <Text style={styles.modeDetail}>Sheet min_fw: {String(minFw)}</Text> : null}
+            {githubFw ? <Text style={styles.modeDetail}>GitHub manifest: {githubFw}</Text> : null}
             <Row label="Uplink" value={power.uplink || '—'} />
             {power.note ? <Text style={styles.noteText}>{String(power.note)}</Text> : null}
           </View>
