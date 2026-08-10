@@ -199,6 +199,18 @@ def _standby_loop():
     standby_monitor.main()
 
 
+def _clear_ble_latch():
+    _section("CLEAR BLE LATCH")
+    try:
+        import ble_policy
+
+        ble_policy.clear_ble_latch()
+        print("ble_latch cleared. ble_wanted:", ble_policy.ble_wanted())
+        print("Reboot (Thonny soft reboot) so main.py starts standby, not BLE.")
+    except Exception as exc:
+        print("clear failed:", exc)
+
+
 def main():
     print("\nBoat Monitor — Thonny USB debug")
     print("Resets are blocked so you can read the shell.\n")
@@ -224,6 +236,7 @@ def main():
         print("4  Boot OTA (if configured)")
         print("5  Run standby_monitor (auto-log loop)")
         print("6  Quit (stay in REPL)")
+        print("7  Clear BLE latch (use when switch/key off but ble_wanted True)")
         try:
             choice = input("Choice [1]: ").strip() or "1"
         except (EOFError, KeyboardInterrupt):
@@ -245,6 +258,8 @@ def main():
         elif choice == "6":
             print("Done. Shell stays open.")
             return
+        elif choice == "7":
+            _clear_ble_latch()
         else:
             print("Unknown:", choice)
 

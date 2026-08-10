@@ -41,12 +41,18 @@ def _load_latch_file():
 
 def _save_latch_file():
     try:
+        import os
+
         data = {}
         if _ble_latch:
             data["latch"] = True
         if _gpio_off_hold_s is not None:
             data["gpio_off_hold_s"] = _gpio_off_hold_s
         if not data:
+            try:
+                os.remove(_BLE_LATCH_PATH)
+            except OSError:
+                pass
             return
         with open(_BLE_LATCH_PATH, "w") as f:
             json.dump(data, f)
@@ -75,6 +81,11 @@ def read_switch_key():
 def ble_inputs_on():
     inputs = read_switch_key()
     return inputs["switch"] or inputs["key"]
+
+
+def clear_ble_latch():
+    """Turn off debug BLE latch and remove latch flag from ble_latch.json."""
+    set_ble_latch(False)
 
 
 def set_ble_latch(enabled=True):
