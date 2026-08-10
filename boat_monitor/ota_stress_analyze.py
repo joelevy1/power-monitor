@@ -71,6 +71,8 @@ def _ota_events():
         detail = row[3]
         if name in ("boot_ota", "ota_lifecycle") or "ota_action=1" in detail:
             ota.append({"ts": row[0], "dt": _parse_sheet_ts(row[0]), "event": name, "detail": detail, "kv": _parse_kv(detail)})
+        elif name == "ota_trace":
+            ota.append({"ts": row[0], "dt": _parse_sheet_ts(row[0]), "event": name, "detail": detail, "kv": _parse_kv(detail)})
     return ota
 
 
@@ -132,11 +134,16 @@ def main():
     pl = _fw_rows()
     ota = _ota_events()
     lifecycle = [e for e in ota if e["event"] in ("boot_ota", "ota_lifecycle")]
+    traces = [e for e in ota if e["event"] == "ota_trace"]
 
     report = {
         "since": args.since,
         "power_log_rows": len(pl),
         "device_ota_event_rows": len(lifecycle),
+        "ota_trace_rows": len(traces),
+        "ota_trace_samples": [
+            {"ts": t["ts"], "detail_head": (t["detail"] or "")[:500]} for t in traces[-6:]
+        ],
         "inferred_upgrades": infer_upgrades(pl, since_dt),
         "ota_action_stall_samples": stuck_ota_signals(ota, since_dt)[-20:],
         "telemetry_gap": len(lifecycle) == 0,

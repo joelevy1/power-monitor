@@ -61,6 +61,13 @@ def _version_lt(a, b):
     return _parse_version(a) < _parse_version(b)
 
 
+def _parse_sheet_ts(text):
+    try:
+        return datetime.strptime(str(text).strip(), "%b %d, %Y %I:%M %p")
+    except Exception:
+        return None
+
+
 def _config_map(sheets, sid):
     rows = sheets.spreadsheets().values().get(spreadsheetId=sid, range="Config!A2:C").execute().get("values", [])
     out = {}
@@ -136,6 +143,21 @@ def poll_once():
     last_fw = g(last_pl, "fw") if last_pl else "?"
     last_ts = g(last_pl, "timestamp_utc") if last_pl else "none"
     last_mode = g(last_pl, "mode") if last_pl else "?"
+
+    try:
+        prev = json.loads(STATE_PATH.read_text(encoding="utf-8")) if STATE_PATH.is_file() else {}
+    except Exception:
+        prev = {}
+    prev_ts = prev.get("power_log_ts")
+    if last_ts and last_ts != "none" and prev_ts and prev_ts != last_ts:
+        dt_new = _parse_sheet_ts(last_ts)
+        dt_old = _parse_sheet_ts(prev_ts)
+        if dt_new and dt_old:
+            delta_s = int((dt_new - dt_old).total_seconds())
+            _log(
+                "POWER_LOG_CADENCE new_row delta_s=%s mode=%s fw=%s (was ts=%s)"
+                % (delta_s, last_mode, last_fw, prev_ts)
+            )
 
     ev_names = Counter(r[2] for r in events[-12:] if len(r) > 2)
     last_ev = events[-1] if events else None

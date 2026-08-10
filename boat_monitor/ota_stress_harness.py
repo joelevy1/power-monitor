@@ -85,6 +85,26 @@ def _fetch_power_tail():
     return len(rows), out[-5:]
 
 
+def _telemetry_since(ev_rows):
+    """ota_lifecycle, boot_ota, ota_trace rows for timing analysis."""
+    items = []
+    for row in ev_rows:
+        if len(row) < 4:
+            continue
+        if row[2] not in ("ota_lifecycle", "boot_ota", "ota_trace"):
+            continue
+        kv = _parse_kv(row[3])
+        kv["sheet_ts"] = row[0]
+        kv["event"] = row[2]
+        kv["detail_raw"] = str(row[3])[:2000]
+        if row[2] == "boot_ota" and "phase" not in kv:
+            kv["phase"] = kv.get("outcome", "boot_ota")
+        if row[2] == "ota_trace":
+            kv["phase"] = "trace"
+        items.append(kv)
+    return items
+
+
 def _lifecycle_since(ev_rows):
     items = []
     for row in ev_rows:
@@ -149,6 +169,36 @@ def _summarize_lifecycle(phases, target_fw):
             for it in sorted(relevant, key=lambda x: str(x.get("sheet_ts", "")))
         ]
     return summary
+
+
+def _print_timing_block(phases, target_fw):
+    """Human-readable timing from lifecycle + ota_trace for one upgrade."""
+    life = [p for p in phases if p.get("event") in ("ota_lifecycle", "boot_ota")]
+    traces = [p for p in phases if p.get("event") == "ota_trace"]
+    print("\n--- TIMING target_fw=%s ---" % target_fw)
+    for item in sorted(life, key=lambda x: str(x.get("sheet_ts", ""))):
+        ph = item.get("phase") or item.get("event")
+        bits = [item.get("sheet_ts"), ph]
+        for k in (
+            "run_id",
+            "elapsed_s",
+            "elapsed_total_s",
+            "outcome",
+            "http_sessions",
+            "transport",
+            "error",
+            "fw",
+            "fw_reported",
+        ):
+            if item.get(k):
+                bits.append("%s=%s" % (k, item[k]))
+        print("  LC", " | ".join(str(b) for b in bits if b))
+    for tr in traces[-3:]:
+        print("  TRACE @", tr.get("sheet_ts"))
+        raw = tr.get("detail_raw") or ""
+        for line in raw.split("\n")[:40]:
+            print("    ", line[:200])
+    print("--- end TIMING ---\n")
 
 
 def _current_device_fw():
@@ -227,15 +277,25 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
     while time.time() - start < timeout_s:
         count, tail = _fetch_power_tail()
         all_ev = _fetch_events()
-        life = _lifecycle_since(all_ev)
-        for item in life:
-            if item.get("target_fw") == target_fw or (
-                item.get("phase") == "confirmed" and item.get("fw_reported") == target_fw
-            ):
-                pk = _phase_key(item)
+        telem = _telemetry_since(all_ev)
+        for item in telem:
+            tfw = item.get("target_fw") or ""
+            ph = item.get("phase") or ""
+            match = (
+                tfw == target_fw
+                or (ph == "confirmed" and item.get("fw_reported") == target_fw)
+                or item.get("event") == "ota_trace"
+                or (item.get("event") == "boot_ota" and tfw in ("", target_fw))
+            )
+            if not match and item.get("event") == "ota_lifecycle":
+                if item.get("fw") and _parse_ver_tuple(item.get("fw")) <= _parse_ver_tuple(target_fw):
+                    match = True
+            if match:
+                pk = _phase_key(item) if item.get("event") != "ota_trace" else ("ota_trace", item.get("sheet_ts"))
                 if pk not in run_report["phase_keys"]:
                     run_report["phase_keys"].add(pk)
                     run_report["phases"].append(item)
+        life = [p for p in run_report["phases"] if p.get("event") in ("ota_lifecycle", "boot_ota")]
 
         confirmed_row = None
         if tail and tail[-1].get("fw") == target_fw:
@@ -252,8 +312,10 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
             run_report["confirmed_ts"] = confirmed_row["ts"]
             run_report["wall_elapsed_s"] = int(time.time() - start)
             run_report["elapsed_s"] = run_report["wall_elapsed_s"]
-            run_report.update(_summarize_lifecycle(run_report["phases"], target_fw))
+            run_report.update(_summarize_lifecycle(life, target_fw))
+            run_report["ota_trace_count"] = sum(1 for p in run_report["phases"] if p.get("event") == "ota_trace")
             del run_report["phase_keys"]
+            _print_timing_block(run_report["phases"], target_fw)
             return run_report
 
         if tail:
@@ -264,9 +326,11 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
         time.sleep(30)
 
     run_report["timeout_s"] = timeout_s
-    run_report.update(_summarize_lifecycle(run_report.get("phases", []), target_fw))
+    life = [p for p in run_report.get("phases", []) if p.get("event") in ("ota_lifecycle", "boot_ota")]
+    run_report.update(_summarize_lifecycle(life, target_fw))
     if "phase_keys" in run_report:
         del run_report["phase_keys"]
+    _print_timing_block(run_report.get("phases", []), target_fw)
     return run_report
 
 
@@ -277,6 +341,13 @@ def _ship_version(new_ver: str) -> bool:
     mtext = mpath.read_text(encoding="utf-8")
     mtext = re.sub(r'"version":\s*"[^"]+"', '"version": "%s"' % new_ver, mtext, count=1)
     mpath.write_text(mtext, encoding="utf-8")
+    fp = subprocess.run(
+        [sys.executable, str(ROOT / "apply_recovery_manifest.py"), "--feature-pack"],
+        cwd=str(ROOT),
+        check=False,
+    )
+    if fp.returncode != 0:
+        print("WARN: feature-pack manifest step failed")
     subprocess.run([sys.executable, str(ROOT / "build_ota_bundle.py")], cwd=str(ROOT), check=False)
     r = subprocess.run([sys.executable, str(ROOT / "validate_release.py")], cwd=str(ROOT))
     if r.returncode != 0:
