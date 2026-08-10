@@ -29,3 +29,11 @@ boat_monitor\run_usb_recovery.bat
 ```
 
 After success: **unplug USB**, power-cycle once, **switch/key OFF**, do not open BLE for 15 minutes; watch for `auto_log` rows on the sheet.
+
+**Note:** Standby does **not** log instantly on boot — first `auto_log` is due within about **one interval** (~5 minutes with your sheet `interval_engine_off_s=300`). Silence for **10+ minutes** after USB is unplugged is not normal.
+
+**Bench test (USB, switch/key off):** force one upload without the phone app:
+
+```bat
+py -m mpremote connect COM7 run boat_monitor\usb_bench_log.py
+```
