@@ -91,6 +91,14 @@ def build_detail(outcome, **extra):
     return body[:1500]
 
 
+def stats():
+    """Summary for boot_ota / ota_lifecycle (no import of private state)."""
+    return {
+        "elapsed_s": round(_elapsed_s(), 1),
+        "http_sessions": int(_meta.get("http_sessions") or 0),
+    }
+
+
 def upload(device="boat-p2", outcome="unknown", prefer_wifi=None, max_total_s=45, **extra):
     """Post trace to Events (modem must still be up if cellular)."""
     detail = build_detail(outcome, **extra)

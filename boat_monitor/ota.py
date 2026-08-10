@@ -357,12 +357,13 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
     used_wifi = None
     client = None
     trace_uploaded = False
+    fw_at_start = current_version()
 
     try:
         import ota_trace
 
         ota_trace.begin(
-            fw_from=current_version(),
+            fw_from=fw_at_start,
             prefer_wifi=prefer_wifi,
             max_total_s=max_total_s,
             source="ota.update",
@@ -484,12 +485,18 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         if reboot:
             try:
                 import ota_telemetry
+                import ota_trace
 
+                extra = ota_trace.stats()
                 ota_telemetry.report_boot_ota(
                     "success_pending_reboot",
                     fw_target=target_version,
+                    fw_from=fw_at_start,
                     max_s=max_total_s,
                     prefer_wifi=prefer_wifi,
+                    elapsed_s=int(extra.get("elapsed_s") or _ota_elapsed_s(start)),
+                    http_sessions=extra.get("http_sessions"),
+                    transport="bundle" if use_bundle else "per_file",
                     source="ota.update",
                 )
             except Exception:
@@ -511,6 +518,7 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
             "failed",
             fw_target=target_version,
             error=str(exc)[:200],
+            elapsed_s=int(_ota_elapsed_s(start)),
         )
         raise
     finally:

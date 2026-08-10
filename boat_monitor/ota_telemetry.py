@@ -56,6 +56,8 @@ def _format_detail(payload):
         "max_s",
         "prefer_wifi",
         "elapsed_s",
+        "http_sessions",
+        "transport",
         "error",
         "status",
     ):
@@ -189,10 +191,13 @@ def report_boot_ota(
     outcome,
     *,
     fw_target=None,
+    fw_from=None,
     max_s=None,
     prefer_wifi=None,
     error=None,
     elapsed_s=None,
+    http_sessions=None,
+    transport=None,
     source="boot",
     device=None,
 ):
@@ -201,16 +206,28 @@ def report_boot_ota(
         "outcome": outcome,
         "source": source,
         "fw": _fw_version(),
-        "fw_from": _fw_version(),
+        "fw_from": fw_from if fw_from is not None else _fw_version(),
         "fw_target": fw_target,
         "max_s": max_s,
         "prefer_wifi": prefer_wifi,
         "elapsed_s": elapsed_s,
+        "http_sessions": http_sessions,
+        "transport": transport,
         "error": (str(error)[:300] if error else None),
     }
     if outcome == "success_pending_reboot":
         payload["outcome"] = "success"
         payload["status"] = "rebooting"
+        prefer = False if prefer_wifi is False else _uplink_prefer_wifi()
+        try:
+            upload_result(
+                payload,
+                device=device,
+                prefer_wifi=prefer,
+                max_total_s=min(28, max_s or 28),
+            )
+        except Exception:
+            pass
         queue_result(payload, device=device)
         return True
     prefer = False if prefer_wifi is False else _uplink_prefer_wifi()

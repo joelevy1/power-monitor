@@ -1,6 +1,6 @@
 {
-  "version": "1.1.81",
-  "notes": "Slim remote recovery OTA (reboot-loop fix; stream bundle extract).",
+  "version": "1.1.82",
+  "notes": "Full OTA + ota_trace timing on Events; boot_ota elapsed_s/http_sessions.",
   "files": [
     {
       "path": "version.py",
@@ -11,38 +11,126 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
     },
     {
-      "path": "ota.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+      "path": "resilience.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/resilience.py"
     },
     {
-      "path": "ota_reboot.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_reboot.py"
+      "path": "ble_policy.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_policy.py"
     },
     {
-      "path": "remote_boot_config.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+      "path": "wifi_networks.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_networks.py"
+    },
+    {
+      "path": "wifi_uplink.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
+    },
+    {
+      "path": "sheets_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
     },
     {
       "path": "remote_control.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_control.py"
     },
     {
-      "path": "ota_events_flush.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_events_flush.py"
+      "path": "remote_boot_config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+    },
+    {
+      "path": "modem_policy.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/modem_policy.py"
+    },
+    {
+      "path": "v50_energy.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/v50_energy.py"
+    },
+    {
+      "path": "cellular.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular.py"
+    },
+    {
+      "path": "gps.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/gps.py"
+    },
+    {
+      "path": "ble_service.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
+    },
+    {
+      "path": "auto_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/auto_log.py"
+    },
+    {
+      "path": "diag_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/diag_log.py"
+    },
+    {
+      "path": "ota.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+    },
+    {
+      "path": "ota_bundle.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_bundle.py"
     },
     {
       "path": "ota_lifecycle.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_lifecycle.py"
     },
     {
+      "path": "ota_reboot.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_reboot.py"
+    },
+    {
       "path": "ota_telemetry.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_telemetry.py"
+    },
+    {
+      "path": "ota_trace.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_trace.py"
+    },
+    {
+      "path": "ota_events_flush.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_events_flush.py"
+    },
+    {
+      "path": "ota_config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_config.py"
+    },
+    {
+      "path": "config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/config.py"
+    },
+    {
+      "path": "mem_guard.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/mem_guard.py"
+    },
+    {
+      "path": "power_transition.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/power_transition.py"
+    },
+    {
+      "path": "standby_monitor.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
+    },
+    {
+      "path": "status_led.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/status_led.py"
+    },
+    {
+      "path": "remote_telemetry.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_telemetry.py"
+    },
+    {
+      "path": "gpio_probe.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/gpio_probe.py"
     }
   ],
   "bundle": {
     "path": "ota_release.bmota",
     "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_release.bmota",
-    "size": 57906,
-    "sha256": "2df7ffcf0772bac271a8989dfce397eca0d3f49e926c54680bf361dfed1f01c7"
+    "size": 240698,
+    "sha256": "aeaaa5c6ea7a5f6e7e6e7987ce59bef66bf1406122fbe1db8edb77e9516b5419"
   }
 }
