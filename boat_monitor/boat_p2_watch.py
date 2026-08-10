@@ -178,8 +178,6 @@ def poll_once():
         status = "watch"
         detail.append("lifecycle_fw=%s log_fw=%s" % (lifecycle_fw, last_fw))
 
-    _maybe_clear_pending_ota(cfg, events, lifecycle_fw or last_fw)
-
     summary = (
         "STATUS=%s min_fw=%s pl_fw=%s pl_ts=%s mode=%s | %s | last_event: %s"
         % (status, min_fw, last_fw, last_ts, last_mode, "; ".join(detail), last_ev_line)

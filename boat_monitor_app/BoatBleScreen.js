@@ -515,6 +515,7 @@ export default function BoatBleScreen({ onBack }) {
       setConnected(true);
       resetWifiConsoleStatus();
       setMessage(`Connected to ${ble.deviceLabel(connectedDevice) || connectedDevice.id}`);
+      checkFirmwareUpdate();
     } catch (error) {
       setMessage(error.message || String(error));
       Alert.alert('Connection failed', error.message || String(error));
