@@ -5,6 +5,9 @@ Config tab keys (via Apps Script commands on each log POST):
   auto_ota_on_boot     — 1/true/yes overrides ota_config.py on every boot
   boot_ota_max_seconds — cap for boot-time OTA (default from ota_config)
   boot_ota_prefer_wifi — 1|0: force Wi-Fi for boot OTA (home); omit = ble_policy default
+  dock_mode — home: same as boot_ota_prefer_wifi=1 for boot OTA at the dock
+  ota_manifest_profile — micro | ram-fix | feature-pack (sheet override)
+  cmd_ota_force — one-shot: allow boot OTA / reboot when ota_degraded (cleared on success)
   keep_modem_awake_underway — 1|0: skip AT+CPOF after cellular log while underway
 
 When the sheet requests OTA (min_fw_version, cmd_ota, …), remote_control sets
@@ -62,6 +65,28 @@ def apply_settings(settings):
     if "boot_ota_prefer_wifi" in settings and str(settings.get("boot_ota_prefer_wifi")).strip() != "":
         data["boot_ota_prefer_wifi"] = _truthy(settings["boot_ota_prefer_wifi"])
         applied.append("boot_ota_prefer_wifi=%s" % (1 if data["boot_ota_prefer_wifi"] else 0))
+    if "dock_mode" in settings and str(settings.get("dock_mode")).strip() != "":
+        mode = str(settings.get("dock_mode")).strip().lower()
+        data["dock_mode"] = mode
+        applied.append("dock_mode=%s" % mode)
+    if "ota_manifest_profile" in settings and str(settings.get("ota_manifest_profile")).strip() != "":
+        data["ota_manifest_profile"] = str(settings["ota_manifest_profile"]).strip().lower()
+        applied.append("ota_manifest_profile=%s" % data["ota_manifest_profile"])
+    if _truthy(settings.get("cmd_ota_force")):
+        data["cmd_ota_force"] = True
+        applied.append("cmd_ota_force=1")
+    if _truthy(settings.get("cmd_clear_ota_degraded")) or _truthy(
+        settings.get("clear_ota_degraded")
+    ):
+        try:
+            import ota_health
+
+            ota_health.clear_degraded()
+        except Exception:
+            data.pop("ota_degraded", None)
+            data["boot_ota_fail_count"] = 0
+            data.pop("cmd_ota_force", None)
+        applied.append("clear_ota_degraded=1")
     if "keep_modem_awake_underway" in settings and str(
         settings.get("keep_modem_awake_underway")
     ).strip() != "":
@@ -121,6 +146,9 @@ def effective_boot_ota_prefer_wifi():
     data = load()
     if "boot_ota_prefer_wifi" in data:
         return bool(data["boot_ota_prefer_wifi"])
+    dock = str(data.get("dock_mode") or "").strip().lower()
+    if dock in ("home", "dock", "wifi"):
+        return True
     try:
         import ble_policy
 
@@ -129,11 +157,13 @@ def effective_boot_ota_prefer_wifi():
         return False
 
 
-def set_pending_ota(value=True):
+def set_pending_ota(value=True, force=False):
     data = load()
     data["pending_ota"] = bool(value)
     if value:
         data["auto_ota_on_boot"] = True
+        if force:
+            data["cmd_ota_force"] = True
     save(data)
 
 
@@ -222,11 +252,25 @@ def should_run_boot_ota():
     if boot_ota_backoff_active():
         return False
     data = load()
+    try:
+        import ota_health
+
+        if ota_health.ota_degraded() and not data.get("cmd_ota_force"):
+            if data.get("pending_ota"):
+                clear_pending_ota()
+            return False
+    except ImportError:
+        pass
+    except Exception:
+        pass
     if data.get("pending_ota") and current_meets_min_fw():
         clear_pending_ota()
         data = load()
     if data.get("pending_ota"):
         return True
+    # Already at sheet min_fw: skip boot OTA unless pending/cmd_ota_force (avoids OOM loops).
+    if current_meets_min_fw():
+        return False
     return effective_auto_ota_on_boot()
 
 

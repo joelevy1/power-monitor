@@ -1,7 +1,8 @@
-OTA_MANIFEST_URL = (
-    "https://raw.githubusercontent.com/joelevy1/power-monitor/"
-    "master/boat_monitor/ota_manifest.json"
-)
+_BASE = "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/"
+OTA_MANIFEST_URL = _BASE + "ota_manifest.json"
+OTA_MANIFEST_RAM_URL = OTA_MANIFEST_URL
+OTA_MANIFEST_MICRO_URL = _BASE + "ota_manifest.micro.json"
+OTA_MANIFEST_FEATURE_URL = _BASE + "ota_manifest.feature.json"
 
 OTA_APN = "iot.t-mobile.com"
 OTA_CONTEXT_ID = 1

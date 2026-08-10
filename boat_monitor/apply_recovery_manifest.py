@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 FULL = ROOT / "ota_manifest.full.json"
 OUT = ROOT / "ota_manifest.json"
+OUT_MICRO = ROOT / "ota_manifest.micro.json"
 RAW = "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/"
 
 RECOVERY_PATHS = (
@@ -37,6 +38,7 @@ FEATURE_PACK_PATHS = RECOVERY_PATHS + (
 )
 
 RAM_FIX_PATHS = (
+    "ota_health.py",
     "ota_bundle.py",
     "ota_diag.py",
     "remote_boot_config.py",
@@ -51,6 +53,17 @@ RAM_FIX_PATHS = (
     "version.py",
 )
 
+MICRO_PATHS = (
+    "version.py",
+    "ota_health.py",
+    "remote_boot_config.py",
+    "ota_reboot.py",
+    "ota.py",
+    "main.py",
+    "cellular.py",
+    "ota_bundle.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -60,7 +73,8 @@ def _version():
     return m.group(1).strip()
 
 
-def _write_manifest(paths, notes, include_bundle=True):
+def _write_manifest(paths, notes, include_bundle=True, out_path=None):
+    out_path = out_path or OUT
     full = json.loads(FULL.read_text(encoding="utf-8"))
     by_path = {e["path"]: e for e in full.get("files") or [] if e.get("path")}
     files = []
@@ -80,8 +94,8 @@ def _write_manifest(paths, notes, include_bundle=True):
     }
     if not include_bundle:
         data.pop("bundle", None)
-    OUT.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    print("OK: manifest %s with %d files" % (data["version"], len(files)))
+    out_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    print("OK: manifest %s -> %s (%d files)" % (data["version"], out_path.name, len(files)))
     return 0
 
 
@@ -94,7 +108,19 @@ def main(argv=None):
         action="store_true",
         help="7-file per-file OTA (streaming cellular + bundle extract); no .bmota",
     )
+    p.add_argument(
+        "--micro",
+        action="store_true",
+        help="8-file minimal manifest for degraded / low-RAM boot OTA",
+    )
     args = p.parse_args(argv)
+    if args.micro:
+        return _write_manifest(
+            MICRO_PATHS,
+            "Micro OTA: smallest per-file set (health gate + streaming) after repeated boot failures.",
+            include_bundle=False,
+            out_path=OUT_MICRO,
+        )
     if args.ram_fix:
         return _write_manifest(
             RAM_FIX_PATHS,
@@ -111,7 +137,7 @@ def main(argv=None):
             RECOVERY_PATHS,
             "Slim remote recovery OTA (reboot-loop fix; stream bundle extract).",
         )
-    print("Specify --recovery, --feature-pack, or --ram-fix", file=sys.stderr)
+    print("Specify --recovery, --feature-pack, --ram-fix, or --micro", file=sys.stderr)
     return 1
 
 

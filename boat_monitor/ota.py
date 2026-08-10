@@ -44,8 +44,21 @@ def current_version():
         return "unknown"
 
 
+def manifest_url():
+    try:
+        import ota_health
+
+        url = ota_health.effective_manifest_url()
+        if url:
+            return url
+    except Exception:
+        pass
+    return ota_config.OTA_MANIFEST_URL
+
+
 def load_manifest(client):
-    data = _http_get_retry(client, ota_config.OTA_MANIFEST_URL)
+    url = manifest_url()
+    data = _http_get_retry(client, url)
     return json.loads(data)
 
 
@@ -368,7 +381,7 @@ def _close_client(client, used_wifi):
 def update(reboot=False, prefer_wifi=None, max_total_s=None):
     print("Boat Monitor OTA update")
     print("Current version:", current_version())
-    print("Manifest:", ota_config.OTA_MANIFEST_URL)
+    print("Manifest:", manifest_url())
     if prefer_wifi is None:
         try:
             import ble_policy
@@ -563,6 +576,12 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         )
 
         if reboot:
+            try:
+                import ota_health
+
+                ota_health.record_boot_ota_result(True, outcome="success")
+            except Exception:
+                pass
             try:
                 import ota_telemetry
                 import ota_trace

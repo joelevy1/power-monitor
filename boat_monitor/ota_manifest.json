@@ -1,7 +1,11 @@
 {
-  "version": "1.1.86",
+  "version": "1.1.88",
   "notes": "RAM-safe OTA: stream bundle download/extract + reboot cooldown (per-file, no bundle).",
   "files": [
+    {
+      "path": "ota_health.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_health.py"
+    },
     {
       "path": "ota_bundle.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_bundle.py"

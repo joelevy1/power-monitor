@@ -179,6 +179,19 @@ def read_status(command_result=None, sensors=True):
             except Exception:
                 pass
 
+    try:
+        import remote_boot_config
+
+        boot = remote_boot_config.load()
+        if boot.get("last_boot_ota_outcome"):
+            status["last_boot_ota_outcome"] = str(boot.get("last_boot_ota_outcome"))[:40]
+        if boot.get("ota_degraded"):
+            status["ota_degraded"] = True
+        if boot.get("boot_ota_fail_count"):
+            status["boot_ota_fail_count"] = int(boot.get("boot_ota_fail_count") or 0)
+    except Exception:
+        pass
+
     return status
 
 

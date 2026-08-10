@@ -46,9 +46,54 @@ export async function fetchGithubManifestVersion() {
 }
 
 /**
+ * Infer OTA health from sheet Config + recent Events rows.
+ * @returns {{ degraded: boolean, lastOutcome: string|null, hint: string|null }}
+ */
+export function parseOtaReadiness(eventsRecent, config) {
+  const cfg = config || {};
+  const degraded =
+    String(cfg.ota_degraded || '').trim() === '1' ||
+    String(cfg.ota_degraded || '').toLowerCase() === 'true';
+
+  let lastOutcome = null;
+  const rows = Array.isArray(eventsRecent) ? eventsRecent : [];
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i];
+    const ev = String(row?.event || row?.name || '').trim();
+    const detail = String(row?.detail || row?.message || '');
+    if (ev === 'boot_ota') {
+      const m = detail.match(/outcome=([^\s;]+)/);
+      lastOutcome = m ? m[1] : detail.slice(0, 40) || 'boot_ota';
+      break;
+    }
+    if (ev === 'ota_lifecycle' && detail.includes('boot_end')) {
+      const m = detail.match(/outcome=([^\s;]+)/);
+      if (m) {
+        lastOutcome = m[1];
+        break;
+      }
+    }
+    if (detail.includes('ota_health') && detail.includes('preflight_fail')) {
+      lastOutcome = 'preflight_fail';
+      break;
+    }
+  }
+
+  let hint = null;
+  if (degraded) {
+    hint =
+      'Boot OTA is in a protected state (repeated failures). Use home Wi‑Fi, USB recovery, or sheet cmd_ota_force once.';
+  } else if (lastOutcome && /fail|preflight|degraded/i.test(lastOutcome)) {
+    hint = `Last boot OTA: ${lastOutcome}. Dock on Wi‑Fi or USB-push recovery if this repeats.`;
+  }
+
+  return { degraded, lastOutcome, hint };
+}
+
+/**
  * @returns {{ label: string, detail: string|null, danger: boolean, ok: boolean }}
  */
-export function describeFirmwareStatus(deviceFw, { minFw, githubFw, githubError } = {}) {
+export function describeFirmwareStatus(deviceFw, { minFw, githubFw, githubError, otaReadiness } = {}) {
   const fw = String(deviceFw || '').trim();
   if (!fw || fw === '—') {
     return { label: '—', detail: null, danger: false, ok: true };
@@ -61,12 +106,26 @@ export function describeFirmwareStatus(deviceFw, { minFw, githubFw, githubError 
   const behindGithub = gh && firmwareLt(fw, gh);
   const meetsMin = !min || !behindMin;
   const meetsGithub = !gh || !behindGithub;
+  const ota = otaReadiness || {};
+
+  if (ota.degraded) {
+    return {
+      label: 'OTA degraded',
+      detail:
+        ota.hint ||
+        'Repeated boot OTA failures — use USB recovery or home Wi‑Fi before forcing another OTA.',
+      danger: true,
+      ok: false,
+    };
+  }
 
   if (behindMin) {
     return {
       label: 'Update pending',
       detail: min
-        ? `Sheet requires ${min} · Pico is ${fw}. Boot OTA or cmd_ota should apply when the boat is on.`
+        ? `Sheet requires ${min} · Pico is ${fw}. Boot OTA or cmd_ota should apply when the boat is on.${
+            ota.hint ? ` ${ota.hint}` : ''
+          }`
         : `Pico is ${fw} — sheet min_fw not set.`,
       danger: true,
       ok: false,
