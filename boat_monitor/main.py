@@ -56,7 +56,7 @@ try:
             try:
                 import ble_policy
 
-                prefer_wifi = ble_policy.ota_prefer_wifi()
+                prefer_wifi = remote_boot_config.effective_boot_ota_prefer_wifi()
                 try:
                     import diag_log
 

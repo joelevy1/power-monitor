@@ -4,6 +4,7 @@ Sheet-driven boot / OTA policy (persists on the Pico filesystem).
 Config tab keys (via Apps Script commands on each log POST):
   auto_ota_on_boot     — 1/true/yes overrides ota_config.py on every boot
   boot_ota_max_seconds — cap for boot-time OTA (default from ota_config)
+  boot_ota_prefer_wifi — 1|0: force Wi-Fi for boot OTA (home); omit = ble_policy default
   keep_modem_awake_underway — 1|0: skip AT+CPOF after cellular log while underway
 
 When the sheet requests OTA (min_fw_version, cmd_ota, …), remote_control sets
@@ -58,6 +59,9 @@ def apply_settings(settings):
             applied.append("boot_ota_max_seconds=%s" % data["boot_ota_max_seconds"])
         except ValueError:
             pass
+    if "boot_ota_prefer_wifi" in settings and str(settings.get("boot_ota_prefer_wifi")).strip() != "":
+        data["boot_ota_prefer_wifi"] = _truthy(settings["boot_ota_prefer_wifi"])
+        applied.append("boot_ota_prefer_wifi=%s" % (1 if data["boot_ota_prefer_wifi"] else 0))
     if "keep_modem_awake_underway" in settings and str(
         settings.get("keep_modem_awake_underway")
     ).strip() != "":
@@ -110,6 +114,19 @@ def effective_boot_ota_max_seconds():
     except Exception:
         seconds = max(seconds, 420)
     return seconds
+
+
+def effective_boot_ota_prefer_wifi():
+    """Boot-time OTA transport: sheet override, else ble_policy (Wi-Fi in standby only)."""
+    data = load()
+    if "boot_ota_prefer_wifi" in data:
+        return bool(data["boot_ota_prefer_wifi"])
+    try:
+        import ble_policy
+
+        return ble_policy.ota_prefer_wifi()
+    except Exception:
+        return False
 
 
 def set_pending_ota(value=True):
