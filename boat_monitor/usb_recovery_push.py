@@ -20,14 +20,14 @@ Or:
     ./boat_monitor/run_usb_recovery.sh
 """
 
-DEFAULT_PORT = "COM7"
-
 from __future__ import annotations
 
 import argparse
 import subprocess
 import sys
 from pathlib import Path
+
+DEFAULT_PORT = "COM7"
 
 ROOT = Path(__file__).resolve().parent
 
