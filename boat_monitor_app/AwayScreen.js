@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { describeBoatMode } from './boatMode';
 import { formatDateTime12h } from './dateTimeFormat';
 import GpsMapView from './GpsMapView';
@@ -276,6 +277,9 @@ export default function AwayScreen({ onBack }) {
     otaReadiness,
   });
 
+  const appVersion =
+    Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '';
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -283,7 +287,10 @@ export default function AwayScreen({ onBack }) {
           <Text style={styles.backButtonText}>← Home</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Away from boat</Text>
-        <Text style={styles.headerSubtitle}>Latest from Google Sheets · {deviceId}</Text>
+        <Text style={styles.headerSubtitle}>
+          Latest from Google Sheets · {deviceId}
+          {appVersion ? ` · app ${appVersion}` : ''}
+        </Text>
       </View>
 
       <ScrollView
