@@ -113,7 +113,7 @@ def _min_sizes_from_manifest(manifest):
     return out
 
 
-def _download_bundle_blob(client, bundle):
+def _download_bundle_to_path(client, bundle):
     url = bundle.get("url")
     if not url:
         raise OtaError("bundle missing url")
@@ -128,11 +128,16 @@ def _download_bundle_blob(client, bundle):
             ota_trace.step("bundle_download_to_file", path=path)
         except Exception:
             pass
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
         nbytes = client.download_to_file(url, path, timeout_s=180)
         if expected_size and nbytes != expected_size:
             raise OtaError("bundle size %d != manifest %d" % (nbytes, expected_size))
-        with open(path, "rb") as f:
-            return f.read()
+        return path
 
     if hasattr(client, "http_get_bytes"):
         try:
@@ -149,7 +154,16 @@ def _download_bundle_blob(client, bundle):
             blob = blob.encode("utf-8", "ignore")
     if expected_size and len(blob) != expected_size:
         raise OtaError("bundle size %d != manifest %d" % (len(blob), expected_size))
-    return blob
+    with open(path, "wb") as out:
+        out.write(blob)
+    return path
+
+
+def _download_bundle_blob(client, bundle):
+    """Legacy: load entire bundle into RAM (avoid on Pico when possible)."""
+    path = _download_bundle_to_path(client, bundle)
+    with open(path, "rb") as f:
+        return f.read()
 
 
 def apply_bundle(client, manifest):
@@ -164,7 +178,13 @@ def apply_bundle(client, manifest):
         ota_trace.step("bundle_download_start", size=bundle.get("size"))
     except Exception:
         pass
-    blob = _download_bundle_blob(client, bundle)
+    try:
+        import gc
+
+        gc.collect()
+    except Exception:
+        pass
+    bpath = _download_bundle_to_path(client, bundle)
     try:
         import ota_bundle
     except Exception as exc:
@@ -186,7 +206,7 @@ def apply_bundle(client, manifest):
         write_file(path, text)
         written[path] = True
 
-    count = ota_bundle.extract_to_files(blob, _write)
+    count = ota_bundle.extract_from_file(bpath, _write)
     print("OTA: extracted %d files from bundle" % count)
 
     for path in min_sizes:
@@ -369,6 +389,12 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
             pass
 
     _check_ota_deadline(start, max_total_s, "start")
+    try:
+        import gc
+
+        gc.collect()
+    except Exception:
+        pass
 
     client, used_wifi = _get_client(prefer_wifi=prefer_wifi)
     try:

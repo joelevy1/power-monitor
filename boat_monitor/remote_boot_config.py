@@ -69,6 +69,9 @@ def apply_settings(settings):
     if min_fw is not None and str(min_fw).strip() != "":
         data["min_fw_version"] = str(min_fw).strip()
         applied.append("min_fw_persisted=%s" % data["min_fw_version"])
+    if _truthy(settings.get("clear_pending_ota")) or _truthy(settings.get("cmd_clear_pending_ota")):
+        clear_pending_ota()
+        applied.append("clear_pending_ota=1")
     if applied:
         save(data)
     return applied
@@ -147,6 +150,9 @@ def clear_pending_ota_if_current():
 
 def should_run_boot_ota():
     data = load()
+    if data.get("pending_ota") and current_meets_min_fw():
+        clear_pending_ota()
+        data = load()
     if data.get("pending_ota"):
         return True
     return effective_auto_ota_on_boot()

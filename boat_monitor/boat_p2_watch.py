@@ -90,15 +90,22 @@ def _events_tail(sheets, sid, n=40):
     return p2[-n:]
 
 
-def _maybe_clear_pending_ota(cfg, events, last_fw):
-    min_fw = cfg.get("min_fw_version") or ""
-    if not min_fw or not last_fw:
+def _maybe_clear_pending_ota(cfg, events, last_fw, force=False):
+    if cfg.get("cmd_clear_pending_ota") == "1":
         return False
-    if _version_lt(last_fw, min_fw):
-        return False
+    if not force:
+        min_fw = cfg.get("min_fw_version") or ""
+        if not min_fw or not last_fw or last_fw == "?":
+            return False
+        if _version_lt(last_fw, min_fw):
+            return False
     recent = events[-15:]
-    rq = sum(1 for r in recent if len(r) > 2 and r[2] == "ota_lifecycle" and "reboot_queued" in str(r[3]))
-    if rq < 4:
+    rq = sum(
+        1
+        for r in recent
+        if len(r) > 2 and r[2] == "ota_lifecycle" and "reboot_queued" in str(r[3])
+    )
+    if not force and rq < 4:
         return False
     if cfg.get("cmd_clear_pending_ota") == "1":
         return False
@@ -140,16 +147,24 @@ def poll_once():
                 lifecycle_fw = m.group(1)
                 break
 
+    recent = events[-20:]
+    rq = sum(
+        1
+        for r in recent
+        if len(r) > 2 and r[2] == "ota_lifecycle" and "reboot_queued" in str(r[3])
+    )
+
     status = "unknown"
     detail = []
-    if last_fw != "?" and min_fw != "?" and _version_lt(last_fw, min_fw):
+    if rq >= 4:
+        status = "reboot_loop"
+        detail.append("reboot_queued x%s (recovery OTA / clear_pending)" % rq)
+        _maybe_clear_pending_ota(cfg, events, lifecycle_fw or last_fw, force=True)
+    elif last_fw != "?" and min_fw != "?" and _version_lt(last_fw, min_fw):
         status = "ota_pending"
         detail.append("Power_Log fw %s < min %s" % (last_fw, min_fw))
     elif lifecycle_fw and min_fw != "?" and not _version_lt(lifecycle_fw, min_fw):
-        if ev_names.get("ota_lifecycle", 0) >= 6 and "reboot_queued" in str(last_ev_line):
-            status = "reboot_loop"
-            detail.append("Events show reboot_queued storm; lifecycle fw=%s" % lifecycle_fw)
-        elif last_fw != "?" and last_fw != lifecycle_fw and not _version_lt(lifecycle_fw, last_fw):
+        if last_fw != "?" and last_fw != lifecycle_fw and not _version_lt(lifecycle_fw, last_fw):
             status = "sheet_stale_fw"
             detail.append("Device reports %s in Events; Power_Log still %s" % (lifecycle_fw, last_fw))
         else:
