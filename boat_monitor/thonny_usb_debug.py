@@ -234,7 +234,7 @@ def main():
         print("2  One log (Wi-Fi first)")
         print("3  One log (cellular only)")
         print("4  Boot OTA (if configured)")
-        print("5  Run standby_monitor (auto-log loop)")
+        print("5  Run standby_monitor (auto-log loop) — watch ~5 min cycle")
         print("6  Quit (stay in REPL)")
         print("7  Clear BLE latch (use when switch/key off but ble_wanted True)")
         try:

@@ -98,12 +98,42 @@ def apply_settings(settings):
     if min_fw is not None and str(min_fw).strip() != "":
         data["min_fw_version"] = str(min_fw).strip()
         applied.append("min_fw_persisted=%s" % data["min_fw_version"])
+    for key in ("interval_engine_on_s", "interval_engine_off_s"):
+        val = settings.get(key)
+        if val is not None and str(val).strip() != "":
+            try:
+                data[key] = max(60, int(val))
+                applied.append("%s=%s" % (key, data[key]))
+            except ValueError:
+                pass
     if _truthy(settings.get("clear_pending_ota")) or _truthy(settings.get("cmd_clear_pending_ota")):
         clear_pending_ota()
         applied.append("clear_pending_ota=1")
     if applied:
         save(data)
     return applied
+
+
+def apply_persisted_log_intervals():
+    """Restore sheet log intervals after reboot (remote_boot_config.json)."""
+    data = load()
+    on_s = data.get("interval_engine_on_s")
+    off_s = data.get("interval_engine_off_s")
+    if on_s is None and off_s is None:
+        return False
+    try:
+        import auto_log
+
+        kwargs = {}
+        if on_s is not None:
+            kwargs["engine_on_s"] = int(on_s)
+        if off_s is not None:
+            kwargs["engine_off_s"] = int(off_s)
+        auto_log.set_interval_overrides(**kwargs)
+        return True
+    except Exception as exc:
+        print("remote_boot_config: log intervals failed:", exc)
+        return False
 
 
 def effective_auto_ota_on_boot():

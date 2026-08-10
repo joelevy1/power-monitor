@@ -69,6 +69,12 @@ def main():
     resilience.enable_watchdog()
     print("standby_monitor: BLE off — Wi-Fi-first auto-log")
     auto_log.load_persisted_overrides()
+    try:
+        import remote_boot_config
+
+        remote_boot_config.apply_persisted_log_intervals()
+    except Exception:
+        pass
     interval_s = auto_log.interval_for_mode("docked_off")
     diag_log.log("docked interval_s=%s (after overrides)" % interval_s)
     now_boot = time.ticks_ms()
