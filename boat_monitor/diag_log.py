@@ -3,6 +3,7 @@ Append-only diagnostic log on the Pico filesystem (boat_diag.log).
 
 Primary visibility is the Google Sheet **Events** tab (cellular or Wi-Fi):
   event=boot_ota — OTA start/finish/timeout (1.1.59+)
+  event=ota_trace — per-step OTA timeline + diag tail (1.1.78+)
   event=remote_config — Config applied each log (includes ota_action=1 when OTA queued)
   event=boat_log_session / ble_log_failed — logging path
 

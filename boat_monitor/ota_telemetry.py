@@ -108,7 +108,7 @@ def upload_result(payload, device=None, prefer_wifi=None, max_total_s=None):
     if prefer_wifi is None:
         prefer_wifi = _uplink_prefer_wifi()
     body = _format_detail(payload or {})
-    tail = "\n".join(diag_log.recent_lines(12))
+    tail = "\n".join(diag_log.recent_lines(22))
     if tail:
         body = body + "\n--- boat_diag.log ---\n" + tail
     diag_log.log("ota_telemetry upload %s" % body[:120])

@@ -1,6 +1,6 @@
 {
-  "version": "1.1.77",
-  "notes": "Single-file OTA bundle (one cellular HTTP GET); BMOTA v1.",
+  "version": "1.1.78",
+  "notes": "OTA bundle + ota_trace step logging to Events.",
   "files": [
     {
       "path": "version.py",
@@ -87,6 +87,10 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_telemetry.py"
     },
     {
+      "path": "ota_trace.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_trace.py"
+    },
+    {
       "path": "ota_events_flush.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_events_flush.py"
     },
@@ -122,7 +126,7 @@
   "bundle": {
     "path": "ota_release.bmota",
     "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_release.bmota",
-    "size": 224596,
-    "sha256": "9e3509f2cf745acbf09341f6cbff507cacc6e2eba66f7770e9bc7039e7be447f"
+    "size": 232481,
+    "sha256": "cb5dec0d19e21414fb003c13964b4a90b448f6fc0886dfebfad7046dcc20efd5"
   }
 }

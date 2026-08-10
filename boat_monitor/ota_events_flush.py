@@ -53,6 +53,13 @@ def flush_ota_events_uplink(device=None, prefer_wifi=False, max_total_s=None):
             posted += 1
     except Exception:
         pass
+    try:
+        import ota_trace
+
+        if ota_trace.flush_pending(device=device, prefer_wifi=prefer_wifi, max_total_s=max_s):
+            posted += 1
+    except Exception:
+        pass
     if posted:
         try:
             import diag_log

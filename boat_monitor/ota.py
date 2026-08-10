@@ -55,6 +55,13 @@ def _http_get_retry(client, url, attempts=3):
     for attempt in range(1, attempts + 1):
         try:
             try:
+                import ota_trace
+
+                ota_trace.note_http_session()
+                ota_trace.step("http_get", url=url[-48:], attempt=attempt)
+            except Exception:
+                pass
+            try:
                 return client.http_get(url, timeout_s=30)
             except TypeError:
                 return client.http_get(url)
@@ -114,6 +121,13 @@ def _download_bundle_blob(client, bundle):
     path = bundle.get("path") or "ota_release.bmota"
 
     if hasattr(client, "download_to_file"):
+        try:
+            import ota_trace
+
+            ota_trace.note_http_session()
+            ota_trace.step("bundle_download_to_file", path=path)
+        except Exception:
+            pass
         nbytes = client.download_to_file(url, path, timeout_s=180)
         if expected_size and nbytes != expected_size:
             raise OtaError("bundle size %d != manifest %d" % (nbytes, expected_size))
@@ -121,6 +135,13 @@ def _download_bundle_blob(client, bundle):
             return f.read()
 
     if hasattr(client, "http_get_bytes"):
+        try:
+            import ota_trace
+
+            ota_trace.note_http_session()
+            ota_trace.step("bundle_http_get_bytes")
+        except Exception:
+            pass
         blob = client.http_get_bytes(url)
     else:
         blob = _http_get_retry(client, url)
@@ -137,6 +158,12 @@ def apply_bundle(client, manifest):
         return False
 
     print("OTA: single bundle download")
+    try:
+        import ota_trace
+
+        ota_trace.step("bundle_download_start", size=bundle.get("size"))
+    except Exception:
+        pass
     blob = _download_bundle_blob(client, bundle)
     try:
         import ota_bundle
@@ -150,6 +177,12 @@ def apply_bundle(client, manifest):
         min_size = min_sizes.get(path, 1)
         if len(text) < min_size:
             raise OtaError("%s was too small (%d bytes)" % (path, len(text)))
+        try:
+            import ota_trace
+
+            ota_trace.step("extract_write", path=path, bytes=len(text))
+        except Exception:
+            pass
         write_file(path, text)
         written[path] = True
 
@@ -300,18 +333,66 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         print("OTA max_total_s:", max_total_s)
 
     start = time.time()
+    target_version = None
+    used_wifi = None
+    client = None
+    trace_uploaded = False
+
+    try:
+        import ota_trace
+
+        ota_trace.begin(
+            fw_from=current_version(),
+            prefer_wifi=prefer_wifi,
+            max_total_s=max_total_s,
+            source="ota.update",
+        )
+    except Exception:
+        pass
+
+    def _upload_trace(outcome, **extra):
+        nonlocal trace_uploaded
+        if trace_uploaded:
+            return
+        try:
+            import ota_trace
+
+            ota_trace.upload(
+                outcome=outcome,
+                prefer_wifi=prefer_wifi,
+                max_total_s=50,
+                fw_target=target_version or extra.get("fw_target"),
+                **extra,
+            )
+            trace_uploaded = True
+        except Exception:
+            pass
+
     _check_ota_deadline(start, max_total_s, "start")
 
     client, used_wifi = _get_client(prefer_wifi=prefer_wifi)
     try:
+        try:
+            import ota_trace
+
+            ota_trace.step("uplink_ready", transport="wifi" if used_wifi else "cellular")
+        except Exception:
+            pass
         _check_ota_deadline(start, max_total_s, "after connect")
         manifest = load_manifest(client)
         _check_ota_deadline(start, max_total_s, "after manifest")
         target_version = manifest.get("version", "unknown")
         print("Target version:", target_version)
+        try:
+            import ota_trace
+
+            ota_trace.step("manifest_ok", target=target_version)
+        except Exception:
+            pass
 
         if target_version == current_version():
             print("Already at target version.")
+            _upload_trace("no_upgrade", fw_target=target_version)
             return False
 
         _check_ota_deadline(start, max_total_s, "before payload")
@@ -322,6 +403,16 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
             except Exception:
                 print("OTA: bundle in manifest but ota_bundle.py missing — per-file fallback")
                 use_bundle = False
+        try:
+            import ota_trace
+
+            ota_trace.step(
+                "payload_mode",
+                mode="bundle" if use_bundle else "per_file",
+                file_count=len(manifest.get("files") or []),
+            )
+        except Exception:
+            pass
         if use_bundle:
             apply_bundle(client, manifest)
         else:
@@ -332,6 +423,12 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
                 url = entry["url"]
                 min_size = entry.get("min_size", 1)
                 print("Updating", path)
+                try:
+                    import ota_trace
+
+                    ota_trace.step("per_file_start", path=path)
+                except Exception:
+                    pass
                 data = _http_get_retry(client, url)
                 if len(data) < min_size:
                     raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
@@ -339,6 +436,18 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
 
         print("Update complete.")
         print("Reboot required to run new files.")
+        try:
+            import ota_trace
+
+            ota_trace.step("payload_complete", elapsed_s=int(_ota_elapsed_s(start)))
+        except Exception:
+            pass
+
+        _upload_trace(
+            "success",
+            fw_target=target_version,
+            transport="bundle" if use_bundle else "per_file",
+        )
 
         if reboot:
             try:
@@ -359,6 +468,19 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
             machine.reset()
 
         return True
+    except Exception as exc:
+        try:
+            import ota_trace
+
+            ota_trace.step("error", err=str(exc)[:200])
+        except Exception:
+            pass
+        _upload_trace(
+            "failed",
+            fw_target=target_version,
+            error=str(exc)[:200],
+        )
+        raise
     finally:
         _close_client(client, used_wifi)
 
