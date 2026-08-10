@@ -60,6 +60,8 @@ def _format_detail(payload):
         "transport",
         "error",
         "status",
+        "mem_free",
+        "fs_free_b",
     ):
         if key in payload and payload[key] is not None and str(payload[key]) != "":
             parts.append("%s=%s" % (key, payload[key]))
@@ -215,6 +217,16 @@ def report_boot_ota(
         "transport": transport,
         "error": (str(error)[:300] if error else None),
     }
+    try:
+        import ota_diag
+
+        snap = ota_diag.snapshot()
+        if snap.get("mem_free") is not None:
+            payload["mem_free"] = snap["mem_free"]
+        if snap.get("fs_free_b") is not None:
+            payload["fs_free_b"] = snap["fs_free_b"]
+    except Exception:
+        pass
     if outcome == "success_pending_reboot":
         payload["outcome"] = "success"
         payload["status"] = "rebooting"

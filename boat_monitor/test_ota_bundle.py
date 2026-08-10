@@ -29,6 +29,19 @@ def main():
     for path, raw in items:
         assert path in seen
         assert seen[path] == raw.decode("utf-8")
+
+    import tempfile
+    import os
+
+    tmp = ROOT / "_test_bundle.bmota"
+    tmp.write_bytes(blob)
+    seen2 = {}
+    def _w(p, text):
+        seen2[p] = text
+    n = ota_bundle.extract_from_file(str(tmp), _w)
+    tmp.unlink(missing_ok=True)
+    assert n == len(items)
+    assert seen2 == seen
     print("OK: ota_bundle round-trip %d files (%d bytes)" % (len(seen), len(blob)))
     return 0
 

@@ -38,8 +38,13 @@ FEATURE_PACK_PATHS = RECOVERY_PATHS + (
 
 RAM_FIX_PATHS = (
     "ota_bundle.py",
+    "ota_diag.py",
     "remote_boot_config.py",
     "ota_reboot.py",
+    "ota_events_flush.py",
+    "ota_lifecycle.py",
+    "ota_telemetry.py",
+    "ota_trace.py",
     "ota.py",
     "main.py",
     "cellular.py",

@@ -100,8 +100,30 @@ def write_file(path, data):
         except OSError:
             pass
         os.rename(tmp_path, path)
+        try:
+            os.remove(bak_path)
+        except OSError:
+            pass
     except Exception as exc:
         raise OtaError("failed replacing %s: %s" % (path, exc))
+
+
+def _ota_prune_bak_files(paths):
+    try:
+        import os
+
+        for path in paths or []:
+            try:
+                os.remove(path + ".bak")
+            except OSError:
+                pass
+        try:
+            os.remove("ota_release.bmota")
+            os.remove("ota_release.bmota.new")
+        except OSError:
+            pass
+    except Exception:
+        pass
 
 
 def _min_sizes_from_manifest(manifest):
@@ -402,6 +424,12 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         gc.collect()
     except Exception:
         pass
+    try:
+        import ota_diag
+
+        ota_diag.upload_bounded(phase="ota_start", prefer_wifi=prefer_wifi, max_total_s=20)
+    except Exception:
+        pass
 
     client, used_wifi = _get_client(prefer_wifi=prefer_wifi)
     try:
@@ -416,6 +444,20 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         _check_ota_deadline(start, max_total_s, "after manifest")
         target_version = manifest.get("version", "unknown")
         print("Target version:", target_version)
+        file_list = manifest.get("files") or []
+        _ota_prune_bak_files([e.get("path") for e in file_list if e.get("path")])
+        try:
+            import ota_lifecycle
+
+            ota_lifecycle.phase(
+                "manifest_ok",
+                inline=False,
+                target_fw=target_version,
+                file_count=len(file_list),
+                bundle=1 if manifest.get("bundle") else 0,
+            )
+        except Exception:
+            pass
         try:
             import ota_trace
 
@@ -463,6 +505,17 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
                 min_size = entry.get("min_size", 1)
                 print("Updating", path)
                 try:
+                    import ota_lifecycle
+
+                    ota_lifecycle.phase(
+                        "file_start",
+                        inline=False,
+                        target_fw=target_version,
+                        path=path,
+                    )
+                except Exception:
+                    pass
+                try:
                     import ota_trace
 
                     ota_trace.step("per_file_start", path=path)
@@ -472,8 +525,29 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
                 if len(data) < min_size:
                     raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
                 write_file(path, data)
+                try:
+                    import ota_diag
+                    import ota_lifecycle
 
-        print("Update complete.")
+                    snap = ota_diag.snapshot()
+                    ota_lifecycle.phase(
+                        "file_done",
+                        inline=False,
+                        target_fw=target_version,
+                        path=path,
+                        bytes=len(data),
+                        mem_free=snap.get("mem_free"),
+                        fs_free_b=snap.get("fs_free_b"),
+                    )
+                except Exception:
+                    pass
+                data = None
+                try:
+                    import gc
+
+                    gc.collect()
+                except Exception:
+                    pass
         print("Reboot required to run new files.")
         try:
             import ota_trace
@@ -514,6 +588,17 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
 
         return True
     except Exception as exc:
+        try:
+            import ota_diag
+
+            ota_diag.upload_bounded(
+                phase="ota_failed",
+                prefer_wifi=prefer_wifi,
+                max_total_s=25,
+                err=str(exc)[:120],
+            )
+        except Exception:
+            pass
         try:
             import ota_trace
 

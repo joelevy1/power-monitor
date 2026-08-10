@@ -90,6 +90,17 @@ try:
             except Exception:
                 pass
             try:
+                import ota_diag
+
+                ota_diag.upload_bounded(
+                    phase="boot_start",
+                    prefer_wifi=False,
+                    max_total_s=18,
+                    target_fw=ota_target,
+                )
+            except Exception:
+                pass
+            try:
                 import time as _time
 
                 ota_started = _time.time()
@@ -149,7 +160,7 @@ try:
                         pass
                 else:
                     err_text = str(ota_error) if ota_error else ""
-                    if "memory allocation" in err_text.lower():
+                    if "memory allocation" in err_text.lower() or err_text.strip() in ("28", "[Errno 28]"):
                         remote_boot_config.set_boot_ota_backoff(900)
                         remote_boot_config.clear_pending_ota()
                     else:

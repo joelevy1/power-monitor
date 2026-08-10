@@ -73,6 +73,8 @@ def _ota_events():
             ota.append({"ts": row[0], "dt": _parse_sheet_ts(row[0]), "event": name, "detail": detail, "kv": _parse_kv(detail)})
         elif name == "ota_trace":
             ota.append({"ts": row[0], "dt": _parse_sheet_ts(row[0]), "event": name, "detail": detail, "kv": _parse_kv(detail)})
+        elif name == "device_stats":
+            ota.append({"ts": row[0], "dt": _parse_sheet_ts(row[0]), "event": name, "detail": detail, "kv": _parse_kv(detail)})
     return ota
 
 

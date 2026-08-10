@@ -290,15 +290,7 @@ class SheetsLogger:
         self._last_remote_actions = []
         device = getattr(self, "_last_device", None) or "boat-p2"
         if actions and ("ota" in actions or "reboot" in actions):
-            try:
-                self.log_event(
-                    device,
-                    "ota_lifecycle",
-                    "phase=reboot_queued; source=sheets_log.close_data; fw=%s"
-                    % SheetsLogger._current_fw_label(),
-                )
-            except Exception as exc:
-                print("SheetsLogger: reboot_queued event:", exc)
+            pass
         try:
             import ota_events_flush
 
