@@ -117,7 +117,11 @@ def _maybe_clear_pending_ota(cfg, events, last_fw, force=False):
         sid,
         [("cmd_clear_pending_ota", "1", "boat_p2_watch: reboot storm at min_fw")],
     )
-    _log("ACTION set cmd_clear_pending_ota=1 (fw %s >= min %s, reboot_queued x%s)" % (last_fw, min_fw, rq))
+    min_fw_cfg = cfg.get("min_fw_version") or "?"
+    _log(
+        "ACTION set cmd_clear_pending_ota=1 (fw %s min %s reboot_queued x%s force=%s)"
+        % (last_fw, min_fw_cfg, rq, force)
+    )
     return True
 
 
