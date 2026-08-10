@@ -756,36 +756,49 @@ export default function BoatBleScreen({ onBack }) {
               onPress={sendCommand}
             />
           </View>
-          <Text style={styles.hint}>Log Now posts to Google Sheets over cellular. Firmware update: use Reboot to Update below or sheet cmd_ota.</Text>
+          <Text style={styles.hint}>Log Now posts to Google Sheets over cellular. Firmware: use the Firmware card below (Check GitHub / Reboot to Update).</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Firmware</Text>
-          <StatusRow label="Pico firmware" value={status?.fw || '--'} />
+          <StatusRow label="Pico firmware" value={status?.fw || (connected ? '…' : '--')} />
           <StatusRow label="GitHub firmware" value={firmwareText} danger={firmwareUpdateNeeded || firmwareCheckStatus === 'error'} />
           <StatusRow label="Last BLE status" value={fmtTime(lastUpdated)} />
-          {picoFirmware ? (
-            <TouchableOpacity
-              style={[styles.secondaryButton, styles.checkWifiButton]}
-              onPress={checkFirmwareUpdate}
-              disabled={firmwareCheckStatus === 'checking'}
-            >
-              {firmwareCheckStatus === 'checking' ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Check GitHub Version</Text>
-              )}
-            </TouchableOpacity>
-          ) : null}
-          {firmwareUpdateNeeded ? (
-            <TouchableOpacity
-              style={[styles.dangerButton, styles.checkWifiButton]}
-              onPress={confirmRebootForUpdate}
-              disabled={!connected || !!pendingCommand}
-            >
-              <Text style={styles.buttonText}>Reboot to Update Pico</Text>
-            </TouchableOpacity>
-          ) : null}
+          {connected ? (
+            <>
+              <TouchableOpacity
+                style={[styles.secondaryButton, styles.checkWifiButton]}
+                onPress={checkFirmwareUpdate}
+                disabled={firmwareCheckStatus === 'checking'}
+              >
+                {firmwareCheckStatus === 'checking' ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Check GitHub Version</Text>
+                )}
+              </TouchableOpacity>
+              {firmwareUpdateNeeded ? (
+                <TouchableOpacity
+                  style={[styles.dangerButton, styles.checkWifiButton]}
+                  onPress={confirmRebootForUpdate}
+                  disabled={!!pendingCommand}
+                >
+                  <Text style={styles.buttonText}>Reboot to Update Pico</Text>
+                </TouchableOpacity>
+              ) : latestFirmware && picoFirmware && !firmwareUpdateNeeded ? (
+                <Text style={styles.hint}>Pico matches GitHub ({latestFirmware}). Sheet min_fw may still trigger boot OTA when newer.</Text>
+              ) : null}
+              <TouchableOpacity
+                style={[styles.secondaryButton, styles.checkWifiButton]}
+                onPress={() => sendCommand('ota')}
+                disabled={!!pendingCommand}
+              >
+                <Text style={styles.buttonText}>OTA Check (reboot)</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={styles.hint}>Connect BLE to compare Pico vs GitHub and run OTA.</Text>
+          )}
         </View>
 
         <View style={styles.card}>
