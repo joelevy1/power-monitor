@@ -268,6 +268,9 @@ def should_run_boot_ota():
         data = load()
     if data.get("pending_ota"):
         return True
+    # Already at sheet min_fw: skip boot OTA unless pending/cmd_ota_force (avoids OOM loops).
+    if current_meets_min_fw():
+        return False
     return effective_auto_ota_on_boot()
 
 

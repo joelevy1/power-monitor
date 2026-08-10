@@ -23,6 +23,7 @@ def main():
     data.pop("cmd_ota_force", None)
     data.pop("boot_ota_backoff_until", None)
     data["last_boot_ota_outcome"] = "usb_recovery"
+    data["auto_ota_on_boot"] = False
     if PREFER_WIFI:
         data["boot_ota_prefer_wifi"] = True
     with open(PATH, "w") as f:
