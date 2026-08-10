@@ -1,6 +1,6 @@
 {
-  "version": "1.1.78",
-  "notes": "OTA bundle + ota_trace step logging to Events.",
+  "version": "1.1.79",
+  "notes": "Fix OTA reboot loop (stale pending_ota); BLE stable at min_fw.",
   "files": [
     {
       "path": "version.py",
@@ -126,7 +126,7 @@
   "bundle": {
     "path": "ota_release.bmota",
     "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_release.bmota",
-    "size": 232481,
-    "sha256": "cb5dec0d19e21414fb003c13964b4a90b448f6fc0886dfebfad7046dcc20efd5"
+    "size": 233696,
+    "sha256": "d060371290b7b663670ee12573a377318c37ddbff7d301bd8dfa34d2c96819cb"
   }
 }

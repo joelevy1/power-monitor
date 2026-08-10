@@ -122,6 +122,15 @@ def apply_commands_payload(payload, device_id=""):
         actions.append("reboot")
         applied.append("cmd_reboot=1")
 
+    if _truthy(settings.get("cmd_clear_pending_ota")):
+        try:
+            import remote_boot_config
+
+            remote_boot_config.clear_pending_ota()
+            applied.append("cmd_clear_pending_ota=1")
+        except Exception as exc:
+            print("remote_control: clear_pending_ota:", exc)
+
     hold = settings.get("ble_gpio_off_hold_s")
     if hold is not None and str(hold).strip() != "":
         try:

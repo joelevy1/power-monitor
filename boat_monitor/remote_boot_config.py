@@ -124,6 +124,27 @@ def clear_pending_ota():
         save(data)
 
 
+def current_meets_min_fw():
+    """True when version.py is at or above persisted sheet min_fw_version."""
+    data = load()
+    min_fw = data.get("min_fw_version")
+    if not min_fw:
+        return True
+    try:
+        import version
+
+        current = getattr(version, "VERSION", "0")
+        return not _version_lt(current, min_fw)
+    except Exception:
+        return False
+
+
+def clear_pending_ota_if_current():
+    """Drop stale pending_ota after boot OTA when fw already meets min_fw."""
+    if current_meets_min_fw():
+        clear_pending_ota()
+
+
 def should_run_boot_ota():
     data = load()
     if data.get("pending_ota"):
@@ -155,17 +176,5 @@ def _version_lt(current, minimum):
 
 
 def needs_firmware_upgrade():
-    """True when sheet min_fw is newer than version.py or OTA is already queued."""
-    data = load()
-    if data.get("pending_ota"):
-        return True
-    min_fw = data.get("min_fw_version")
-    if not min_fw:
-        return False
-    try:
-        import version
-
-        current = getattr(version, "VERSION", "0")
-        return _version_lt(current, min_fw)
-    except Exception:
-        return False
+    """True when device fw is older than sheet min_fw (not the pending_ota flag alone)."""
+    return not current_meets_min_fw()

@@ -392,6 +392,12 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
 
         if target_version == current_version():
             print("Already at target version.")
+            try:
+                import remote_boot_config
+
+                remote_boot_config.clear_pending_ota_if_current()
+            except Exception:
+                pass
             _upload_trace("no_upgrade", fw_target=target_version)
             return False
 

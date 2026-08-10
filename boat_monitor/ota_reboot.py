@@ -53,6 +53,7 @@ def reboot_if_upgrade_pending(source=""):
         import remote_boot_config
 
         if not remote_boot_config.needs_firmware_upgrade():
+            remote_boot_config.clear_pending_ota_if_current()
             return False
         remote_boot_config.set_pending_ota(True)
     except Exception:

@@ -127,13 +127,22 @@ try:
                 except Exception:
                     pass
             else:
-                remote_boot_config.set_pending_ota(True)
-                try:
-                    import diag_log
+                if ota_error is None:
+                    remote_boot_config.clear_pending_ota_if_current()
+                    try:
+                        import diag_log
 
-                    diag_log.log("boot OTA finished without upgrade (retry next boot)")
-                except Exception:
-                    pass
+                        diag_log.log("boot OTA no_upgrade — cleared stale pending_ota if at min_fw")
+                    except Exception:
+                        pass
+                else:
+                    remote_boot_config.set_pending_ota(True)
+                    try:
+                        import diag_log
+
+                        diag_log.log("boot OTA finished without upgrade (retry next boot)")
+                    except Exception:
+                        pass
             if not success:
                 try:
                     import ota_lifecycle
