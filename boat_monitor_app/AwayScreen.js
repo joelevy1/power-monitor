@@ -16,6 +16,7 @@ import GpsMapView from './GpsMapView';
 import LocationActions from './LocationActions';
 import { fetchSheetDashboard, getSheetClientConfig, markV50BankFull } from './sheetDashboard';
 import { describeFirmwareStatus, fetchGithubManifestVersion } from './firmwareStatus';
+import { estimateV50State } from './v50Bank';
 
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
