@@ -1,5 +1,5 @@
 {
-  "version": "1.1.71",
+  "version": "1.1.72",
   "notes": "OTA Events flush before modem close/reset; boot_end success telemetry; stress harness device timings.",
   "files": [
     {
