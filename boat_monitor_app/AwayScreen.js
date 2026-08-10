@@ -15,8 +15,37 @@ import { formatDateTime12h } from './dateTimeFormat';
 import GpsMapView from './GpsMapView';
 import LocationActions from './LocationActions';
 import { fetchSheetDashboard, getSheetClientConfig, markV50BankFull } from './sheetDashboard';
-import { describeFirmwareStatus, fetchGithubManifestVersion } from './firmwareStatus';
+import { describeFirmwareStatus, fetchGithubManifestVersion, parseOtaReadiness } from './firmwareStatus';
 import { estimateV50State } from './v50Bank';
+
+const EMPTY_V50 = {
+  watts: null,
+  capacityMah: null,
+  mahUsed: null,
+  mahRemain: null,
+  percent: null,
+  needsCapacity: false,
+  needsFullAnchor: false,
+  source: 'fallback',
+};
+
+function safeV50State(args) {
+  try {
+    return estimateV50State(args);
+  } catch (exc) {
+    console.warn('estimateV50State failed', exc);
+    return EMPTY_V50;
+  }
+}
+
+function safeOtaReadiness(events, config) {
+  try {
+    return parseOtaReadiness(events, config);
+  } catch (exc) {
+    console.warn('parseOtaReadiness failed', exc);
+    return { degraded: false, lastOutcome: null, hint: null };
+  }
+}
 
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
 const FW500 = Platform.OS === 'ios' ? {} : { fontWeight: '500' };
@@ -181,7 +210,7 @@ export default function AwayScreen({ onBack }) {
     logAgeMs != null &&
     expectedIntervalS != null &&
     logAgeMs > expectedIntervalS * 1000 * 1.35 + 120000;
-  const v50 = estimateV50State({
+  const v50 = safeV50State({
     power,
     powerRecent: dashboard?.power_recent,
     v50Bank: dashboard?.v50_bank,
@@ -239,10 +268,12 @@ export default function AwayScreen({ onBack }) {
             : null;
 
   const minFw = dashboard?.config?.min_fw_version;
+  const otaReadiness = safeOtaReadiness(dashboard?.events_recent, dashboard?.config);
   const fwStatus = describeFirmwareStatus(power?.fw, {
     minFw,
     githubFw,
     githubError: githubFwError,
+    otaReadiness,
   });
 
   return (
