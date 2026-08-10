@@ -1,6 +1,6 @@
 {
-  "version": "1.1.75",
-  "notes": "Slim OTA manifest (no bench/dev scripts); 28 runtime modules only.",
+  "version": "1.1.77",
+  "notes": "Single-file OTA bundle (one cellular HTTP GET); BMOTA v1.",
   "files": [
     {
       "path": "version.py",
@@ -71,6 +71,10 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
     },
     {
+      "path": "ota_bundle.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_bundle.py"
+    },
+    {
       "path": "ota_lifecycle.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_lifecycle.py"
     },
@@ -114,5 +118,11 @@
       "path": "gpio_probe.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/gpio_probe.py"
     }
-  ]
+  ],
+  "bundle": {
+    "path": "ota_release.bmota",
+    "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_release.bmota",
+    "size": 224596,
+    "sha256": "9e3509f2cf745acbf09341f6cbff507cacc6e2eba66f7770e9bc7039e7be447f"
+  }
 }

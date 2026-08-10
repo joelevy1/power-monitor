@@ -198,6 +198,60 @@ def parse_http_read(data, expected_length=None, debug=True):
     return result_bytes.decode("utf-8", "ignore")
 
 
+def parse_http_read_bytes(data, expected_length=None, debug=True):
+    """Like parse_http_read() but returns reassembled body bytes."""
+    if isinstance(data, str):
+        data = data.encode("utf-8", "ignore")
+
+    marker = b"+HTTPREAD: DATA,"
+    if marker not in data:
+        raise CellularError("missing HTTPREAD DATA response")
+
+    chunks = []
+    pos = 0
+    chunk_index = 0
+    while True:
+        idx = data.find(marker, pos)
+        if idx < 0:
+            break
+
+        header_start = idx + len(marker)
+        newline_idx = data.find(b"\n", header_start)
+        if newline_idx < 0:
+            raise CellularError("bad HTTPREAD chunk header (no newline after length)")
+
+        length_str = data[header_start:newline_idx].strip().rstrip(b"\r")
+        try:
+            chunk_len = int(length_str)
+        except ValueError:
+            raise CellularError("bad HTTPREAD chunk length: %r" % length_str)
+
+        data_start = newline_idx + 1
+        chunk = data[data_start : data_start + chunk_len]
+        chunks.append(chunk)
+        if debug:
+            print(
+                "  HTTPREAD chunk %d: marker at %d, declared %d bytes, got %d"
+                % (chunk_index, idx, chunk_len, len(chunk))
+            )
+        pos = data_start + chunk_len
+        chunk_index += 1
+
+    if not chunks:
+        raise CellularError("no HTTPREAD DATA chunks found")
+
+    result_bytes = b"".join(chunks)
+
+    if expected_length is not None and len(result_bytes) != expected_length:
+        raise CellularError(
+            "HTTPREAD reassembled %d bytes but AT+HTTPACTION declared %d -- "
+            "%d chunk(s) found, likely one was skipped or truncated"
+            % (len(result_bytes), expected_length, len(chunks))
+        )
+
+    return result_bytes
+
+
 def modem_uart_responds():
     """True if the SIM7600 answers AT on UART (not in AT+CPOF sleep).
 
@@ -700,22 +754,68 @@ class Sim7600Modem:
                 return parse_http_read(raw, expected_length=length)
 
             # Declared length 0 with a 200 status does NOT necessarily mean
-            # an empty body -- confirmed on real hardware against
-            # script.googleusercontent.com's Apps Script redirect target
-            # (the same URL a Google Sheets logging POST's 302 redirect
-            # leads to): AT+HTTPACTION reported "0,200,0" here, immediately
-            # followed by an unsolicited "+HTTP_PEER_CLOSED" (SIMCom's
-            # manual: the server closed the connection -- not that the
-            # response was lost). That response is Transfer-Encoding:
-            # chunked (no Content-Length header), which this modem/
-            # firmware reports as declared length 0. Previously this
-            # branch raised immediately without ever trying AT+HTTPREAD at
-            # all. read_http_data(None, ...) now attempts the read anyway,
-            # relying on the modem's own "+HTTPREAD: 0" terminator instead
-            # of a byte count known in advance.
+            # an empty body -- see module comment on chunked responses.
             raw = self.read_http_data(None, HTTP_CMD_TIMEOUT_MS)
             self.at("AT+HTTPTERM", 15000)
             return parse_http_read(raw, expected_length=None)
+
+    def http_get_bytes(self, url):
+        """Full HTTP GET body as bytes (OTA bundle download)."""
+        print("HTTP GET (bytes)", url)
+        redirect_count = 0
+        while True:
+            self.at("AT+HTTPTERM", 15000)
+            self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
+            self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
+
+            if url.startswith("https://"):
+                self.at("AT+HTTPSSL=1", 15000)
+            else:
+                self.at("AT+HTTPSSL=0", 15000)
+
+            self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
+            action = self.at(
+                "AT+HTTPACTION=0", HTTP_CMD_TIMEOUT_MS, expect=("+HTTPACTION:", "\r\nERROR\r\n")
+            )
+            status, length = parse_http_action(action)
+
+            if status in REDIRECT_STATUSES:
+                url = self._resolve_redirect(url, redirect_count)
+                redirect_count += 1
+                continue
+
+            if status != 200:
+                self.at("AT+HTTPTERM", 15000)
+                raise CellularError("HTTP status %s for %s" % (status, url))
+
+            if length > 0:
+                raw = self.read_http_data(length, max(HTTP_CMD_TIMEOUT_MS, length * 4))
+                self.at("AT+HTTPTERM", 15000)
+                return parse_http_read_bytes(raw, expected_length=length)
+
+            raw = self.read_http_data(None, HTTP_CMD_TIMEOUT_MS)
+            self.at("AT+HTTPTERM", 15000)
+            return parse_http_read_bytes(raw, expected_length=None)
+
+    def download_to_file(self, url, path, timeout_s=120):
+        """Write HTTP GET body to path (binary). timeout_s unused (modem uses HTTP_CMD_TIMEOUT_MS)."""
+        del timeout_s
+        data = self.http_get_bytes(url)
+        tmp_path = path + ".new"
+        with open(tmp_path, "wb") as out:
+            out.write(data)
+        import os
+
+        try:
+            os.remove(path + ".bak")
+        except OSError:
+            pass
+        try:
+            os.rename(path, path + ".bak")
+        except OSError:
+            pass
+        os.rename(tmp_path, path)
+        return len(data)
 
     def http_post_json(self, url, body_bytes, timeout_ms=HTTP_CMD_TIMEOUT_MS):
         self.at("AT+HTTPTERM", 15000)

@@ -86,7 +86,7 @@ ota.update(reboot=True)
 
 1. Update the files in `boat_monitor/`.
 2. Bump `VERSION` in `version.py` and the same `version` in `ota_manifest.json`.
-3. Run `python3 boat_monitor/validate_release.py`.
+3. Run `python3 boat_monitor/build_ota_bundle.py` then `python3 boat_monitor/validate_release.py`.
 4. **Merge to `master`** and push.
 5. Run `python3 boat_monitor/validate_release.py --check-github`.
 6. **Only then** set Config `min_fw_version` (or `apply_ship_config.py`).

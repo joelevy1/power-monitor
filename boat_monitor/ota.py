@@ -15,7 +15,8 @@ BEFORE BLE ever starts -- Wi-Fi and BLE share one radio on the Pico W and
 cannot run at the same time (see ensure_wifi_off() in ble_service.py). Do
 not call ota.update()/check() while BLE is active.
 
-The updater downloads ota_manifest.json, then fetches each listed file from
+The updater downloads ota_manifest.json, then either one release bundle
+(ota_release.bmota — one HTTP GET on cellular) or each listed file from
 GitHub raw URLs. Files are written as .new first, then the previous copy is
 kept as .bak where possible.
 """
@@ -96,7 +97,89 @@ def write_file(path, data):
         raise OtaError("failed replacing %s: %s" % (path, exc))
 
 
-def apply_manifest(client, manifest):
+def _min_sizes_from_manifest(manifest):
+    out = {}
+    for entry in manifest.get("files") or []:
+        path = entry.get("path")
+        if path:
+            out[path] = entry.get("min_size", 1)
+    return out
+
+
+def _download_bundle_blob(client, bundle):
+    url = bundle.get("url")
+    if not url:
+        raise OtaError("bundle missing url")
+    expected_size = bundle.get("size")
+    path = bundle.get("path") or "ota_release.bmota"
+
+    if hasattr(client, "download_to_file"):
+        nbytes = client.download_to_file(url, path, timeout_s=180)
+        if expected_size and nbytes != expected_size:
+            raise OtaError("bundle size %d != manifest %d" % (nbytes, expected_size))
+        with open(path, "rb") as f:
+            return f.read()
+
+    if hasattr(client, "http_get_bytes"):
+        blob = client.http_get_bytes(url)
+    else:
+        blob = _http_get_retry(client, url)
+        if isinstance(blob, str):
+            blob = blob.encode("utf-8", "ignore")
+    if expected_size and len(blob) != expected_size:
+        raise OtaError("bundle size %d != manifest %d" % (len(blob), expected_size))
+    return blob
+
+
+def apply_bundle(client, manifest):
+    bundle = manifest.get("bundle")
+    if not bundle:
+        return False
+
+    print("OTA: single bundle download")
+    blob = _download_bundle_blob(client, bundle)
+    try:
+        import ota_bundle
+    except Exception as exc:
+        raise OtaError("ota_bundle missing: %s" % exc)
+
+    min_sizes = _min_sizes_from_manifest(manifest)
+    written = {}
+
+    def _write(path, text):
+        min_size = min_sizes.get(path, 1)
+        if len(text) < min_size:
+            raise OtaError("%s was too small (%d bytes)" % (path, len(text)))
+        write_file(path, text)
+        written[path] = True
+
+    count = ota_bundle.extract_to_files(blob, _write)
+    print("OTA: extracted %d files from bundle" % count)
+
+    for path in min_sizes:
+        if path not in written:
+            raise OtaError("bundle missing %s" % path)
+
+    try:
+        import os
+
+        bpath = bundle.get("path") or "ota_release.bmota"
+        try:
+            os.remove(bpath)
+        except OSError:
+            pass
+        for suffix in (".new", ".bak"):
+            try:
+                os.remove(bpath + suffix)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+    return True
+
+
+def apply_manifest_files(client, manifest):
     files = manifest.get("files", [])
     if not files:
         raise OtaError("manifest has no files")
@@ -111,6 +194,11 @@ def apply_manifest(client, manifest):
         if len(data) < min_size:
             raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
         write_file(path, data)
+
+
+def apply_manifest(client, manifest):
+    """Legacy name — per-file download (no bundle)."""
+    apply_manifest_files(client, manifest)
 
 
 def _get_client(prefer_wifi=True):
@@ -226,17 +314,28 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
             print("Already at target version.")
             return False
 
-        files = manifest.get("files", [])
-        for entry in files:
-            _check_ota_deadline(start, max_total_s, "before %s" % entry.get("path"))
-            path = entry["path"]
-            url = entry["url"]
-            min_size = entry.get("min_size", 1)
-            print("Updating", path)
-            data = _http_get_retry(client, url)
-            if len(data) < min_size:
-                raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
-            write_file(path, data)
+        _check_ota_deadline(start, max_total_s, "before payload")
+        use_bundle = bool(manifest.get("bundle"))
+        if use_bundle:
+            try:
+                import ota_bundle  # noqa: F401
+            except Exception:
+                print("OTA: bundle in manifest but ota_bundle.py missing — per-file fallback")
+                use_bundle = False
+        if use_bundle:
+            apply_bundle(client, manifest)
+        else:
+            files = manifest.get("files", [])
+            for entry in files:
+                _check_ota_deadline(start, max_total_s, "before %s" % entry.get("path"))
+                path = entry["path"]
+                url = entry["url"]
+                min_size = entry.get("min_size", 1)
+                print("Updating", path)
+                data = _http_get_retry(client, url)
+                if len(data) < min_size:
+                    raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
+                write_file(path, data)
 
         print("Update complete.")
         print("Reboot required to run new files.")

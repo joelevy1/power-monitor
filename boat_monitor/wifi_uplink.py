@@ -477,15 +477,15 @@ class WifiHttp:
 
             tmp_path = path + ".new"
             got = len(body)
-            with open(tmp_path, "w") as out:
+            with open(tmp_path, "wb") as out:
                 if body:
-                    out.write(body.decode("utf-8", "ignore"))
+                    out.write(body)
                 while got < need:
                     chunk = sock.recv(min(1024, need - got))
                     if not chunk:
                         raise WifiError("short read %d/%d" % (got, need))
                     got += len(chunk)
-                    out.write(chunk.decode("utf-8", "ignore"))
+                    out.write(chunk)
 
             import os
 

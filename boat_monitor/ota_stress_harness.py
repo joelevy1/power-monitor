@@ -277,12 +277,13 @@ def _ship_version(new_ver: str) -> bool:
     mtext = mpath.read_text(encoding="utf-8")
     mtext = re.sub(r'"version":\s*"[^"]+"', '"version": "%s"' % new_ver, mtext, count=1)
     mpath.write_text(mtext, encoding="utf-8")
+    subprocess.run([sys.executable, str(ROOT / "build_ota_bundle.py")], cwd=str(ROOT), check=False)
     r = subprocess.run([sys.executable, str(ROOT / "validate_release.py")], cwd=str(ROOT))
     if r.returncode != 0:
         return False
     branch = "cursor/ota-stress-%s-5a55" % new_ver.replace(".", "")
     subprocess.run(["git", "checkout", "-B", branch], cwd=str(REPO), check=False)
-    subprocess.run(["git", "add", "boat_monitor/version.py", "boat_monitor/ota_manifest.json"], cwd=str(REPO))
+    subprocess.run(["git", "add", "boat_monitor/version.py", "boat_monitor/ota_manifest.json", "boat_monitor/ota_release.bmota"], cwd=str(REPO))
     subprocess.run(
         ["git", "commit", "-m", "release: OTA stress %s" % new_ver],
         cwd=str(REPO),

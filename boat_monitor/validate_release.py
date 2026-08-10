@@ -148,6 +148,23 @@ def main(argv=None):
             total_bytes += p.stat().st_size
     print("OK: manifest %d runtime files (~%d KB source)" % (len(files), total_bytes // 1024))
 
+    bundle = data.get("bundle")
+    if bundle:
+        bpath = ROOT / str(bundle.get("path") or "ota_release.bmota")
+        if not bpath.is_file():
+            print(
+                "FAIL: manifest bundle.path missing on disk: %s (run build_ota_bundle.py)"
+                % bpath.name,
+                file=sys.stderr,
+            )
+            return 1
+        size = bpath.stat().st_size
+        want = int(bundle.get("size") or 0)
+        if want and size != want:
+            print("FAIL: bundle size on disk %d != manifest %d" % (size, want), file=sys.stderr)
+            return 1
+        print("OK: bundle %s (%d bytes)" % (bpath.name, size))
+
     if args.min_fw and _version_lt(manifest_ver, args.min_fw):
         print(
             "FAIL: min_fw_version %s > shipped manifest %s (merge to master first)"

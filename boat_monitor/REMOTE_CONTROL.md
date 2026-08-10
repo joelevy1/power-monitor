@@ -14,7 +14,7 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 | `interval_engine_off_s` | `300` | Auto-log when engine off / docked (min 60); use `3600` for long storage |
 | `min_fw_version` | `1.1.7` | If Pico `version.py` is older, **OTA on that log cycle** — persisted on the Pico. **1.1.54+:** cellular path **reboots right after** Power_Log (skips GPS). **1.1.55+:** also **ignores the 60s auto-log interval** until upgraded (next tick runs acknowledge+log+reboot, not another minute of waiting). |
 | `auto_ota_on_boot` | `1` | **1.1.52+:** Persist on Pico (`remote_boot_config.json`); overrides `ota_config.py` every boot |
-| `boot_ota_max_seconds` | `420` | Max seconds for boot-time OTA; use **420+** on cellular (~28 HTTPS file fetches on LTE, not just bytes). On boat power the Pico enforces at least 420s even if this is lower. |
+| `boot_ota_max_seconds` | `420` | Max seconds for boot-time OTA on cellular. Releases ship as **one** `ota_release.bmota` (manifest + bundle = 2 HTTP sessions). Legacy per-file manifest still works on old firmware. On boat power the Pico enforces at least 420s even if this is lower. |
 | `keep_modem_awake_underway` | `1` | **1.1.53+:** On boat power (`key_on` / `engine_on`), leave SIM7600 on after each cellular log (default **on**). Set `0` to power off every cycle (saves mA, slower next log). |
 | `cmd_ota` | `1` | **One-shot:** OTA + reboot after this log; cell cleared by script |
 | `cmd_reboot` | `1` | **One-shot:** reboot after this log; cell cleared |
