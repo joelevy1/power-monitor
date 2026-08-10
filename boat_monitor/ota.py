@@ -247,6 +247,12 @@ def apply_manifest_files(client, manifest):
         if len(data) < min_size:
             raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
         write_file(path, data)
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
 
 
 def apply_manifest(client, manifest):

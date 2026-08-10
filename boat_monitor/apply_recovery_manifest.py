@@ -36,6 +36,16 @@ FEATURE_PACK_PATHS = RECOVERY_PATHS + (
     "ota_bundle.py",
 )
 
+RAM_FIX_PATHS = (
+    "ota_bundle.py",
+    "remote_boot_config.py",
+    "ota_reboot.py",
+    "ota.py",
+    "main.py",
+    "cellular.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -45,7 +55,7 @@ def _version():
     return m.group(1).strip()
 
 
-def _write_manifest(paths, notes):
+def _write_manifest(paths, notes, include_bundle=True):
     full = json.loads(FULL.read_text(encoding="utf-8"))
     by_path = {e["path"]: e for e in full.get("files") or [] if e.get("path")}
     files = []
@@ -63,6 +73,8 @@ def _write_manifest(paths, notes):
         "notes": notes,
         "files": files,
     }
+    if not include_bundle:
+        data.pop("bundle", None)
     OUT.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     print("OK: manifest %s with %d files" % (data["version"], len(files)))
     return 0
@@ -72,18 +84,29 @@ def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--recovery", action="store_true", help="9-file reboot-loop recovery")
     p.add_argument("--feature-pack", action="store_true", help="16-file pack: trace, LEDs, BLE (smaller than full)")
+    p.add_argument(
+        "--ram-fix",
+        action="store_true",
+        help="7-file per-file OTA (streaming cellular + bundle extract); no .bmota",
+    )
     args = p.parse_args(argv)
+    if args.ram_fix:
+        return _write_manifest(
+            RAM_FIX_PATHS,
+            "RAM-safe OTA: stream bundle download/extract + reboot cooldown (per-file, no bundle).",
+            include_bundle=False,
+        )
     if args.feature_pack:
         return _write_manifest(
             FEATURE_PACK_PATHS,
-            "Feature-pack OTA: trace, LEDs, loop fix (~100KB bundle).",
+            "Feature-pack OTA: trace, LEDs, loop fix (~175KB bundle, streamed).",
         )
     if args.recovery:
         return _write_manifest(
             RECOVERY_PATHS,
             "Slim remote recovery OTA (reboot-loop fix; stream bundle extract).",
         )
-    print("Specify --recovery or --feature-pack", file=sys.stderr)
+    print("Specify --recovery, --feature-pack, or --ram-fix", file=sys.stderr)
     return 1
 
 

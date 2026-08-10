@@ -75,7 +75,43 @@ def extract_to_files(blob, write_fn):
     return count
 
 
+def _read_exact(f, n):
+    buf = b""
+    while len(buf) < n:
+        chunk = f.read(n - len(buf))
+        if not chunk:
+            raise OtaBundleError("unexpected EOF")
+        buf += chunk
+    return buf
+
+
 def extract_from_file(bundle_path, write_fn):
+    """Extract one member at a time from disk (no full-bundle RAM buffer)."""
+    count = 0
     with open(bundle_path, "rb") as f:
-        blob = f.read()
-    return extract_to_files(blob, write_fn)
+        magic = f.read(len(MAGIC))
+        if magic != MAGIC:
+            raise OtaBundleError("bad magic")
+        while True:
+            plen = _read_exact(f, 2)
+            (path_len,) = struct.unpack("<H", plen)
+            if path_len == 0:
+                if count == 0:
+                    raise OtaBundleError("empty bundle")
+                return count
+            path = _read_exact(f, path_len).decode("utf-8")
+            (data_len,) = struct.unpack("<I", _read_exact(f, 4))
+            data = _read_exact(f, data_len)
+            try:
+                text = data.decode("utf-8")
+            except Exception as exc:
+                raise OtaBundleError("utf-8 decode failed for %s: %s" % (path, exc))
+            write_fn(path, text)
+            count += 1
+            data = None
+            try:
+                import gc
+
+                gc.collect()
+            except Exception:
+                pass

@@ -55,6 +55,14 @@ def reboot_if_upgrade_pending(source=""):
         if not remote_boot_config.needs_firmware_upgrade():
             remote_boot_config.clear_pending_ota_if_current()
             return False
+        if remote_boot_config.ota_reboot_cooldown_active():
+            try:
+                import diag_log
+
+                diag_log.log("reboot_if_upgrade_pending skipped cooldown source=%s" % source)
+            except Exception:
+                pass
+            return False
         remote_boot_config.set_pending_ota(True)
     except Exception:
         return False
@@ -92,5 +100,6 @@ def reboot_if_upgrade_pending(source=""):
     import time
 
     time.sleep(0.3)
+    remote_boot_config.note_ota_reboot_reset()
     machine.reset()
     return True

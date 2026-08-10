@@ -127,6 +127,59 @@ def clear_pending_ota():
         save(data)
 
 
+def set_boot_ota_backoff(seconds=600):
+    """Skip boot-time OTA until backoff expires (RAM/flash recovery)."""
+    try:
+        import time
+
+        data = load()
+        data["boot_ota_backoff_until"] = time.time() + max(60, int(seconds))
+        save(data)
+    except Exception:
+        pass
+
+
+def boot_ota_backoff_active():
+    data = load()
+    until = data.get("boot_ota_backoff_until")
+    if not until:
+        return False
+    try:
+        import time
+
+        if time.time() < float(until):
+            return True
+        data.pop("boot_ota_backoff_until", None)
+        save(data)
+    except Exception:
+        pass
+    return False
+
+
+def note_ota_reboot_reset():
+    try:
+        import time
+
+        data = load()
+        data["last_ota_reboot_at"] = time.time()
+        save(data)
+    except Exception:
+        pass
+
+
+def ota_reboot_cooldown_active(min_interval_s=600):
+    data = load()
+    last = data.get("last_ota_reboot_at")
+    if not last:
+        return False
+    try:
+        import time
+
+        return (time.time() - float(last)) < min_interval_s
+    except Exception:
+        return False
+
+
 def current_meets_min_fw():
     """True when version.py is at or above persisted sheet min_fw_version."""
     data = load()
@@ -149,6 +202,8 @@ def clear_pending_ota_if_current():
 
 
 def should_run_boot_ota():
+    if boot_ota_backoff_active():
+        return False
     data = load()
     if data.get("pending_ota") and current_meets_min_fw():
         clear_pending_ota()

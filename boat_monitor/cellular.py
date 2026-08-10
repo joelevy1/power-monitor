@@ -503,6 +503,99 @@ class Sim7600Modem:
         print(buf.decode("utf-8", "ignore").strip() or "(no response)")
         return buf
 
+    def _read_http_body_to_file(self, expected_length, timeout_ms, out_file):
+        """Stream AT+HTTPREAD chunk payloads to out_file (low RAM for OTA bundles)."""
+        known_length = expected_length is not None and expected_length > 0
+        read_cap = expected_length if known_length else self.UNKNOWN_LENGTH_READ_CAP
+        cmd = "AT+HTTPREAD=0,%d" % read_cap
+        print(">>>", cmd, "(stream to file)")
+        self.flush()
+        self.uart.write((cmd + "\r\n").encode())
+
+        marker = b"+HTTPREAD: DATA,"
+        terminator = b"+HTTPREAD: 0"
+        start = time.ticks_ms()
+        buf = b""
+        accounted_for = 0
+        scan_pos = 0
+
+        while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            if self.uart.any():
+                buf += self.uart.read()
+
+                while True:
+                    idx = buf.find(marker, scan_pos)
+                    if idx < 0:
+                        break
+                    header_start = idx + len(marker)
+                    newline_idx = buf.find(b"\n", header_start)
+                    if newline_idx < 0:
+                        break
+                    try:
+                        chunk_len = int(buf[header_start:newline_idx].strip())
+                    except ValueError:
+                        break
+                    data_start = newline_idx + 1
+                    if len(buf) < data_start + chunk_len:
+                        break
+                    out_file.write(buf[data_start : data_start + chunk_len])
+                    accounted_for += chunk_len
+                    buf = buf[data_start + chunk_len :]
+                    scan_pos = 0
+
+                if known_length:
+                    done = accounted_for >= expected_length
+                else:
+                    done = terminator in buf[scan_pos:]
+
+                if done:
+                    time.sleep(0.2)
+                    if self.uart.any():
+                        buf += self.uart.read()
+                    break
+
+                if b"\r\nERROR\r\n" in buf:
+                    break
+
+            time.sleep(0.01)
+
+        if known_length and accounted_for != expected_length:
+            raise CellularError(
+                "HTTPREAD streamed %d bytes but AT+HTTPACTION declared %d"
+                % (accounted_for, expected_length)
+            )
+        return accounted_for
+
+    def _http_get_open(self, url):
+        """Start HTTP GET; return (status, length, redirect_count). Caller must HTTPTERM."""
+        redirect_count = 0
+        while True:
+            self.at("AT+HTTPTERM", 15000)
+            self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
+            self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
+
+            if url.startswith("https://"):
+                self.at("AT+HTTPSSL=1", 15000)
+            else:
+                self.at("AT+HTTPSSL=0", 15000)
+
+            self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
+            action = self.at(
+                "AT+HTTPACTION=0", HTTP_CMD_TIMEOUT_MS, expect=("+HTTPACTION:", "\r\nERROR\r\n")
+            )
+            status, length = parse_http_action(action)
+
+            if status in REDIRECT_STATUSES:
+                url = self._resolve_redirect(url, redirect_count)
+                redirect_count += 1
+                continue
+
+            if status != 200:
+                self.at("AT+HTTPTERM", 15000)
+                raise CellularError("HTTP status %s for %s" % (status, url))
+
+            return url, length
+
     def check_alive(self):
         """Verify the modem responds to a basic AT at all, instead of
         silently continuing through the rest of the sequence regardless.
@@ -798,12 +891,27 @@ class Sim7600Modem:
             return parse_http_read_bytes(raw, expected_length=None)
 
     def download_to_file(self, url, path, timeout_s=120):
-        """Write HTTP GET body to path (binary). timeout_s unused (modem uses HTTP_CMD_TIMEOUT_MS)."""
-        del timeout_s
-        data = self.http_get_bytes(url)
+        """Write HTTP GET body to path (binary) without holding full body in RAM."""
+        print("HTTP GET (stream to file)", url)
+        timeout_ms = max(HTTP_CMD_TIMEOUT_MS, int(timeout_s) * 1000)
+        _url, length = self._http_get_open(url)
         tmp_path = path + ".new"
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+        nbytes = 0
         with open(tmp_path, "wb") as out:
-            out.write(data)
+            if length and length > 0:
+                nbytes = self._read_http_body_to_file(length, max(timeout_ms, length * 4), out)
+            else:
+                raw = self.read_http_data(None, HTTP_CMD_TIMEOUT_MS)
+                body = parse_http_read_bytes(raw, expected_length=None)
+                out.write(body)
+                nbytes = len(body)
+        self.at("AT+HTTPTERM", 15000)
         import os
 
         try:
@@ -815,7 +923,13 @@ class Sim7600Modem:
         except OSError:
             pass
         os.rename(tmp_path, path)
-        return len(data)
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+        return nbytes
 
     def http_post_json(self, url, body_bytes, timeout_ms=HTTP_CMD_TIMEOUT_MS):
         self.at("AT+HTTPTERM", 15000)

@@ -148,7 +148,12 @@ try:
                     except Exception:
                         pass
                 else:
-                    remote_boot_config.set_pending_ota(True)
+                    err_text = str(ota_error) if ota_error else ""
+                    if "memory allocation" in err_text.lower():
+                        remote_boot_config.set_boot_ota_backoff(900)
+                        remote_boot_config.clear_pending_ota()
+                    else:
+                        remote_boot_config.set_pending_ota(True)
                     try:
                         import diag_log
 
