@@ -227,6 +227,12 @@ def main():
 
         last_auto_log_mode = mode
         resilience.feed_watchdog()
+        try:
+            import status_led
+
+            status_led.tick()
+        except Exception:
+            pass
         time.sleep(2)
 
 

@@ -10,6 +10,12 @@ try:
     import version
 
     diag_log.log("main boot fw=%s" % getattr(version, "VERSION", "?"))
+    try:
+        import status_led
+
+        status_led.set_mode("boot")
+    except Exception:
+        pass
 except Exception:
     pass
 
@@ -25,6 +31,12 @@ try:
     import remote_boot_config
 
     if remote_boot_config.should_run_boot_ota():
+        try:
+            import status_led
+
+            status_led.set_mode("ota")
+        except Exception:
+            pass
         max_s = None
         prefer_wifi = False
         try:
@@ -266,6 +278,12 @@ else:
         if ble_policy.wait_for_ble_wanted(timeout_s=3.0):
             print("Starting BLE service (switch or key on)")
             try:
+                import status_led
+
+                status_led.set_mode("ble")
+            except Exception:
+                pass
+            try:
                 import time
                 from ble_service import ensure_wifi_off
 
@@ -278,6 +296,12 @@ else:
             ble_service.main()
         else:
             print("Starting standby monitor (BLE off — Wi-Fi auto-log; USB OK)")
+            try:
+                import status_led
+
+                status_led.set_mode("standby")
+            except Exception:
+                pass
             import standby_monitor
 
             standby_monitor.main()

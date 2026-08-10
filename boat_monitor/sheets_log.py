@@ -193,6 +193,12 @@ class SheetsLogger:
             self._used_cellular = True
             self._data_open = True
             try:
+                import status_led
+
+                status_led.set_cellular_active(True)
+            except Exception:
+                pass
+            try:
                 import diag_log
 
                 diag_log.log("ensure_data cellular ok")
@@ -223,6 +229,12 @@ class SheetsLogger:
         self._used_cellular = True
         self._data_open = True
         try:
+            import status_led
+
+            status_led.set_cellular_active(True)
+        except Exception:
+            pass
+        try:
             import diag_log
 
             diag_log.log("ensure_data cellular ok")
@@ -236,6 +248,12 @@ class SheetsLogger:
         When `mode` is underway (key_on / engine_on) and sheet policy allows,
         cellular stays powered (warm) so the next log skips PWRKEY + registration.
         """
+        try:
+            import status_led
+
+            status_led.set_cellular_active(False)
+        except Exception:
+            pass
         if self._wifi_ssid:
             try:
                 import wifi_uplink

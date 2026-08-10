@@ -453,8 +453,14 @@ class BoatMonitorBle:
         )
         self.update_status()
         self.advertise()
+        try:
+            import status_led
 
-        # Auto-logging schedule (auto_log.py): starts the interval fresh
+            status_led.set_mode("ble")
+        except Exception:
+            pass
+
+        # Auto-logging schedule
         # from boot rather than logging immediately -- avoids a cellular
         # round-trip firing on every single reboot during development
         # regardless of engine state. last_auto_log_mode stays None until
@@ -484,6 +490,12 @@ class BoatMonitorBle:
             conn_handle, addr_type, addr = data
             print("BLE disconnected", conn_handle)
             self.connections.discard(conn_handle)
+            try:
+                import status_led
+
+                status_led.set_mode("ble")
+            except Exception:
+                pass
             self.advertise()
         elif event == _IRQ_GATTS_WRITE:
             conn_handle, value_handle = data
@@ -502,6 +514,12 @@ class BoatMonitorBle:
             print("schedule failed (dropped):", exc)
 
     def _scheduled_on_connect(self, conn_handle):
+        try:
+            import status_led
+
+            status_led.set_mode("ble_link")
+        except Exception:
+            pass
         self._request_conn_params(conn_handle)
         try:
             time.sleep_ms(600)
@@ -844,6 +862,12 @@ class BoatMonitorBle:
                 import resilience
 
                 resilience.feed_watchdog()
+            except Exception:
+                pass
+            try:
+                import status_led
+
+                status_led.tick()
             except Exception:
                 pass
             time.sleep(tick_s)

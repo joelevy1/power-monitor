@@ -98,6 +98,21 @@ No TestFlight or Wi-Fi console required for Pico updates.
 | Manual diag dump (1.1.50+) | **Events** tab | `ble_diag` — send BLE command `diag` from a serial/console tool or future app button |
 | Log cadence | **Power_Log** timestamps | ~**6 minutes** apart after `interval_engine_*_s=360` |
 | OTA ran | Next **Power_Log** `note` | `fw=` bumps from `1.1.8` → `1.1.9` |
+
+### Onboard LEDs (1.1.80+, red / green / blue)
+
+| Pattern | Meaning |
+|---------|---------|
+| Blue fast blink | Booting |
+| Blue faster blink | OTA in progress |
+| **Green solid** | BLE advertising — use the app (switch or key on) |
+| Green slow blink | Phone connected over BLE |
+| Blue slow blink | Standby auto-log idle (switch/key off) |
+| Red fast blink (over base) | Cellular uplink active |
+| Red solid + blue blink | Fault / stuck OTA |
+
+Pins: red GP13, blue GP14, green GP15 (`config.py`).
+
 | BLE (if nearby) | App status JSON | `"fw": "1.1.9"` |
 
 Interval overrides are **in RAM only** (lost on reboot until Config is read again on the next log POST).

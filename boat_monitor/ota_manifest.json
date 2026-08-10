@@ -1,6 +1,6 @@
 {
-  "version": "1.1.79",
-  "notes": "Fix OTA reboot loop (stale pending_ota); BLE stable at min_fw.",
+  "version": "1.1.80",
+  "notes": "RGB status LEDs; boat_p2_watch host monitor.",
   "files": [
     {
       "path": "version.py",
@@ -115,6 +115,10 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
     },
     {
+      "path": "status_led.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/status_led.py"
+    },
+    {
       "path": "remote_telemetry.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_telemetry.py"
     },
@@ -126,7 +130,7 @@
   "bundle": {
     "path": "ota_release.bmota",
     "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_release.bmota",
-    "size": 233696,
-    "sha256": "d060371290b7b663670ee12573a377318c37ddbff7d301bd8dfa34d2c96819cb"
+    "size": 238729,
+    "sha256": "6dbeb0e7c2f8e04784463d492173406c279903c8491d65973046b53804f53c16"
   }
 }
