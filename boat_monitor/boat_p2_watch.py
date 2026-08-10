@@ -240,6 +240,24 @@ def poll_once():
                         has_new_telemetry,
                     )
                 )
+                try:
+                    from sheets_config_upsert import upsert_config_keys
+
+                    upsert_config_keys(
+                        sheets,
+                        sid,
+                        [
+                            ("ota_degraded", "1", "watch: cellular boot OTA stuck"),
+                            (
+                                "boot_ota_prefer_wifi",
+                                "1",
+                                "watch: prefer home Wi-Fi for boot OTA",
+                            ),
+                        ],
+                    )
+                    _log("ACTION set ota_degraded=1 boot_ota_prefer_wifi=1 (sheet)")
+                except Exception as exc:
+                    _log("ACTION escalate config failed: %s" % exc)
                 give_up_logged = True
             elif stuck_min > 0 and stuck_min % 15 == 0 and stuck_min < GIVE_UP_STUCK_MINUTES:
                 detail.append("ota_stuck %s min (give_up at %s)" % (stuck_min, GIVE_UP_STUCK_MINUTES))

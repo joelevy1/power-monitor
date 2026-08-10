@@ -82,7 +82,7 @@ def apply_commands_payload(payload, device_id=""):
             try:
                 import remote_boot_config
 
-                remote_boot_config.set_pending_ota(True)
+                remote_boot_config.set_pending_ota(True, force=True)
             except Exception as exc:
                 print("remote_control: set_pending_ota:", exc)
         elif key in ("reboot", "reset"):
@@ -102,7 +102,7 @@ def apply_commands_payload(payload, device_id=""):
                 try:
                     import remote_boot_config
 
-                    remote_boot_config.set_pending_ota(True)
+                    remote_boot_config.set_pending_ota(True, force=True)
                 except Exception as exc:
                     print("remote_control: set_pending_ota:", exc)
         except Exception as exc:
@@ -115,7 +115,7 @@ def apply_commands_payload(payload, device_id=""):
         try:
             import remote_boot_config
 
-            remote_boot_config.set_pending_ota(True)
+            remote_boot_config.set_pending_ota(True, force=True)
         except Exception as exc:
             print("remote_control: set_pending_ota:", exc)
     if _truthy(settings.get("cmd_reboot")) or _truthy(settings.get("force_reboot")):
@@ -197,7 +197,7 @@ def run_actions(actions, prefer_wifi=False):
             try:
                 import remote_boot_config
 
-                remote_boot_config.set_pending_ota(True)
+                remote_boot_config.set_pending_ota(True, force=True)
             except Exception as exc:
                 print("remote_control: set_pending_ota:", exc)
 

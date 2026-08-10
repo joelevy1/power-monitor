@@ -1,0 +1,38 @@
+{
+  "version": "1.1.87",
+  "notes": "Micro OTA: smallest per-file set (health gate + streaming) after repeated boot failures.",
+  "files": [
+    {
+      "path": "version.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
+    },
+    {
+      "path": "ota_health.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_health.py"
+    },
+    {
+      "path": "remote_boot_config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+    },
+    {
+      "path": "ota_reboot.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_reboot.py"
+    },
+    {
+      "path": "ota.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+    },
+    {
+      "path": "main.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
+    },
+    {
+      "path": "cellular.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular.py"
+    },
+    {
+      "path": "ota_bundle.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_bundle.py"
+    }
+  ]
+}

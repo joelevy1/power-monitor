@@ -15,7 +15,7 @@ import { formatDateTime12h } from './dateTimeFormat';
 import GpsMapView from './GpsMapView';
 import LocationActions from './LocationActions';
 import { fetchSheetDashboard, getSheetClientConfig, markV50BankFull } from './sheetDashboard';
-import { describeFirmwareStatus, fetchGithubManifestVersion } from './firmwareStatus';
+import { describeFirmwareStatus, fetchGithubManifestVersion, parseOtaReadiness } from './firmwareStatus';
 import { estimateV50State } from './v50Bank';
 
 const FW600 = Platform.OS === 'ios' ? {} : { fontWeight: '600' };
@@ -239,10 +239,12 @@ export default function AwayScreen({ onBack }) {
             : null;
 
   const minFw = dashboard?.config?.min_fw_version;
+  const otaReadiness = parseOtaReadiness(dashboard?.events_recent, dashboard?.config);
   const fwStatus = describeFirmwareStatus(power?.fw, {
     minFw,
     githubFw,
     githubError: githubFwError,
+    otaReadiness,
   });
 
   return (
@@ -326,6 +328,9 @@ export default function AwayScreen({ onBack }) {
               danger={fwStatus.danger}
             />
             {fwStatus.detail ? <Text style={fwStatus.danger ? styles.overdueHint : styles.modeDetail}>{fwStatus.detail}</Text> : null}
+            {otaReadiness.lastOutcome && !otaReadiness.degraded ? (
+              <Text style={styles.modeDetail}>Last boot OTA: {otaReadiness.lastOutcome}</Text>
+            ) : null}
             {minFw ? <Text style={styles.modeDetail}>Sheet min_fw: {String(minFw)}</Text> : null}
             {githubFw ? <Text style={styles.modeDetail}>GitHub manifest: {githubFw}</Text> : null}
             <Row label="Uplink" value={power.uplink || '—'} />

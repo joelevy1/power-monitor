@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""
+One-shot USB recovery for a stuck Pico (reboot loop on old fw).
+
+Copies the current ram-fix file set from this repo onto the device via mpremote,
+merges USB recovery boot policy into remote_boot_config.json (keeps min_fw, etc.),
+then soft-resets so main.py runs.
+
+From the repo root (Pico on USB; close Thonny serial first if mpremote cannot connect):
+
+    python3 -m pip install -q mpremote && python3 boat_monitor/usb_recovery_push.py
+
+Or:
+
+    ./boat_monitor/run_usb_recovery.sh
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+RECOVERY_FILES = (
+    "ota_health.py",
+    "ota_bundle.py",
+    "ota_diag.py",
+    "remote_boot_config.py",
+    "ota_reboot.py",
+    "ota_events_flush.py",
+    "ota_lifecycle.py",
+    "ota_telemetry.py",
+    "ota_trace.py",
+    "ota.py",
+    "main.py",
+    "cellular.py",
+    "version.py",
+)
+
+
+def _ensure_mpremote():
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "mpremote", "--help"],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+        return [sys.executable, "-m", "mpremote"]
+    except Exception:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "mpremote"])
+        return [sys.executable, "-m", "mpremote"]
+
+
+def _run(mpremote_base, args, description):
+    cmd = mpremote_base + list(args)
+    print("+", " ".join(cmd), "(%s)" % description)
+    subprocess.check_call(cmd)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description="USB-push ram-fix firmware and reset OTA state")
+    p.add_argument(
+        "--port",
+        default="",
+        help="Serial device (e.g. /dev/ttyACM0). Default: mpremote auto-detect.",
+    )
+    p.add_argument(
+        "--no-prefer-wifi",
+        action="store_true",
+        help="Do not set boot_ota_prefer_wifi in remote_boot_config.json",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print actions only",
+    )
+    args = p.parse_args(argv)
+
+    missing = [f for f in RECOVERY_FILES if not (ROOT / f).is_file()]
+    if missing:
+        print("Missing local files:", ", ".join(missing), file=sys.stderr)
+        return 1
+
+    mp = _ensure_mpremote()
+    connect = ["connect"]
+    if args.port:
+        connect.append(args.port)
+
+    patch_src = ROOT / "usb_recovery_patch.py"
+    patch_text = patch_src.read_text(encoding="utf-8")
+    prefer = "False" if args.no_prefer_wifi else "True"
+    patch_text = patch_text.replace("PREFER_WIFI = True", "PREFER_WIFI = %s" % prefer)
+    patch_local = ROOT / ".usb_recovery_patch_run.py"
+    patch_local.write_text(patch_text, encoding="utf-8")
+
+    steps = []
+    for name in RECOVERY_FILES:
+        steps.append(
+            (
+                connect + ["cp", str(ROOT / name), ":%s" % name],
+                "copy %s" % name,
+            )
+        )
+    steps.append(
+        (connect + ["cp", str(patch_local), ":usb_recovery_patch.py"], "copy patch script"),
+    )
+    steps.append((connect + ["run", "usb_recovery_patch.py"], "patch remote_boot_config"))
+    steps.append(
+        (
+            connect + ["exec", "import machine; machine.soft_reset()"],
+            "soft reset",
+        ),
+    )
+
+    if args.dry_run:
+        for cmd, desc in steps:
+            print("[dry-run]", " ".join(mp + cmd), "-", desc)
+        return 0
+
+    try:
+        for cmd, desc in steps:
+            _run(mp, cmd, desc)
+    finally:
+        try:
+            patch_local.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    print(
+        "\nDone. Pico should reboot into main.py with fw from this folder "
+        "(see version.py). On home Wi-Fi it should run boot OTA to GitHub min_fw."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main() or 0)
