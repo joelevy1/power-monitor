@@ -135,6 +135,36 @@ def _maybe_clear_pending_ota(cfg, events, last_fw, force=False):
     return True
 
 
+def _recommend(cfg, last_fw, min_fw, status, events, ota_trace_n):
+    tips = []
+    if last_fw != "?" and min_fw != "?" and not _version_lt(last_fw, min_fw):
+        if str(cfg.get("auto_ota_on_boot") or "").strip() in ("1", "true", "True"):
+            tips.append(
+                "set boat-p2:auto_ota_on_boot=0 until docked (already at min_fw; boot OTA wastes heap)"
+            )
+    recent_fail = any(
+        len(r) > 3
+        and r[2] in ("ota_lifecycle", "device_stats")
+        and "memory allocation" in str(r[3]).lower()
+        for r in events[-15:]
+    )
+    if recent_fail:
+        tips.append("keep boot_ota_prefer_wifi=1 + home Wi-Fi; avoid cellular boot OTA")
+    if ota_trace_n == 0 and telem_recent_has_ota(events):
+        tips.append(
+            "ota_trace rows absent (flush before reboot); use ota_lifecycle + device_stats on Events"
+        )
+    if status == "reboot_loop":
+        tips.append("cmd_clear_pending_ota=1 one-shot if not already set")
+    return " | ".join(tips) if tips else ""
+
+
+def telem_recent_has_ota(events):
+    return any(
+        len(r) > 2 and r[2] in ("ota_lifecycle", "boot_ota", "device_stats") for r in events[-20:]
+    )
+
+
 def poll_once():
     sheets, sid = _sheets()
     cfg = _config_map(sheets, sid)
@@ -271,6 +301,25 @@ def poll_once():
     )
     _log(summary)
 
+    telem = Counter(
+        r[2]
+        for r in events[-40:]
+        if len(r) > 2 and r[2] in ("ota_trace", "device_stats", "boot_ota", "ota_lifecycle")
+    )
+    if telem:
+        _log(
+            "TELEMETRY last40: ota_lifecycle=%s device_stats=%s boot_ota=%s ota_trace=%s"
+            % (
+                telem.get("ota_lifecycle", 0),
+                telem.get("device_stats", 0),
+                telem.get("boot_ota", 0),
+                telem.get("ota_trace", 0),
+            )
+        )
+    recommend = _recommend(cfg, last_fw, min_fw, status, events, telem.get("ota_trace", 0))
+    if recommend:
+        _log("RECOMMEND: %s" % recommend)
+
     try:
         STATE_PATH.write_text(
             json.dumps(
@@ -298,16 +347,26 @@ def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--interval", type=int, default=60)
     p.add_argument("--once", action="store_true")
+    p.add_argument(
+        "--for-minutes",
+        type=int,
+        default=0,
+        help="Stop after N minutes (with --interval, e.g. 600 for 10 min polls)",
+    )
     args = p.parse_args(argv)
     if args.once:
         poll_once()
         return 0
-    _log("boat_p2_watch start interval=%ss" % args.interval)
+    _log("boat_p2_watch start interval=%ss for_minutes=%s" % (args.interval, args.for_minutes))
+    started = time.time()
     while True:
         try:
             poll_once()
         except Exception as exc:
             _log("ERROR poll: %s" % exc)
+        if args.for_minutes and (time.time() - started) >= args.for_minutes * 60:
+            _log("boat_p2_watch done for_minutes=%s" % args.for_minutes)
+            break
         time.sleep(max(15, args.interval))
 
 
