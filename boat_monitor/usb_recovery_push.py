@@ -106,11 +106,14 @@ def main(argv=None):
     patch_local.write_text(patch_text, encoding="utf-8")
 
     free_script = ROOT / "usb_recovery_free.py"
+    if not free_script.is_file():
+        print(
+            "Missing %s — restore from git pull or: copy boat_monitor\\usb_recovery_free.py.bak boat_monitor\\usb_recovery_free.py"
+            % free_script,
+            file=sys.stderr,
+        )
+        return 1
     steps = [
-        (
-            _mp_args(port, "cp", str(free_script), ":usb_recovery_free.py"),
-            "copy flash cleanup script",
-        ),
         (_mp_args(port, "run", str(free_script)), "free flash (.bak/.new/bundles/logs)"),
     ]
     for name in RECOVERY_FILES:
@@ -127,7 +130,7 @@ def main(argv=None):
         ),
     )
     steps.append(
-        (_mp_args(port, "run", "usb_recovery_patch.py"), "patch remote_boot_config")
+        (_mp_args(port, "run", str(patch_local)), "patch remote_boot_config")
     )
     steps.append(
         (
