@@ -26,6 +26,16 @@ MIN_ATTEMPT_GAP_ENOMEM_S = 30
 AUTO_LOG_FAIL_REBOOT_COUNT = 4
 
 
+def _standby_prefer_wifi():
+    """Match sheet boot_ota_prefer_wifi / dock_mode — False = cellular-only standby logs."""
+    try:
+        import remote_boot_config
+
+        return remote_boot_config.effective_boot_ota_prefer_wifi()
+    except Exception:
+        return False
+
+
 def _reboot_after_stall(reason, mode, device_id):
     resilience.reboot_after_stall(device_id, reason, mode=mode)
 
@@ -52,7 +62,7 @@ def _finish_log_session(device_id, mode, summary, source):
         import remote_telemetry
 
         remote_telemetry.after_logging_session(
-            device_id, mode, summary, prefer_wifi=True
+            device_id, mode, summary, prefer_wifi=_standby_prefer_wifi()
         )
     except Exception as exc:
         diag_log.log("after_logging_session skipped: %s" % exc)
@@ -97,7 +107,9 @@ def main():
             device_id = status.get("device") or device_id
             diag_log.log("boot_log START mode=%s" % mode)
             print("standby_monitor: boot_log (online heartbeat)")
-            summary = log_power_and_gps(note="boot_log", prefer_wifi=True, ble_monitor=None)
+            summary = log_power_and_gps(
+                note="boot_log", prefer_wifi=_standby_prefer_wifi(), ble_monitor=None
+            )
             diag_log.log("boot_log DONE %s" % summary)
             print("standby_monitor: boot_log result:", summary)
             now_boot = time.ticks_ms()
@@ -217,7 +229,9 @@ def main():
             diag_log.log("auto-log START mode=%s since_success=%.0fs" % (mode, since_success_s))
             print("standby_monitor: auto-log mode=%s since_success=%.0fs" % (mode, since_success_s))
             try:
-                summary = log_power_and_gps(note="auto_log", prefer_wifi=True, ble_monitor=None)
+                summary = log_power_and_gps(
+                    note="auto_log", prefer_wifi=_standby_prefer_wifi(), ble_monitor=None
+                )
                 auto_log_started_ms = None
                 diag_log.log("auto-log DONE %s" % summary)
                 print("standby_monitor: auto-log result:", summary)
