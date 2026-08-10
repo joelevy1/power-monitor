@@ -44,9 +44,42 @@ def current_version():
         return "unknown"
 
 
+def _version_tuple(text):
+    parts = []
+    for piece in str(text or "").strip().split("."):
+        try:
+            parts.append(int(piece))
+        except Exception:
+            parts.append(0)
+    return tuple(parts)
+
+
+def _version_lt(a, b):
+    return _version_tuple(a) < _version_tuple(b)
+
+
 def load_manifest(client):
-    data = _http_get_retry(client, ota_config.OTA_MANIFEST_URL)
-    return json.loads(data)
+    raw = _http_get_retry(client, ota_config.OTA_MANIFEST_URL)
+    data = json.loads(raw)
+    try:
+        import remote_boot_config
+
+        min_fw = (remote_boot_config.load() or {}).get("min_fw_version")
+        manifest_ver = str(data.get("version") or "")
+        if min_fw and _version_lt(manifest_ver, min_fw):
+            alt = getattr(ota_config, "OTA_MANIFEST_JSdelivr_URL", "")
+            if alt:
+                alt_raw = _http_get_retry(client, alt)
+                alt_data = json.loads(alt_raw)
+                if not _version_lt(str(alt_data.get("version") or ""), min_fw):
+                    print(
+                        "OTA: raw manifest %s behind min_fw %s — using jsDelivr"
+                        % (manifest_ver, min_fw)
+                    )
+                    return alt_data
+    except Exception as exc:
+        print("OTA: manifest CDN fallback skipped:", exc)
+    return data
 
 
 def _http_get_retry(client, url, attempts=3):
