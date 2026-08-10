@@ -106,13 +106,59 @@ try:
                 ota_started = _time.time()
             except Exception:
                 ota_started = None
+            preflight_ok = True
+            preflight_reason = ""
             try:
-                success = ota.update(reboot=reboot, prefer_wifi=prefer_wifi, max_total_s=max_s)
-            except TypeError:
-                success = ota.update(reboot=reboot, prefer_wifi=prefer_wifi)
-            except Exception as exc:
-                ota_error = exc
+                import ota_health
+
+                preflight_ok, preflight_reason = ota_health.preflight_boot_ota()
+            except ImportError:
+                pass
+            except Exception:
+                pass
+            if not preflight_ok:
+                try:
+                    import diag_log
+
+                    diag_log.log("boot OTA preflight skip %s" % preflight_reason)
+                except Exception:
+                    pass
+                remote_boot_config.set_boot_ota_backoff(600)
+                remote_boot_config.clear_pending_ota()
+                try:
+                    import ota_health
+
+                    ota_health.record_boot_ota_result(
+                        False, outcome="preflight", error=preflight_reason
+                    )
+                except Exception:
+                    pass
                 success = False
+                ota_error = preflight_reason or "preflight"
+            else:
+                try:
+                    success = ota.update(reboot=reboot, prefer_wifi=prefer_wifi, max_total_s=max_s)
+                except TypeError:
+                    success = ota.update(reboot=reboot, prefer_wifi=prefer_wifi)
+                except Exception as exc:
+                    ota_error = exc
+                    success = False
+                if ota_error:
+                    try:
+                        import ota_health
+
+                        ota_health.record_boot_ota_result(
+                            False, error=ota_error, outcome="failed"
+                        )
+                    except Exception:
+                        pass
+                elif success:
+                    try:
+                        import ota_health
+
+                        ota_health.record_boot_ota_result(True, outcome="success")
+                    except Exception:
+                        pass
             elapsed = None
             if ota_started is not None:
                 try:
@@ -160,7 +206,14 @@ try:
                         pass
                 else:
                     err_text = str(ota_error) if ota_error else ""
-                    if "memory allocation" in err_text.lower() or err_text.strip() in ("28", "[Errno 28]"):
+                    if preflight_ok and (
+                        "preflight" in err_text or err_text.startswith("low_")
+                    ):
+                        pass
+                    elif "memory allocation" in err_text.lower() or err_text.strip() in (
+                        "28",
+                        "[Errno 28]",
+                    ):
                         remote_boot_config.set_boot_ota_backoff(900)
                         remote_boot_config.clear_pending_ota()
                     else:

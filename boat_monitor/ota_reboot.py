@@ -50,6 +50,23 @@ def maybe_reboot_for_ota(actions, source=""):
 def reboot_if_upgrade_pending(source=""):
     """When sheet min_fw is newer than version.py, queue OTA and reset immediately."""
     try:
+        import ota_health
+
+        if ota_health.ota_reboot_blocked():
+            try:
+                import diag_log
+
+                diag_log.log(
+                    "reboot_if_upgrade_pending blocked degraded source=%s" % source
+                )
+            except Exception:
+                pass
+            return False
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    try:
         import remote_boot_config
 
         if not remote_boot_config.needs_firmware_upgrade():
