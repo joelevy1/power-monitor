@@ -52,6 +52,40 @@ def _version_lt(a, b):
     return _parse_version(a) < _parse_version(b)
 
 
+MANIFEST_BLOCKLIST = (
+    "bench_",
+    "test_",
+    "pico_import_check",
+    "ota_stress_harness",
+    "ota_stress_analyze",
+    "remote_stress",
+    "apps_script_test",
+    "sheet_tail_report",
+    "validate_release",
+    "apply_ship_config",
+    "sheets_config_",
+    "sheets_bootstrap",
+)
+
+
+def _manifest_file_errors(data):
+    errs = []
+    files = data.get("files") or []
+    paths = []
+    for entry in files:
+        path = str(entry.get("path") or "").strip()
+        if not path:
+            errs.append("manifest entry missing path")
+            continue
+        paths.append(path)
+        for bad in MANIFEST_BLOCKLIST:
+            if bad in path:
+                errs.append("manifest must not ship %s (matches %s)" % (path, bad))
+    if len(paths) != len(set(paths)):
+        errs.append("duplicate paths in manifest")
+    return errs, files
+
+
 def _manifest_has_version_py(data):
     for entry in data.get("files") or []:
         if entry.get("path") == "version.py":
@@ -100,6 +134,19 @@ def main(argv=None):
     if not _manifest_has_version_py(data):
         print("FAIL: ota_manifest.json does not include version.py", file=sys.stderr)
         return 1
+
+    m_errs, files = _manifest_file_errors(data)
+    for e in m_errs:
+        print("FAIL:", e, file=sys.stderr)
+    if m_errs:
+        return 1
+
+    total_bytes = 0
+    for entry in files:
+        p = ROOT / entry.get("path", "")
+        if p.is_file():
+            total_bytes += p.stat().st_size
+    print("OK: manifest %d runtime files (~%d KB source)" % (len(files), total_bytes // 1024))
 
     if args.min_fw and _version_lt(manifest_ver, args.min_fw):
         print(

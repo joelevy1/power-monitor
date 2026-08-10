@@ -1,6 +1,6 @@
 {
-  "version": "1.1.75",
-  "notes": "OTA Events: ota_lifecycle on every ota_action log; boot_ota flush 90s uplink.",
+  "version": "1.1.76",
+  "notes": "Slim OTA manifest (no bench/dev scripts); 28 runtime modules only.",
   "files": [
     {
       "path": "version.py",
@@ -13,14 +13,6 @@
     {
       "path": "resilience.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/resilience.py"
-    },
-    {
-      "path": "pico_import_check.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/pico_import_check.py"
-    },
-    {
-      "path": "bench_pull_firmware.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/bench_pull_firmware.py"
     },
     {
       "path": "ble_policy.py",
