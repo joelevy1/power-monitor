@@ -13,6 +13,10 @@ FAIL_LIMIT_REBOOT_BLOCK = 2
 FAIL_LIMIT_MICRO_MANIFEST = 2
 MIN_MEM_FREE_BOOT_OTA = 45000
 MIN_FS_FREE_BOOT_OTA = 120000
+# Cellular boot OTA: at most bootstrap (2 files) unless cmd_ota_force on flash.
+MAX_CELLULAR_MANIFEST_FILES = 2
+MAX_WIFI_MANIFEST_FILES = 8
+RECOVERY_MANIFEST_KINDS = ("recovery", "dock-fix", "feature-pack", "ram-fix")
 
 
 def enomem_error(exc):
@@ -116,6 +120,37 @@ def clear_degraded():
         remote_boot_config.save(data)
     except Exception:
         pass
+
+
+def manifest_kind(data):
+    return str((data or {}).get("manifest_kind") or "").strip().lower()
+
+
+def check_manifest_policy(manifest, used_wifi=False):
+    """
+    Refuse unsafe CDN manifests before download (device-side tier gate).
+    Returns (ok, reason).
+    """
+    files = (manifest or {}).get("files") or []
+    n = len(files)
+    if n <= 1:
+        return True, ""
+    kind = manifest_kind(manifest)
+    try:
+        import remote_boot_config
+
+        if remote_boot_config.load().get("cmd_ota_force"):
+            return True, ""
+    except Exception:
+        pass
+    if kind in RECOVERY_MANIFEST_KINDS and not used_wifi:
+        return False, "manifest_tier_recovery_requires_wifi"
+    limit = MAX_WIFI_MANIFEST_FILES if used_wifi else MAX_CELLULAR_MANIFEST_FILES
+    if n > limit:
+        return False, "manifest_tier_max_%d_files_%s" % (limit, "wifi" if used_wifi else "cellular")
+    if not used_wifi and n > 1 and kind not in ("bootstrap", "stress", ""):
+        return False, "manifest_kind_%s_cellular_blocked" % (kind or "?")
+    return True, ""
 
 
 def effective_manifest_profile():

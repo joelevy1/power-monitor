@@ -46,13 +46,11 @@ def _in_progress_limit_s(mode):
 
 
 def _firmware_upgrade_pending():
-    """True when sheet min_fw is ahead — skip heavy logs so boot OTA keeps a clean heap."""
+    """Skip heavy logs only when boot OTA will actually run on next reboot."""
     try:
         import remote_boot_config
 
-        if remote_boot_config.should_run_boot_ota():
-            return True
-        return remote_boot_config.needs_firmware_upgrade()
+        return remote_boot_config.should_run_boot_ota()
     except Exception:
         return False
 

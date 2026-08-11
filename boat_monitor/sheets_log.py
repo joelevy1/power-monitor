@@ -275,7 +275,9 @@ class SheetsLogger:
                 try:
                     import ota_reboot
 
-                    ota_reboot.maybe_reboot_for_ota(actions, source="sheets_log.close_data")
+                    ota_reboot.maybe_reboot_for_ota(
+                        actions, source="sheets_log.close_data", prefer_wifi=True
+                    )
                 except Exception as exc:
                     print("SheetsLogger: ota reboot:", exc)
             try:
@@ -758,6 +760,21 @@ class SheetsLogger:
                     import diag_log
 
                     diag_log.log("inline session diag skip: %s" % exc)
+                except Exception:
+                    pass
+            try:
+                import ota_capability
+
+                ota_capability.report_after_log(
+                    device=device,
+                    prefer_wifi=bool(self._wifi_ssid),
+                    logger=self,
+                )
+            except Exception as exc:
+                try:
+                    import diag_log
+
+                    diag_log.log("ota_capability skip: %s" % exc)
                 except Exception:
                     pass
         return summary

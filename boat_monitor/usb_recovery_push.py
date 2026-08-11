@@ -23,6 +23,7 @@ Or:
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -44,6 +45,10 @@ RECOVERY_FILES = (
     "ota.py",
     "main.py",
     "cellular.py",
+    "standby_monitor.py",
+    "sheets_log.py",
+    "remote_control.py",
+    "ota_capability.py",
     "version.py",
 )
 
@@ -101,6 +106,11 @@ def main(argv=None):
         help="OTA stress recovery: keep auto_ota_on_boot=true and pending_ota on device",
     )
     p.add_argument(
+        "--ota-self-sufficient",
+        action="store_true",
+        help="Persist dock policy + manifest tier cap on flash (recommended week-away kit)",
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="Print actions only",
@@ -118,9 +128,15 @@ def main(argv=None):
     patch_src = ROOT / "usb_recovery_patch.py"
     patch_text = patch_src.read_text(encoding="utf-8")
     prefer = "True" if not args.no_prefer_wifi else "False"
-    patch_text = patch_text.replace("PREFER_WIFI = True", "PREFER_WIFI = %s" % prefer)
+    patch_text = re.sub(r"PREFER_WIFI = \w+", "PREFER_WIFI = %s" % prefer, patch_text, count=1)
     auto_ota = "True" if args.enable_boot_ota else "False"
-    patch_text = patch_text.replace("AUTO_OTA_ON_BOOT = False", "AUTO_OTA_ON_BOOT = %s" % auto_ota)
+    patch_text = re.sub(
+        r"AUTO_OTA_ON_BOOT = \w+", "AUTO_OTA_ON_BOOT = %s" % auto_ota, patch_text, count=1
+    )
+    if args.ota_self_sufficient or args.enable_boot_ota:
+        patch_text = re.sub(r"OTA_SELF_SUFFICIENT = \w+", "OTA_SELF_SUFFICIENT = True", patch_text, count=1)
+    else:
+        patch_text = re.sub(r"OTA_SELF_SUFFICIENT = \w+", "OTA_SELF_SUFFICIENT = False", patch_text, count=1)
     patch_local = ROOT / ".usb_recovery_patch_run.py"
     patch_local.write_text(patch_text, encoding="utf-8")
 
@@ -189,6 +205,13 @@ def main(argv=None):
         "\nDone. Pico should reboot into main.py with fw from this folder "
         "(see version.py). On home Wi-Fi it should run boot OTA to GitHub min_fw."
     )
+    if args.ota_self_sufficient or args.enable_boot_ota:
+        print(
+            "\nNext: unplug USB, power-cycle, run:\n"
+            "  python3 boat_monitor/usb_recovery_verify.py --expect-fw 1.1.111\n"
+            "Then start week-away OTA:\n"
+            "  ./boat_monitor/run_week_away_dock_ota.sh"
+        )
     return 0
 
 

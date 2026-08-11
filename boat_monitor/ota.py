@@ -475,6 +475,29 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         _check_ota_deadline(start, max_total_s, "after connect")
         manifest = load_manifest(client)
         _check_ota_deadline(start, max_total_s, "after manifest")
+        try:
+            import ota_health
+
+            ok, reason = ota_health.check_manifest_policy(manifest, used_wifi=used_wifi)
+            if not ok:
+                print("OTA: manifest policy refused:", reason)
+                try:
+                    import ota_lifecycle
+
+                    ota_lifecycle.phase(
+                        "manifest_refused",
+                        inline=False,
+                        target_fw=manifest.get("version"),
+                        error=reason,
+                        file_count=len(manifest.get("files") or []),
+                    )
+                except Exception:
+                    pass
+                raise OtaError(reason)
+        except OtaError:
+            raise
+        except Exception as exc:
+            print("OTA: manifest policy check skipped:", exc)
         target_version = manifest.get("version", "unknown")
         print("Target version:", target_version)
         file_list = manifest.get("files") or []

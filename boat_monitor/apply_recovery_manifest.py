@@ -75,7 +75,7 @@ def _version():
     return m.group(1).strip()
 
 
-def _write_manifest(paths, notes, include_bundle=True):
+def _write_manifest(paths, notes, include_bundle=True, manifest_kind=""):
     full = json.loads(FULL.read_text(encoding="utf-8"))
     by_path = {e["path"]: e for e in full.get("files") or [] if e.get("path")}
     files = []
@@ -93,6 +93,8 @@ def _write_manifest(paths, notes, include_bundle=True):
         "notes": notes,
         "files": files,
     }
+    if manifest_kind:
+        data["manifest_kind"] = manifest_kind
     if not include_bundle:
         data.pop("bundle", None)
     OUT.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -142,6 +144,7 @@ def main(argv=None):
             VERSION_ONLY_PATHS,
             "Patch OTA: version.py only (cellular heap safe).",
             include_bundle=False,
+            manifest_kind="stress",
         )
     if args.ram_fix:
         return _write_manifest(
