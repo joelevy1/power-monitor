@@ -61,6 +61,14 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 5. Sheet preflight runs before **each** round ship (not only at startup).
 6. `ota_stress_monitor.py` polls sheet + harness log every 5 min during runs.
 
+## Dock / standby profile (switch+key off, V50 power)
+
+1. Use harness `--profile dock` — sets `boot_ota_prefer_wifi=1`, `dock_mode=home`,
+   clears cellular-only override left from underway stress (`boot_ota_prefer_wifi=0`).
+2. Round timeout default **3600s** (5 min log interval + OTA).
+3. `--reset-v50` sets `boat-p2:v50_full_at_utc` for mAh / % tracking.
+4. Expect Power_Log `mode=docked_off`, `uplink=wifi` when home AP reachable.
+
 ## Quick recovery
 
 | Symptom | Action |
