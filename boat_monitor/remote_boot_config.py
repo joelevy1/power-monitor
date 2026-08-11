@@ -72,6 +72,9 @@ def apply_settings(settings):
     if "ota_manifest_profile" in settings and str(settings.get("ota_manifest_profile")).strip() != "":
         data["ota_manifest_profile"] = str(settings["ota_manifest_profile"]).strip().lower()
         applied.append("ota_manifest_profile=%s" % data["ota_manifest_profile"])
+    if _truthy(settings.get("clear_boot_ota_backoff")):
+        data.pop("boot_ota_backoff_until", None)
+        applied.append("clear_boot_ota_backoff=1")
     if _truthy(settings.get("cmd_ota_force")):
         data["cmd_ota_force"] = True
         applied.append("cmd_ota_force=1")
