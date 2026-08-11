@@ -183,12 +183,51 @@ def poll_once():
         if len(r) > 2 and r[2] == "ota_lifecycle" and "reboot_queued" in str(r[3])
     )
 
+    now = datetime.now(timezone.utc)
     status = "unknown"
     detail = []
     if rq >= 4:
         status = "reboot_loop"
-        detail.append("reboot_queued x%s (recovery OTA / clear_pending)" % rq)
-        _maybe_clear_pending_ota(cfg, events, lifecycle_fw or last_fw, force=True)
+        detail.append("reboot_queued x%s" % rq)
+        # While Power_Log fw is behind min_fw, reboots are expected (OTA stress).
+        # Do not clear pending_ota — that blocks boot-time OTA on the next reset.
+        ota_pending = (
+            last_fw != "?"
+            and min_fw != "?"
+            and _version_lt(last_fw, min_fw)
+        )
+        if ota_pending or cfg.get("clear_ota_degraded") == "1":
+            detail.append("OTA pending (no clear_pending)")
+            last_recovery = prev.get("last_ota_recovery_utc")
+            do_recovery = True
+            if last_recovery:
+                try:
+                    t0 = datetime.fromisoformat(last_recovery.replace("Z", "+00:00"))
+                    do_recovery = (now - t0).total_seconds() > 300
+                except Exception:
+                    pass
+            if do_recovery:
+                from sheets_config_upsert import upsert_config_keys
+
+                sheets, sid = _sheets()
+                upsert_config_keys(
+                    sheets,
+                    sid,
+                    [
+                        ("clear_ota_degraded", "1", "boat_p2_watch: allow boot OTA after failures"),
+                        ("force_ota", "1", "boat_p2_watch: set pending_ota via settings"),
+                        ("cmd_clear_pending_ota", "", "boat_p2_watch: clear stale one-shot"),
+                    ],
+                )
+                prev["last_ota_recovery_utc"] = now.isoformat()
+                _log(
+                    "ACTION OTA pending loop: clear_ota_degraded + force_ota "
+                    "(fw %s min %s, reboot_queued x%s)"
+                    % (last_fw, min_fw, rq)
+                )
+        else:
+            detail.append("(recovery clear_pending)")
+            _maybe_clear_pending_ota(cfg, events, lifecycle_fw or last_fw, force=True)
     elif last_fw != "?" and min_fw != "?" and _version_lt(last_fw, min_fw):
         status = "ota_pending"
         detail.append("Power_Log fw %s < min %s" % (last_fw, min_fw))
@@ -203,8 +242,8 @@ def poll_once():
         status = "watch"
         detail.append("lifecycle_fw=%s log_fw=%s" % (lifecycle_fw, last_fw))
 
-    now = datetime.now(timezone.utc)
     stuck_since = prev.get("ota_stuck_since_utc")
+    last_ota_recovery_utc = prev.get("last_ota_recovery_utc")
     give_up_logged = prev.get("give_up_logged", False)
     has_file_done = any(
         len(r) > 3 and r[2] == "ota_lifecycle" and "phase=file_done" in str(r[3]) for r in events[-50:]
@@ -264,6 +303,7 @@ def poll_once():
                     "power_log_ts": last_ts,
                     "lifecycle_fw": lifecycle_fw,
                     "ota_stuck_since_utc": stuck_since,
+                    "last_ota_recovery_utc": last_ota_recovery_utc,
                     "give_up_logged": give_up_logged,
                     "summary": summary,
                 },
