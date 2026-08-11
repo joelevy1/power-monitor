@@ -17,7 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate version.py matches ota_manifest.json
-        run: python3 boat_monitor/validate_release.py
+        run: python3 boat_monitor/validate_release.py --enforce-master-policy
+      - name: Host unit tests
+        run: python3 boat_monitor/run_host_tests.py
       - name: Validate GitHub master manifest (push to master only)
         if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         run: python3 boat_monitor/validate_release.py --check-github

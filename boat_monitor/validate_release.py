@@ -115,6 +115,11 @@ def main(argv=None):
         metavar="N",
         help="Fail if manifest lists more than N files (stress: use 1)",
     )
+    parser.add_argument(
+        "--enforce-master-policy",
+        action="store_true",
+        help="Fail if manifest is not stress (1 file) or bootstrap (2) — blocks recovery on master",
+    )
     args = parser.parse_args(argv)
 
     errors = []
@@ -162,6 +167,16 @@ def main(argv=None):
     if args.max_files is not None and data.get("bundle"):
         print("FAIL: manifest has bundle (not allowed with --max-files)", file=sys.stderr)
         return 1
+
+    if args.enforce_master_policy:
+        from ota_stress_rules import master_manifest_policy_errors
+
+        policy_errs = master_manifest_policy_errors(data, len(files))
+        for e in policy_errs:
+            print("FAIL:", e, file=sys.stderr)
+        if policy_errs:
+            return 1
+        print("OK: master manifest policy (stress or bootstrap only)")
 
     total_bytes = 0
     for entry in files:

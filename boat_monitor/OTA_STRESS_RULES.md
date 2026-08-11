@@ -81,3 +81,38 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 | ENOMEM on boot OTA | Ship version-only manifest; never bump min_fw with multi-file master |
 | Stuck after USB | Sheet `auto_ota_on_boot=1`, power cycle |
 | At min_fw but still rebooting | Clear `force_ota` / `cmd_ota` on Config |
+
+## Enforced guardrails (code + CI)
+
+These are **hard gates** — scripts exit non-zero and CI fails if violated.
+
+### Manifest / master CDN
+
+| Gate | Where | Rule |
+|------|-------|------|
+| Master policy | `validate_release.py --enforce-master-policy`, CI `firmware-release.yml` | Master allows **1 file** (`manifest_kind: stress`) or **2 files** (`manifest_kind: bootstrap`, version.py + remote_boot_config.py only). **3+ files always fail** on master. |
+| Version-only stress | `ota_stress_rules.assert_version_only_manifest()` | Harness refuses to ship unless manifest is version.py only. |
+| Recovery manifests | `apply_recovery_manifest.py` | `--dock-fix`, `--recovery`, etc. require `--offline-recovery` (USB/Wi‑Fi bench). CI blocks push to master. |
+| Sheet ship | `apply_ship_config.py` | Runs `validate_release --check-github --enforce-master-policy` before setting `min_fw_version`. |
+
+### Sheet / device safety
+
+| Gate | Where | Rule |
+|------|-------|------|
+| Preflight | `ota_stress_preflight.py`, harness startup | Clears stale one-shots, sets recovery keys, checks manifest + watch. |
+| Reboot trap | `ota_stress_rules.detect_reboot_trap()` | ≥3 `reboot_queued` with no `boot_start` while device fw < target → **auto-pause** `min_fw` to device fw and abort. |
+| Boot start timeout | `ota_stress_harness._wait_for_target_fw()` | No `boot_start` in 20 min → pause `min_fw` to device fw and fail round. |
+| Round failure | harness | Any failed round pauses `min_fw` to current device fw (stops reboot storms). |
+| Watch required | `ota_stress_rules.assert_watch_running()` | Harness refuses to start without fresh `boat_p2_watch_state.json` (<120s); spawns watch if missing. |
+
+### Before any stress run
+
+```bash
+python3 boat_monitor/ota_stress_preflight.py --profile dock   # or underway
+python3 boat_monitor/boat_p2_watch.py &                        # if not already running
+python3 boat_monitor/ota_stress_harness.py --profile dock --rounds 6
+```
+
+### Tests
+
+`python3 boat_monitor/run_host_tests.py` includes `test_ota_stress_rules.py`.

@@ -3,6 +3,15 @@ set -euo pipefail
 cd /workspace
 export PYTHONUNBUFFERED=1
 
+python3 boat_monitor/ota_stress_preflight.py --profile dock || {
+  echo "Preflight failed — fix manifest/sheet/watch before stress"
+  exit 1
+}
+
+python3 boat_monitor/boat_p2_watch.py --interval 60 &
+WATCH_PID=$!
+trap 'kill $WATCH_PID 2>/dev/null || true' EXIT
+
 echo "Waiting for device fw >= 1.1.110 (dock-fix deploy)..."
 for i in $(seq 1 120); do
   fw=$(python3 -c "import sys; sys.path.insert(0,'boat_monitor'); from ota_stress_harness import _current_device_fw, _parse_ver_tuple; print(_current_device_fw() or '?')")
