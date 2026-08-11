@@ -7,6 +7,8 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 
 1. **Bootstrap once per campaign** — ship `version.py` + `remote_boot_config.py`
    (`--bootstrap-rules`, ~12 KB) so sheet `clear_boot_ota_backoff` works on-device.
+   **Cellular bootstrap often ENOMEM** on `remote_boot_config.py` (~12 KB heap alloc).
+   Use USB instead: `run_usb_bootstrap_rules.bat` (one file + patch-only).
    Version-only bumps **do not** update `remote_boot_config.py`; without bootstrap,
    backoff traps return after ~2 rounds.
 2. **Stress rounds ship version-only** — `ota_manifest.json` must contain only
