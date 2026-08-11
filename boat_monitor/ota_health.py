@@ -15,6 +15,19 @@ MIN_MEM_FREE_BOOT_OTA = 45000
 MIN_FS_FREE_BOOT_OTA = 120000
 
 
+def enomem_error(exc):
+    """True when an exception looks like MicroPython heap exhaustion."""
+    if exc is None:
+        return False
+    text = str(exc).lower()
+    return (
+        "enomem" in text
+        or "errno 12" in text
+        or "memory allocation" in text
+        or text.strip() in ("12", "28", "[errno 28]")
+    )
+
+
 def _snapshot():
     try:
         import ota_diag

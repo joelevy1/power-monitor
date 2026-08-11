@@ -45,15 +45,31 @@ def _in_progress_limit_s(mode):
     return auto_log.stale_reboot_threshold_s(mode)
 
 
-def _boot_log_wanted():
-    """One sheet row right after standby starts so boot is visible without waiting an interval."""
+def _firmware_upgrade_pending():
+    """True when sheet min_fw is ahead — skip heavy logs so boot OTA keeps a clean heap."""
     try:
         import remote_boot_config
 
         if remote_boot_config.should_run_boot_ota():
-            return False
+            return True
+        return remote_boot_config.needs_firmware_upgrade()
     except Exception:
-        pass
+        return False
+
+
+def _reboot_for_pending_upgrade(source):
+    try:
+        import ota_reboot
+
+        return ota_reboot.reboot_if_upgrade_pending(source=source)
+    except Exception:
+        return False
+
+
+def _boot_log_wanted():
+    """One sheet row right after standby starts so boot is visible without waiting an interval."""
+    if _firmware_upgrade_pending():
+        return False
     return True
 
 
@@ -99,6 +115,11 @@ def main():
     auto_log_failures = 0
     auto_log_started_ms = None
     device_id = "boat-p2"
+
+    if _firmware_upgrade_pending():
+        diag_log.log("standby: upgrade pending — skip boot_log, reboot for boot OTA")
+        if _reboot_for_pending_upgrade("standby_boot_skip_log"):
+            return
 
     if _boot_log_wanted():
         try:
@@ -223,6 +244,14 @@ def main():
             and since_attempt_s >= min_gap
             and auto_log.should_log_now(mode, since_success_s, last_auto_log_mode)
         ):
+            if _firmware_upgrade_pending():
+                diag_log.log(
+                    "standby: upgrade pending — skip auto_log, reboot for boot OTA"
+                )
+                if _reboot_for_pending_upgrade("standby_auto_log_skip"):
+                    continue
+                time.sleep(30)
+                continue
             last_auto_log_mode = mode
             auto_log_started_ms = now
             last_attempt_ms = now

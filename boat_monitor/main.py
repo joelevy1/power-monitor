@@ -138,12 +138,54 @@ try:
                 ota_error = preflight_reason or "preflight"
             else:
                 try:
+                    import gc
+
+                    gc.collect()
+                except Exception:
+                    pass
+                try:
                     success = ota.update(reboot=reboot, prefer_wifi=prefer_wifi, max_total_s=max_s)
                 except TypeError:
                     success = ota.update(reboot=reboot, prefer_wifi=prefer_wifi)
                 except Exception as exc:
                     ota_error = exc
                     success = False
+                # Dock Wi-Fi boot OTA can ENOMEM while cellular succeeds (underway stress).
+                if not success and prefer_wifi and ota_error:
+                    try:
+                        import ota_health
+
+                        if ota_health.enomem_error(ota_error):
+                            try:
+                                import diag_log
+
+                                diag_log.log(
+                                    "boot OTA Wi-Fi ENOMEM (%s) -> retry cellular"
+                                    % (str(ota_error)[:80],)
+                                )
+                            except Exception:
+                                pass
+                            try:
+                                import gc
+
+                                gc.collect()
+                            except Exception:
+                                pass
+                            try:
+                                success = ota.update(
+                                    reboot=reboot, prefer_wifi=False, max_total_s=max_s
+                                )
+                                if success:
+                                    ota_error = None
+                            except TypeError:
+                                success = ota.update(reboot=reboot, prefer_wifi=False)
+                                if success:
+                                    ota_error = None
+                            except Exception as exc2:
+                                ota_error = exc2
+                                success = False
+                    except ImportError:
+                        pass
                 if ota_error:
                     try:
                         import ota_health
