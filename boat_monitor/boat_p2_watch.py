@@ -215,13 +215,15 @@ def poll_once():
                     sid,
                     [
                         ("clear_ota_degraded", "1", "boat_p2_watch: allow boot OTA after failures"),
-                        ("force_ota", "1", "boat_p2_watch: set pending_ota via settings"),
+                        ("clear_boot_ota_backoff", "1", "boat_p2_watch: clear flash backoff trap"),
+                        ("auto_ota_on_boot", "1", "boat_p2_watch: enable boot OTA"),
+                        ("force_ota", "", "boat_p2_watch: avoid reboot storm"),
                         ("cmd_clear_pending_ota", "", "boat_p2_watch: clear stale one-shot"),
                     ],
                 )
                 prev["last_ota_recovery_utc"] = now.isoformat()
                 _log(
-                    "ACTION OTA pending loop: clear_ota_degraded + force_ota "
+                    "ACTION OTA pending loop: clear_ota_degraded + clear_boot_ota_backoff "
                     "(fw %s min %s, reboot_queued x%s)"
                     % (last_fw, min_fw, rq)
                 )
