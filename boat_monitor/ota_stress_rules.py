@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent
 
 # Cellular boot OTA on Pico W: version-only manifest (~19 bytes) is the stress default.
 MAX_STRESS_MANIFEST_FILES = 1
+MAX_BOOTSTRAP_MANIFEST_FILES = 2
 MAX_STRESS_BUNDLE_BYTES = 0  # no bundle during stress
 
 # Round fails if device stays below min_fw with no boot_start (flash backoff trap).

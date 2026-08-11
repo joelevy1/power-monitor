@@ -5,7 +5,11 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 
 ## Manifest rules
 
-1. **Stress ships version-only** — `ota_manifest.json` must contain only
+1. **Bootstrap once per campaign** — ship `version.py` + `remote_boot_config.py`
+   (`--bootstrap-rules`, ~12 KB) so sheet `clear_boot_ota_backoff` works on-device.
+   Version-only bumps **do not** update `remote_boot_config.py`; without bootstrap,
+   backoff traps return after ~2 rounds.
+2. **Stress rounds ship version-only** — `ota_manifest.json` must contain only
    `version.py` (~19 bytes). No `bundle`, no multi-file manifests on cellular
    boot OTA.
 2. **`validate_release.py --max-files 1`** must pass before any stress ship or

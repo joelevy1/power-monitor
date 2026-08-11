@@ -351,30 +351,38 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
     return run_report
 
 
-def _ship_version(new_ver: str) -> bool:
+def _ship_version(new_ver: str, manifest_mode: str = "version-only") -> bool:
     vpath = ROOT / "version.py"
     mpath = ROOT / "ota_manifest.json"
     vpath.write_text('VERSION = "%s"\n' % new_ver, encoding="utf-8")
     mtext = mpath.read_text(encoding="utf-8")
     mtext = re.sub(r'"version":\s*"[^"]+"', '"version": "%s"' % new_ver, mtext, count=1)
     mpath.write_text(mtext, encoding="utf-8")
+    if manifest_mode == "bootstrap-rules":
+        manifest_arg = "--bootstrap-rules"
+        max_files = "2"
+        manifest_check = None
+    else:
+        from ota_stress_rules import assert_version_only_manifest
+
+        manifest_arg = "--version-only"
+        max_files = "1"
+        manifest_check = assert_version_only_manifest
     fp = subprocess.run(
-        [sys.executable, str(ROOT / "apply_recovery_manifest.py"), "--version-only"],
+        [sys.executable, str(ROOT / "apply_recovery_manifest.py"), manifest_arg],
         cwd=str(ROOT),
         check=False,
     )
     if fp.returncode != 0:
-        print("WARN: version-only manifest step failed")
-    try:
-        from ota_stress_rules import assert_version_only_manifest
-
-        assert_version_only_manifest()
-    except SystemExit as exc:
-        print("FAIL:", exc)
-        return False
-    # Patch stress: version.py only (~19 bytes) — full manifests ENOMEM on cellular boot OTA.
+        print("WARN: manifest step failed (%s)" % manifest_arg)
+    if manifest_check:
+        try:
+            manifest_check()
+        except SystemExit as exc:
+            print("FAIL:", exc)
+            return False
     r = subprocess.run(
-        [sys.executable, str(ROOT / "validate_release.py"), "--max-files", "1"],
+        [sys.executable, str(ROOT / "validate_release.py"), "--max-files", max_files],
         cwd=str(ROOT),
     )
     if r.returncode != 0:
@@ -440,6 +448,37 @@ def _set_min_fw_only(ver: str):
     print("CONFIG min_fw_version =", ver)
 
 
+ROUND_COOLDOWN_S = 90
+
+
+def _bootstrap_rules_if_needed(dry_run: bool) -> bool:
+    """Ship remote_boot_config.py once so version-only rounds can self-heal backoff."""
+    dev_fw = _current_device_fw()
+    if not dev_fw:
+        print("Bootstrap-rules skip: no device fw on sheet")
+        return True
+    target = _bump_patch(dev_fw)
+    print(
+        "Bootstrap-rules: ship %s with version.py + remote_boot_config.py (device was %s)"
+        % (target, dev_fw)
+    )
+    if dry_run:
+        return True
+    pl_before, _ = _fetch_power_tail()
+    if not _ship_version(target, manifest_mode="bootstrap-rules"):
+        print("FAIL: bootstrap-rules ship", target)
+        return False
+    rep = _wait_for_target_fw(target, pl_before, timeout_s=2400)
+    print("BOOTSTRAP-RULES RESULT:", json.dumps(rep, indent=2))
+    if not rep.get("success"):
+        print(
+            "WARN: bootstrap-rules did not confirm — continue with version-only "
+            "(USB: cp remote_boot_config.py + patch-only --enable-boot-ota)"
+        )
+    time.sleep(ROUND_COOLDOWN_S)
+    return True
+
+
 def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int):
     start_ver = _read_local_version()
     print("Local master version:", start_ver)
@@ -460,6 +499,8 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         dev_fw = _current_device_fw()
         if device_ahead_of_repo(dev_fw, start_ver):
             print("WARN: device fw %s ahead of repo %s" % (dev_fw, start_ver))
+        if not _bootstrap_rules_if_needed(dry_run):
+            return 1
     if bootstrap and not dry_run:
         if not _wait_until_fw_at_least(start_ver, timeout_s=bootstrap_timeout_s):
             return 1
@@ -498,6 +539,9 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         if not rep.get("success"):
             print("Stopping stress pass after failed round.")
             break
+        if not dry_run and rep.get("success"):
+            print("Round cooldown %ds before next ship..." % ROUND_COOLDOWN_S)
+            time.sleep(ROUND_COOLDOWN_S)
     payload = _write_results(REPO / "ota_stress_results.json", start_ver, n, results, final=True)
     print("\nWrote", REPO / "ota_stress_results.json")
     print("SUMMARY:", json.dumps(payload["summary"], indent=2))

@@ -53,6 +53,11 @@ RAM_FIX_PATHS = (
 
 VERSION_ONLY_PATHS = ("version.py",)
 
+BOOTSTRAP_RULES_PATHS = (
+    "version.py",
+    "remote_boot_config.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -101,7 +106,18 @@ def main(argv=None):
         action="store_true",
         help="1-file manifest (version.py only) for patch stress on cellular",
     )
+    p.add_argument(
+        "--bootstrap-rules",
+        action="store_true",
+        help="2-file manifest: version.py + remote_boot_config.py (once per stress campaign)",
+    )
     args = p.parse_args(argv)
+    if args.bootstrap_rules:
+        return _write_manifest(
+            BOOTSTRAP_RULES_PATHS,
+            "Bootstrap OTA: version.py + remote_boot_config.py (sheet backoff self-heal).",
+            include_bundle=False,
+        )
     if args.version_only:
         return _write_manifest(
             VERSION_ONLY_PATHS,
