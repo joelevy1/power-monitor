@@ -72,7 +72,11 @@ def apply_settings(settings):
     if "ota_manifest_profile" in settings and str(settings.get("ota_manifest_profile")).strip() != "":
         data["ota_manifest_profile"] = str(settings["ota_manifest_profile"]).strip().lower()
         applied.append("ota_manifest_profile=%s" % data["ota_manifest_profile"])
-    if _truthy(settings.get("cmd_ota_force")):
+    if _truthy(settings.get("clear_boot_ota_backoff")):
+        data.pop("boot_ota_backoff_until", None)
+        data.pop("boot_ota_skip_remaining", None)
+        applied.append("clear_boot_ota_backoff=1")
+    if _truthy(settings.get("cmd_ota_force")) or _truthy(settings.get("ota_force")):
         data["cmd_ota_force"] = True
         applied.append("cmd_ota_force=1")
     if _truthy(settings.get("cmd_clear_ota_degraded")) or _truthy(
@@ -86,6 +90,8 @@ def apply_settings(settings):
             data.pop("ota_degraded", None)
             data["boot_ota_fail_count"] = 0
             data.pop("cmd_ota_force", None)
+        data.pop("boot_ota_backoff_until", None)
+        data.pop("boot_ota_skip_remaining", None)
         applied.append("clear_ota_degraded=1")
     if "keep_modem_awake_underway" in settings and str(
         settings.get("keep_modem_awake_underway")
@@ -204,13 +210,35 @@ def clear_pending_ota():
         save(data)
 
 
-def set_boot_ota_backoff(seconds=600):
-    """Skip boot-time OTA until backoff expires (RAM/flash recovery)."""
+def set_boot_ota_backoff(seconds=600, skip_boots=None):
+    """Skip boot-time OTA until backoff expires or skip_boots exhausted.
+
+    Uses boot_ota_skip_remaining (RTC-safe) plus optional wall-clock cap.
+    """
     try:
         import time
 
         data = load()
+        if skip_boots is None:
+            skip_boots = max(1, min(6, int(seconds) // 120))
+        data["boot_ota_skip_remaining"] = max(1, int(skip_boots))
         data["boot_ota_backoff_until"] = time.time() + max(60, int(seconds))
+        save(data)
+    except Exception:
+        pass
+
+
+def _consume_boot_ota_skip():
+    data = load()
+    remaining = data.get("boot_ota_skip_remaining")
+    if remaining is None:
+        return
+    try:
+        n = int(remaining) - 1
+        if n <= 0:
+            data.pop("boot_ota_skip_remaining", None)
+        else:
+            data["boot_ota_skip_remaining"] = n
         save(data)
     except Exception:
         pass
@@ -218,13 +246,34 @@ def set_boot_ota_backoff(seconds=600):
 
 def boot_ota_backoff_active():
     data = load()
+    remaining = data.get("boot_ota_skip_remaining")
+    if remaining is not None:
+        try:
+            if int(remaining) > 0:
+                _consume_boot_ota_skip()
+                return True
+            data.pop("boot_ota_skip_remaining", None)
+            save(data)
+        except Exception:
+            pass
     until = data.get("boot_ota_backoff_until")
     if not until:
         return False
     try:
         import time
 
-        if time.time() < float(until):
+        now = time.time()
+        until_f = float(until)
+        if now < until_f:
+            # Pico RTC resets on machine.reset(); absolute until can block forever.
+            try:
+                if data.get("pending_ota") and needs_firmware_upgrade():
+                    if until_f - now > 1200:
+                        data.pop("boot_ota_backoff_until", None)
+                        save(data)
+                        return False
+            except Exception:
+                pass
             return True
         data.pop("boot_ota_backoff_until", None)
         save(data)

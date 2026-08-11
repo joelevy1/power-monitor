@@ -214,8 +214,14 @@ try:
                         "28",
                         "[Errno 28]",
                     ):
-                        remote_boot_config.set_boot_ota_backoff(900)
-                        remote_boot_config.clear_pending_ota()
+                        try:
+                            data = remote_boot_config.load()
+                            data["ota_manifest_profile"] = "micro"
+                            remote_boot_config.save(data)
+                        except Exception:
+                            pass
+                        remote_boot_config.set_boot_ota_backoff(300, skip_boots=2)
+                        remote_boot_config.set_pending_ota(True)
                     else:
                         remote_boot_config.set_pending_ota(True)
                     try:
