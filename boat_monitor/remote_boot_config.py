@@ -75,7 +75,7 @@ def apply_settings(settings):
     if _truthy(settings.get("clear_boot_ota_backoff")):
         data.pop("boot_ota_backoff_until", None)
         applied.append("clear_boot_ota_backoff=1")
-    if _truthy(settings.get("cmd_ota_force")):
+    if _truthy(settings.get("cmd_ota_force")) or _truthy(settings.get("ota_force")):
         data["cmd_ota_force"] = True
         applied.append("cmd_ota_force=1")
     if _truthy(settings.get("cmd_clear_ota_degraded")) or _truthy(
@@ -89,6 +89,7 @@ def apply_settings(settings):
             data.pop("ota_degraded", None)
             data["boot_ota_fail_count"] = 0
             data.pop("cmd_ota_force", None)
+        data.pop("boot_ota_backoff_until", None)
         applied.append("clear_ota_degraded=1")
     if "keep_modem_awake_underway" in settings and str(
         settings.get("keep_modem_awake_underway")
