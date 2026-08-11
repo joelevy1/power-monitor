@@ -121,6 +121,20 @@ def _lifecycle_since(ev_rows):
     return items
 
 
+def _boot_ota_success_for_target(phases, target_fw: str):
+    """boot_ota row with outcome=success and fw_target matching ship target."""
+    for item in reversed(phases or []):
+        if item.get("event") != "boot_ota":
+            continue
+        outcome = str(item.get("outcome") or item.get("phase") or "")
+        if outcome != "success":
+            continue
+        tft = str(item.get("fw_target") or item.get("target_fw") or "")
+        if tft == target_fw:
+            return item
+    return None
+
+
 def _phase_key(item):
     return (
         item.get("event"),
@@ -270,12 +284,13 @@ def _write_results(path, start_ver, n, results, final=False):
 
 
 def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 2400):
-    from ota_stress_rules import BOOT_START_TIMEOUT_S
+    from ota_stress_rules import BOOT_START_TIMEOUT_S, POST_OTA_POWER_LOG_GRACE_S
 
     start = time.time()
     run_report = {"target": target_fw, "phases": [], "phase_keys": set(), "success": False}
     saw_boot_start = False
     boot_start_deadline = start + BOOT_START_TIMEOUT_S
+    ota_success_at = None
 
     while time.time() - start < timeout_s:
         count, tail = _fetch_power_tail()
@@ -301,6 +316,13 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
                     if ph == "boot_start":
                         saw_boot_start = True
         life = [p for p in run_report["phases"] if p.get("event") in ("ota_lifecycle", "boot_ota")]
+        ota_ok = _boot_ota_success_for_target(life, target_fw)
+        if ota_ok and ota_success_at is None:
+            ota_success_at = time.time()
+            print(
+                "  … boot_ota success for %s (waiting Power_Log confirm, grace %ds)"
+                % (target_fw, POST_OTA_POWER_LOG_GRACE_S)
+            )
 
         confirmed_row = None
         if tail and tail[-1].get("fw") == target_fw:
@@ -310,11 +332,25 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
                 if row.get("fw") == target_fw:
                     confirmed_row = row
                     break
-        # Prefer a new Power_Log row after ship; accept latest fw match if sheet already shows target.
-        if confirmed_row and (count > baseline_pl_rows or (tail and tail[-1].get("fw") == target_fw)):
+        pl_confirmed = confirmed_row and (
+            count > baseline_pl_rows
+            or (tail and tail[-1].get("fw") == target_fw)
+            or ota_ok
+        )
+        ota_grace_expired = (
+            ota_success_at is not None
+            and (time.time() - ota_success_at) >= POST_OTA_POWER_LOG_GRACE_S
+        )
+        if pl_confirmed or ota_grace_expired:
             run_report["success"] = True
-            run_report["confirmed_fw"] = confirmed_row["fw"]
-            run_report["confirmed_ts"] = confirmed_row["ts"]
+            run_report["confirmed_fw"] = (
+                confirmed_row["fw"] if confirmed_row else target_fw
+            )
+            run_report["confirmed_ts"] = (
+                confirmed_row["ts"] if confirmed_row else "boot_ota_only"
+            )
+            if ota_ok and not confirmed_row:
+                run_report["confirmed_via"] = "boot_ota"
             run_report["wall_elapsed_s"] = int(time.time() - start)
             run_report["elapsed_s"] = run_report["wall_elapsed_s"]
             run_report.update(_summarize_lifecycle(life, target_fw))
@@ -325,9 +361,19 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
 
         if tail:
             cur_fw = tail[-1].get("fw") or "?"
+            ota_note = ""
+            if ota_success_at:
+                ota_note = " ota_ok+%ds" % int(time.time() - ota_success_at)
             print(
-                "  … waiting fw=%s (last %s @ %s) +%ds boot_start=%s"
-                % (target_fw, cur_fw, tail[-1].get("ts"), int(time.time() - start), saw_boot_start)
+                "  … waiting fw=%s (last %s @ %s) +%ds boot_start=%s%s"
+                % (
+                    target_fw,
+                    cur_fw,
+                    tail[-1].get("ts"),
+                    int(time.time() - start),
+                    saw_boot_start,
+                    ota_note,
+                )
             )
             if (
                 not saw_boot_start
@@ -522,6 +568,10 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         print("ROUND %d/%d → target %s @ %s" % (i + 1, n, ver, datetime.now(timezone.utc).isoformat()))
         print("=" * 70)
         if not dry_run:
+            sheets, sid = _sheets()
+            from ota_stress_rules import preflight_sheet_or_exit
+
+            preflight_sheet_or_exit(sheets, sid)
             if not _ship_version(ver):
                 print("FAIL: ship", ver)
                 results.append({"round": i + 1, "target": ver, "error": "ship_failed"})

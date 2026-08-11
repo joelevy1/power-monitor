@@ -24,6 +24,9 @@ MAX_STRESS_BUNDLE_BYTES = 0  # no bundle during stress
 # Round fails if device stays below min_fw with no boot_start (flash backoff trap).
 BOOT_START_TIMEOUT_S = 1200
 
+# After boot_ota outcome=success, Power_Log may lag reboot by several log cycles.
+POST_OTA_POWER_LOG_GRACE_S = 900
+
 # Sheet keys that must be empty before stress / after ship (one-shot storms).
 STALE_SHEET_KEYS = (
     "force_ota",

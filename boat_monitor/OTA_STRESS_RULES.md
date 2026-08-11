@@ -56,6 +56,10 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 2. Harness aborts a round if no `boot_start` within 20 minutes while device
    remains below `min_fw` (likely flash backoff — USB patch-only).
 3. Harness bootstrap uses sheet preflight, not bare `cmd_ota=1`.
+4. Harness accepts `boot_ota outcome=success` as round pass if Power_Log lags
+   reboot (grace `POST_OTA_POWER_LOG_GRACE_S`, default 15 min).
+5. Sheet preflight runs before **each** round ship (not only at startup).
+6. `ota_stress_monitor.py` polls sheet + harness log every 5 min during runs.
 
 ## Quick recovery
 
