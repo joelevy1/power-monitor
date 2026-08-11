@@ -14,6 +14,12 @@ For **OTA stress recovery** (device behind `min_fw`), use `--enable-boot-ota` so
 py boat_monitor\usb_recovery_push.py --patch-only --port COM7 --enable-boot-ota
 ```
 
+Or use the standalone script (works on older git pulls):
+
+```bat
+boat_monitor\run_usb_enable_boot_ota.bat
+```
+
 ```bat
 cd path\to\power-monitor
 git pull
