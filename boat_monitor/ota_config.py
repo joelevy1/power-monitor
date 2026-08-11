@@ -2,6 +2,11 @@ OTA_MANIFEST_URL = (
     "https://raw.githubusercontent.com/joelevy1/power-monitor/"
     "master/boat_monitor/ota_manifest.json"
 )
+# When raw.githubusercontent.com lags master, Pico can still read current manifest/files.
+OTA_MANIFEST_JSdelivr_URL = (
+    "https://cdn.jsdelivr.net/gh/joelevy1/power-monitor@master/"
+    "boat_monitor/ota_manifest.json"
+)
 
 OTA_APN = "iot.t-mobile.com"
 OTA_CONTEXT_ID = 1

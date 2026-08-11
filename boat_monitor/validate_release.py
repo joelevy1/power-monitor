@@ -23,6 +23,10 @@ VERSION_PATH = ROOT / "version.py"
 MANIFEST_URL = (
     "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_manifest.json"
 )
+MANIFEST_API_URL = (
+    "https://api.github.com/repos/joelevy1/power-monitor/contents/"
+    "boat_monitor/ota_manifest.json?ref=master"
+)
 
 
 def _read_local_version():
@@ -174,25 +178,46 @@ def main(argv=None):
         return 1
 
     if args.check_github:
+        remote_ver = ""
         try:
             req = urllib.request.Request(MANIFEST_URL, headers={"User-Agent": "validate_release"})
             with urllib.request.urlopen(req, timeout=30) as resp:
                 remote = json.loads(resp.read().decode("utf-8"))
+            remote_ver = str(remote.get("version", "")).strip()
         except Exception as exc:
-            print("FAIL: could not fetch GitHub master manifest:", exc, file=sys.stderr)
-            return 1
-        remote_ver = str(remote.get("version", "")).strip()
+            print("WARN: raw manifest fetch failed:", exc, file=sys.stderr)
         if remote_ver != manifest_ver:
-            print(
-                "FAIL: GitHub master manifest version=%s != local %s (push/merge master first)"
-                % (remote_ver, manifest_ver),
-                file=sys.stderr,
-            )
+            api_ver = ""
+            try:
+                req = urllib.request.Request(
+                    MANIFEST_API_URL,
+                    headers={
+                        "User-Agent": "validate_release",
+                        "Accept": "application/vnd.github.raw",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    remote = json.loads(resp.read().decode("utf-8"))
+                api_ver = str(remote.get("version", "")).strip()
+            except Exception as exc:
+                print("WARN: GitHub API manifest fetch failed:", exc, file=sys.stderr)
+            if api_ver == manifest_ver and remote_ver != manifest_ver:
+                print(
+                    "FAIL: raw CDN manifest=%s but GitHub API=%s (Pico uses raw; wait for CDN)"
+                    % (remote_ver or "?", api_ver),
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "FAIL: GitHub master manifest version=%s != local %s (push/merge master first)"
+                    % (remote_ver or api_ver or "?", manifest_ver),
+                    file=sys.stderr,
+                )
             return 1
 
     print("OK: release %s (manifest + version.py)" % local_ver)
     if args.check_github:
-        print("OK: GitHub master manifest matches")
+        print("OK: GitHub raw master manifest matches")
     return 0
 
 
