@@ -62,6 +62,22 @@ def reboot_if_upgrade_pending(source=""):
             except Exception:
                 pass
             return False
+        try:
+            import remote_boot_config
+
+            if remote_boot_config.boot_ota_backoff_active():
+                try:
+                    import diag_log
+
+                    diag_log.log(
+                        "reboot_if_upgrade_pending skipped boot_ota_backoff source=%s"
+                        % source
+                    )
+                except Exception:
+                    pass
+                return False
+        except Exception:
+            pass
     except ImportError:
         pass
     except Exception:

@@ -187,8 +187,30 @@ def poll_once():
     detail = []
     if rq >= 4:
         status = "reboot_loop"
-        detail.append("reboot_queued x%s (recovery OTA / clear_pending)" % rq)
-        _maybe_clear_pending_ota(cfg, events, lifecycle_fw or last_fw, force=True)
+        detail.append("reboot_queued x%s" % rq)
+        # While Power_Log fw is behind min_fw, reboots are expected (OTA stress).
+        # Do not clear pending_ota — that blocks boot-time OTA on the next reset.
+        if last_fw != "?" and min_fw != "?" and _version_lt(last_fw, min_fw):
+            detail.append("OTA pending (no clear_pending)")
+            from sheets_config_upsert import upsert_config_keys
+
+            sheets, sid = _sheets()
+            upsert_config_keys(
+                sheets,
+                sid,
+                [
+                    ("cmd_clear_ota_degraded", "1", "boat_p2_watch: allow boot OTA after failures"),
+                    ("cmd_ota_force", "1", "boat_p2_watch: one-shot boot OTA enable"),
+                ],
+            )
+            _log(
+                "ACTION OTA pending loop: set cmd_clear_ota_degraded + cmd_ota_force "
+                "(fw %s < min %s, reboot_queued x%s)"
+                % (last_fw, min_fw, rq)
+            )
+        else:
+            detail.append("(recovery clear_pending)")
+            _maybe_clear_pending_ota(cfg, events, lifecycle_fw or last_fw, force=True)
     elif last_fw != "?" and min_fw != "?" and _version_lt(last_fw, min_fw):
         status = "ota_pending"
         detail.append("Power_Log fw %s < min %s" % (last_fw, min_fw))

@@ -236,6 +236,20 @@ def run_actions(actions, prefer_wifi=False):
                     diag_log.log("run_actions OTA -> immediate reboot (cellular path)")
                 except Exception:
                     pass
+            try:
+                import remote_boot_config
+
+                if remote_boot_config.boot_ota_backoff_active():
+                    print("remote_control: defer reboot — boot_ota_backoff active")
+                    try:
+                        import diag_log
+
+                        diag_log.log("run_actions OTA reboot deferred (backoff)")
+                    except Exception:
+                        pass
+                    continue
+            except Exception:
+                pass
 
             print("remote_control: reboot for boot-time OTA (pending_ota set)")
             try:
