@@ -342,13 +342,13 @@ def _ship_version(new_ver: str) -> bool:
     mtext = re.sub(r'"version":\s*"[^"]+"', '"version": "%s"' % new_ver, mtext, count=1)
     mpath.write_text(mtext, encoding="utf-8")
     fp = subprocess.run(
-        [sys.executable, str(ROOT / "apply_recovery_manifest.py"), "--ram-fix"],
+        [sys.executable, str(ROOT / "apply_recovery_manifest.py"), "--recovery"],
         cwd=str(ROOT),
         check=False,
     )
     if fp.returncode != 0:
-        print("WARN: ram-fix manifest step failed")
-    # RAM-safe stress: per-file cellular OTA only (no .bmota — boot OTA OOM on ~190KB bundle).
+        print("WARN: recovery manifest step failed")
+    # Cellular boot OTA: 9-file recovery manifest (no cellular.py / ota_trace — avoids ENOMEM).
     r = subprocess.run([sys.executable, str(ROOT / "validate_release.py")], cwd=str(ROOT))
     if r.returncode != 0:
         return False
