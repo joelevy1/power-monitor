@@ -88,6 +88,36 @@ def apply_commands_payload(payload, device_id=""):
         elif key in ("reboot", "reset"):
             actions.append("reboot")
             applied.append("one_shot=reboot")
+        elif key in ("clear_ota_degraded",):
+            try:
+                import ota_health
+
+                ota_health.clear_degraded()
+                applied.append("clear_ota_degraded=1")
+            except Exception as exc:
+                print("remote_control: clear_ota_degraded:", exc)
+        elif key in ("ota_force", "clear_boot_ota_backoff"):
+            try:
+                import remote_boot_config
+
+                data = remote_boot_config.load()
+                if key == "ota_force":
+                    data["cmd_ota_force"] = True
+                    applied.append("cmd_ota_force=1")
+                else:
+                    data.pop("boot_ota_backoff_until", None)
+                    applied.append("clear_boot_ota_backoff=1")
+                remote_boot_config.save(data)
+            except Exception as exc:
+                print("remote_control: ota_force/backoff:", exc)
+        elif key in ("clear_pending_ota",):
+            try:
+                import remote_boot_config
+
+                remote_boot_config.clear_pending_ota()
+                applied.append("clear_pending_ota=1")
+            except Exception as exc:
+                print("remote_control: clear_pending_ota:", exc)
 
     min_fw = settings.get("min_fw_version") or settings.get("target_fw_version")
     if min_fw:

@@ -72,7 +72,10 @@ def apply_settings(settings):
     if "ota_manifest_profile" in settings and str(settings.get("ota_manifest_profile")).strip() != "":
         data["ota_manifest_profile"] = str(settings["ota_manifest_profile"]).strip().lower()
         applied.append("ota_manifest_profile=%s" % data["ota_manifest_profile"])
-    if _truthy(settings.get("cmd_ota_force")):
+    if _truthy(settings.get("clear_boot_ota_backoff")):
+        data.pop("boot_ota_backoff_until", None)
+        applied.append("clear_boot_ota_backoff=1")
+    if _truthy(settings.get("cmd_ota_force")) or _truthy(settings.get("ota_force")):
         data["cmd_ota_force"] = True
         applied.append("cmd_ota_force=1")
     if _truthy(settings.get("cmd_clear_ota_degraded")) or _truthy(
@@ -86,6 +89,7 @@ def apply_settings(settings):
             data.pop("ota_degraded", None)
             data["boot_ota_fail_count"] = 0
             data.pop("cmd_ota_force", None)
+        data.pop("boot_ota_backoff_until", None)
         applied.append("clear_ota_degraded=1")
     if "keep_modem_awake_underway" in settings and str(
         settings.get("keep_modem_awake_underway")
@@ -224,7 +228,20 @@ def boot_ota_backoff_active():
     try:
         import time
 
-        if time.time() < float(until):
+        now = time.time()
+        until_f = float(until)
+        if now < until_f:
+            # Pico RTC often resets on machine.reset() while backoff_until is absolute.
+            # If an upgrade is pending, do not block boot OTA for more than ~20 minutes
+            # of real retries (sheet min_fw ahead of version.py).
+            try:
+                if data.get("pending_ota") and needs_firmware_upgrade():
+                    if until_f - now > 1200:
+                        data.pop("boot_ota_backoff_until", None)
+                        save(data)
+                        return False
+            except Exception:
+                pass
             return True
         data.pop("boot_ota_backoff_until", None)
         save(data)
