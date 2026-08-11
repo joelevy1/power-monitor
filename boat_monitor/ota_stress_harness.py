@@ -525,14 +525,23 @@ def _bootstrap_rules_if_needed(dry_run: bool) -> bool:
     return True
 
 
-def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int):
+def run_rounds(
+    n: int,
+    dry_run: bool,
+    bootstrap: bool,
+    bootstrap_timeout_s: int,
+    profile: str = "underway",
+    round_timeout_s: int = 2400,
+    reset_v50: bool = False,
+):
     start_ver = _read_local_version()
-    print("Local master version:", start_ver)
+    print("Local master version:", start_ver, "profile:", profile)
     if not dry_run:
         from ota_stress_rules import (
             assert_version_only_manifest,
             device_ahead_of_repo,
             preflight_sheet_or_exit,
+            reset_v50_full,
         )
 
         try:
@@ -541,7 +550,16 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
             print("FAIL:", exc)
             return 1
         sheets, sid = _sheets()
-        preflight_sheet_or_exit(sheets, sid)
+        if reset_v50:
+            reset_v50_full(sheets, sid)
+        preflight_sheet_or_exit(sheets, sid, profile=profile)
+        upsert_clear_pending = [
+            ("cmd_clear_pending_ota", "1", "ota_stress: clear stale pending_ota"),
+            ("clear_pending_ota", "1", "ota_stress: clear stale pending_ota"),
+        ]
+        from sheets_config_upsert import upsert_config_keys
+
+        upsert_config_keys(sheets, sid, upsert_clear_pending)
         dev_fw = _current_device_fw()
         if device_ahead_of_repo(dev_fw, start_ver):
             print("WARN: device fw %s ahead of repo %s" % (dev_fw, start_ver))
@@ -571,7 +589,7 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
             sheets, sid = _sheets()
             from ota_stress_rules import preflight_sheet_or_exit
 
-            preflight_sheet_or_exit(sheets, sid)
+            preflight_sheet_or_exit(sheets, sid, profile=profile)
             if not _ship_version(ver):
                 print("FAIL: ship", ver)
                 results.append({"round": i + 1, "target": ver, "error": "ship_failed"})
@@ -579,8 +597,9 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         else:
             _set_min_fw_only(ver)
         pl_before, _ = _fetch_power_tail()
-        rep = _wait_for_target_fw(ver, pl_before, timeout_s=2400)
+        rep = _wait_for_target_fw(ver, pl_before, timeout_s=round_timeout_s)
         rep["round"] = i + 1
+        rep["profile"] = profile
         results.append(rep)
         print("ROUND RESULT:", json.dumps(rep, indent=2))
         _write_results(REPO / "ota_stress_results.json", start_ver, n, results, final=False)
@@ -624,16 +643,41 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="only bump min_fw on sheet, no git ship")
     p.add_argument("--no-bootstrap", action="store_true", help="skip wait for device fw >= repo VERSION")
     p.add_argument("--bootstrap-timeout", type=int, default=7200, help="seconds to wait for bootstrap (default 2h)")
+    p.add_argument(
+        "--profile",
+        choices=("underway", "dock"),
+        default="underway",
+        help="underway=cellular key-on stress; dock=standby Wi-Fi-first",
+    )
+    p.add_argument(
+        "--round-timeout",
+        type=int,
+        default=None,
+        help="seconds to wait per round (default 2400 underway, 3600 dock)",
+    )
+    p.add_argument(
+        "--reset-v50",
+        action="store_true",
+        help="set boat-p2:v50_full_at_utc now (bank 100%% baseline)",
+    )
     p.add_argument("--watch", action="store_true")
     args = p.parse_args()
     if args.watch:
         watch()
         return 0
+    from ota_stress_rules import DOCK_ROUND_TIMEOUT_S
+
+    round_timeout = args.round_timeout
+    if round_timeout is None:
+        round_timeout = DOCK_ROUND_TIMEOUT_S if args.profile == "dock" else 2400
     return run_rounds(
         args.rounds,
         args.dry_run,
         bootstrap=not args.no_bootstrap,
         bootstrap_timeout_s=args.bootstrap_timeout,
+        profile=args.profile,
+        round_timeout_s=round_timeout,
+        reset_v50=args.reset_v50,
     )
 
 

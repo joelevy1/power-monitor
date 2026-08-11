@@ -27,6 +27,9 @@ BOOT_START_TIMEOUT_S = 1200
 # After boot_ota outcome=success, Power_Log may lag reboot by several log cycles.
 POST_OTA_POWER_LOG_GRACE_S = 900
 
+# Dock / standby (switch+key off): ~5 min log interval + OTA reboot time.
+DOCK_ROUND_TIMEOUT_S = 3600
+
 # Sheet keys that must be empty before stress / after ship (one-shot storms).
 STALE_SHEET_KEYS = (
     "force_ota",
@@ -41,6 +44,13 @@ STRESS_RECOVERY_KEYS = (
     ("clear_ota_degraded", "1", "ota_stress_rules: allow boot OTA"),
     ("clear_boot_ota_backoff", "1", "ota_stress_rules: clear flash backoff"),
     ("auto_ota_on_boot", "1", "ota_stress_rules: boot OTA enabled"),
+)
+
+# Dock / standby profile (switch+key off): Wi-Fi-first logging and boot OTA.
+DOCK_STRESS_KEYS = (
+    ("boot_ota_prefer_wifi", "1", "ota_stress_rules: dock Wi-Fi-first OTA"),
+    ("boat-p2:boot_ota_prefer_wifi", "1", "ota_stress_rules: dock Wi-Fi-first OTA"),
+    ("dock_mode", "home", "ota_stress_rules: dock standby profile"),
 )
 
 
@@ -97,23 +107,44 @@ def read_config_map(sheets, spreadsheet_id):
     return out
 
 
-def preflight_sheet(sheets, spreadsheet_id, note_prefix="ota_stress_rules"):
+def preflight_sheet(sheets, spreadsheet_id, note_prefix="ota_stress_rules", profile="underway"):
     """
     Normalize Config for a stress pass. Returns list of stale keys that were set.
+    profile: 'underway' (cellular-first key on) or 'dock' (Wi-Fi-first standby).
     """
     from sheets_config_upsert import upsert_config_keys
 
     cfg = read_config_map(sheets, spreadsheet_id)
     stale = [k for k in STALE_SHEET_KEYS if _truthy(cfg.get(k))]
     rows = list(STRESS_RECOVERY_KEYS)
+    if profile == "dock":
+        rows.extend(DOCK_STRESS_KEYS)
     for key in STALE_SHEET_KEYS:
         rows.append((key, "", "%s: clear stale one-shot" % note_prefix))
     upsert_config_keys(sheets, spreadsheet_id, rows)
     return stale
 
 
-def preflight_sheet_or_exit(sheets, spreadsheet_id):
-    stale = preflight_sheet(sheets, spreadsheet_id)
+def reset_v50_full(sheets, spreadsheet_id, note="ota_stress_rules: bank full baseline"):
+    """Mark V50 bank 100% for mAh tracking (Pico applies on next successful log)."""
+    from datetime import datetime, timezone
+    from sheets_config_upsert import upsert_config_keys
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    upsert_config_keys(
+        sheets,
+        spreadsheet_id,
+        [
+            ("boat-p2:v50_full_at_utc", ts, note),
+            ("boat-p2:v50_capacity_mah", "13400", "V50 rated capacity"),
+        ],
+    )
+    print("OK: boat-p2:v50_full_at_utc =", ts)
+    return ts
+
+
+def preflight_sheet_or_exit(sheets, spreadsheet_id, profile="underway"):
+    stale = preflight_sheet(sheets, spreadsheet_id, profile=profile)
     if stale:
         print(
             "WARN: cleared stale Config keys before stress:",
