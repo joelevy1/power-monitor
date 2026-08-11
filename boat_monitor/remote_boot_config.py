@@ -228,7 +228,20 @@ def boot_ota_backoff_active():
     try:
         import time
 
-        if time.time() < float(until):
+        now = time.time()
+        until_f = float(until)
+        if now < until_f:
+            # Pico RTC often resets on machine.reset() while backoff_until is absolute.
+            # If an upgrade is pending, do not block boot OTA for more than ~20 minutes
+            # of real retries (sheet min_fw ahead of version.py).
+            try:
+                if data.get("pending_ota") and needs_firmware_upgrade():
+                    if until_f - now > 1200:
+                        data.pop("boot_ota_backoff_until", None)
+                        save(data)
+                        return False
+            except Exception:
+                pass
             return True
         data.pop("boot_ota_backoff_until", None)
         save(data)
