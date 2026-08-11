@@ -283,8 +283,53 @@ def _write_results(path, start_ver, n, results, final=False):
     return payload
 
 
+def _ensure_watch_running():
+    """Start boat_p2_watch in background if state file is missing or stale."""
+    from ota_stress_rules import WATCH_STATE_MAX_AGE_S
+
+    state = REPO / "boat_p2_watch_state.json"
+    import time
+
+    stale = True
+    if state.is_file():
+        stale = (time.time() - state.stat().st_mtime) > WATCH_STATE_MAX_AGE_S
+    if not stale:
+        print("boat_p2_watch already running")
+        return
+    print("Starting boat_p2_watch (background)...")
+    subprocess.Popen(
+        [sys.executable, str(ROOT / "boat_p2_watch.py"), "--interval", "60"],
+        cwd=str(ROOT),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(20):
+        time.sleep(3)
+        if state.is_file() and (time.time() - state.stat().st_mtime) <= WATCH_STATE_MAX_AGE_S:
+            print("boat_p2_watch OK")
+            return
+    print("WARN: boat_p2_watch may not have started — preflight will fail", file=sys.stderr)
+
+
+def _pause_stress_on_failure(reason: str):
+    """Set min_fw to device fw so reboot storms stop after a failed round."""
+    from ota_stress_rules import pause_min_fw_to_device
+
+    fw = _current_device_fw()
+    if not fw:
+        print("WARN: cannot pause stress — no device fw on sheet", file=sys.stderr)
+        return
+    sheets, sid = _sheets()
+    pause_min_fw_to_device(sheets, sid, fw, reason)
+
+
 def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 2400):
-    from ota_stress_rules import BOOT_START_TIMEOUT_S, POST_OTA_POWER_LOG_GRACE_S
+    from ota_stress_rules import (
+        BOOT_START_TIMEOUT_S,
+        POST_OTA_POWER_LOG_GRACE_S,
+        detect_reboot_trap,
+        pause_min_fw_to_device,
+    )
 
     start = time.time()
     run_report = {"target": target_fw, "phases": [], "phase_keys": set(), "success": False}
@@ -361,6 +406,13 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
 
         if tail:
             cur_fw = tail[-1].get("fw") or "?"
+            trap = detect_reboot_trap(all_ev, cur_fw, target_fw)
+            if trap:
+                sheets, sid = _sheets()
+                pause_min_fw_to_device(sheets, sid, cur_fw, trap)
+                run_report["error"] = trap
+                print("FAIL:", trap)
+                break
             ota_note = ""
             if ota_success_at:
                 ota_note = " ota_ok+%ds" % int(time.time() - ota_success_at)
@@ -380,11 +432,14 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
                 and time.time() > boot_start_deadline
                 and _parse_ver_tuple(cur_fw) < _parse_ver_tuple(target_fw)
             ):
-                run_report["error"] = (
+                err = (
                     "no_boot_start in %ds — flash backoff trap? USB patch-only --enable-boot-ota"
                     % BOOT_START_TIMEOUT_S
                 )
-                print("FAIL:", run_report["error"])
+                run_report["error"] = err
+                print("FAIL:", err)
+                sheets, sid = _sheets()
+                pause_min_fw_to_device(sheets, sid, cur_fw, err)
                 break
         time.sleep(30)
 
@@ -428,7 +483,13 @@ def _ship_version(new_ver: str, manifest_mode: str = "version-only") -> bool:
             print("FAIL:", exc)
             return False
     r = subprocess.run(
-        [sys.executable, str(ROOT / "validate_release.py"), "--max-files", max_files],
+        [
+            sys.executable,
+            str(ROOT / "validate_release.py"),
+            "--max-files",
+            max_files,
+            "--enforce-master-policy",
+        ],
         cwd=str(ROOT),
     )
     if r.returncode != 0:
@@ -540,10 +601,11 @@ def run_rounds(
         from ota_stress_rules import (
             assert_version_only_manifest,
             device_ahead_of_repo,
-            preflight_sheet_or_exit,
+            preflight_stress_campaign,
             reset_v50_full,
         )
 
+        _ensure_watch_running()
         try:
             assert_version_only_manifest()
         except SystemExit as exc:
@@ -552,7 +614,22 @@ def run_rounds(
         sheets, sid = _sheets()
         if reset_v50:
             reset_v50_full(sheets, sid)
-        preflight_sheet_or_exit(sheets, sid, profile=profile)
+        dev_fw = _current_device_fw()
+        all_ev = _fetch_events()
+        try:
+            preflight_stress_campaign(
+                sheets,
+                sid,
+                profile=profile,
+                device_fw=dev_fw or "",
+                repo_ver=start_ver,
+                require_watch=True,
+                events=all_ev,
+            )
+        except SystemExit as exc:
+            print("FAIL:", exc)
+            return 1
+        print("OK: sheet preflight (recovery keys + cleared one-shots)")
         upsert_clear_pending = [
             ("cmd_clear_pending_ota", "1", "ota_stress: clear stale pending_ota"),
             ("clear_pending_ota", "1", "ota_stress: clear stale pending_ota"),
@@ -587,9 +664,17 @@ def run_rounds(
         print("=" * 70)
         if not dry_run:
             sheets, sid = _sheets()
-            from ota_stress_rules import preflight_sheet_or_exit
+            from ota_stress_rules import preflight_sheet, detect_reboot_trap, pause_min_fw_to_device
 
-            preflight_sheet_or_exit(sheets, sid, profile=profile)
+            dev_fw = _current_device_fw() or ""
+            all_ev = _fetch_events()
+            trap = detect_reboot_trap(all_ev, dev_fw, ver)
+            if trap:
+                pause_min_fw_to_device(sheets, sid, dev_fw, trap)
+                print("FAIL:", trap)
+                results.append({"round": i + 1, "target": ver, "error": trap})
+                break
+            preflight_sheet(sheets, sid, profile=profile)
             if not _ship_version(ver):
                 print("FAIL: ship", ver)
                 results.append({"round": i + 1, "target": ver, "error": "ship_failed"})
@@ -613,6 +698,8 @@ def run_rounds(
             pass
         if not rep.get("success"):
             print("Stopping stress pass after failed round.")
+            if not dry_run:
+                _pause_stress_on_failure(rep.get("error") or "round failed")
             break
         if not dry_run and rep.get("success"):
             print("Round cooldown %ds before next ship..." % ROUND_COOLDOWN_S)

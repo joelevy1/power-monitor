@@ -30,6 +30,15 @@ POST_OTA_POWER_LOG_GRACE_S = 900
 # Dock / standby (switch+key off): ~5 min log interval + OTA reboot time.
 DOCK_ROUND_TIMEOUT_S = 3600
 
+# Reboot trap: many reboot_queued with no boot_start while min_fw is ahead of device.
+REBOOT_TRAP_MIN_REBOOT_QUEUED = 3
+WATCH_STATE_MAX_AGE_S = 120
+
+# manifest_kind values allowed on GitHub master (Pico raw CDN).
+MASTER_MANIFEST_KIND_STRESS = "stress"
+MASTER_MANIFEST_KIND_BOOTSTRAP = "bootstrap"
+MASTER_ALLOWED_MANIFEST_KINDS = (MASTER_MANIFEST_KIND_STRESS, MASTER_MANIFEST_KIND_BOOTSTRAP)
+
 # Sheet keys that must be empty before stress / after ship (one-shot storms).
 STALE_SHEET_KEYS = (
     "force_ota",
@@ -158,3 +167,170 @@ def device_ahead_of_repo(device_fw: str, repo_ver: str) -> bool:
     if not device_fw or not repo_ver:
         return False
     return _parse_ver_tuple(device_fw) > _parse_ver_tuple(repo_ver)
+
+
+def _event_detail(row):
+    return str(row[3]) if len(row) > 3 else ""
+
+
+def count_reboot_queued(events, window=20):
+    """Count ota_lifecycle reboot_queued rows in the tail of Events."""
+    recent = list(events or [])[-window:]
+    return sum(
+        1
+        for r in recent
+        if len(r) > 2 and r[2] == "ota_lifecycle" and "reboot_queued" in _event_detail(r)
+    )
+
+
+def saw_boot_start(events, window=40):
+    """True if any recent boot_start phase appears in Events."""
+    recent = list(events or [])[-window:]
+    for r in recent:
+        if len(r) < 4:
+            continue
+        detail = _event_detail(r)
+        if r[2] == "boot_ota" and "phase=boot_start" in detail:
+            return True
+        if r[2] == "ota_lifecycle" and "phase=boot_start" in detail:
+            return True
+    return False
+
+
+def detect_reboot_trap(events, device_fw: str, target_fw: str, min_reboot_queued=None):
+    """
+    Return a human-readable trap reason when min_fw is ahead but device is not
+    progressing (reboot_queued storm, no boot_start). Otherwise return None.
+    """
+    min_rq = REBOOT_TRAP_MIN_REBOOT_QUEUED if min_reboot_queued is None else min_reboot_queued
+    if not device_fw or not target_fw:
+        return None
+    if _parse_ver_tuple(device_fw) >= _parse_ver_tuple(target_fw):
+        return None
+    rq = count_reboot_queued(events)
+    if rq < min_rq:
+        return None
+    if saw_boot_start(events):
+        return None
+    return (
+        "reboot_trap: reboot_queued x%d, no boot_start, device fw=%s < target=%s "
+        "(flash backoff / multi-file ahead of device — USB patch-only)"
+        % (rq, device_fw, target_fw)
+    )
+
+
+def manifest_kind(data) -> str:
+    return str((data or {}).get("manifest_kind") or "").strip().lower()
+
+
+def master_manifest_policy_errors(data, file_count: int | None = None) -> list[str]:
+    """
+    CI / pre-ship gate: master CDN manifest must be stress (1 file) or bootstrap (2).
+    Recovery / dock-fix / feature-pack manifests must never land on master.
+    """
+    files = (data or {}).get("files") or []
+    n = file_count if file_count is not None else len(files)
+    if data.get("bundle"):
+        return ["manifest has bundle — not allowed on master stress CDN"]
+    kind = manifest_kind(data)
+    if n <= 1:
+        if kind and kind not in (MASTER_MANIFEST_KIND_STRESS, "version-only", ""):
+            return [
+                "manifest has 1 file but manifest_kind=%r (expected %r)"
+                % (kind, MASTER_MANIFEST_KIND_STRESS)
+            ]
+        return []
+    if n == 2:
+        if kind != MASTER_MANIFEST_KIND_BOOTSTRAP:
+            return [
+                "manifest has 2 files but manifest_kind=%r (expected %r for master)"
+                % (kind, MASTER_MANIFEST_KIND_BOOTSTRAP)
+            ]
+        paths = sorted(str(e.get("path") or "") for e in files)
+        want = ["remote_boot_config.py", "version.py"]
+        if paths != want:
+            return ["bootstrap manifest must be version.py + remote_boot_config.py, got %s" % paths]
+        return []
+    return [
+        "manifest has %d files — master allows at most 2 (bootstrap). "
+        "Use USB recovery; do not push multi-file recovery to master."
+        % n
+    ]
+
+
+def assert_master_manifest_policy(manifest_path: Path | None = None) -> None:
+    path = manifest_path or (ROOT / "ota_manifest.json")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    errs = master_manifest_policy_errors(data)
+    if errs:
+        raise SystemExit("ota_stress_rules: " + errs[0])
+
+
+def pause_min_fw_to_device(sheets, spreadsheet_id, device_fw: str, reason: str):
+    """Emergency brake: set min_fw to device fw so reboot storms stop."""
+    from sheets_config_upsert import upsert_config_keys
+
+    if not device_fw:
+        print("WARN: pause_min_fw skipped — no device fw", file=sys.stderr)
+        return False
+    rows = [
+        ("min_fw_version", device_fw, "ota_stress_rules: PAUSE %s" % reason[:80]),
+    ]
+    for key in STALE_SHEET_KEYS:
+        rows.append((key, "", "ota_stress_rules: clear one-shot on pause"))
+    rows.extend(STRESS_RECOVERY_KEYS)
+    upsert_config_keys(sheets, spreadsheet_id, rows)
+    print("PAUSE: min_fw_version=%s (%s)" % (device_fw, reason))
+    return True
+
+
+def assert_watch_running(state_path: Path | None = None, max_age_s: int | None = None) -> None:
+    """Stress harness requires boat_p2_watch polling the sheet."""
+    import time
+
+    repo = ROOT.parent
+    path = state_path or (repo / "boat_p2_watch_state.json")
+    age_limit = WATCH_STATE_MAX_AGE_S if max_age_s is None else max_age_s
+    if not path.is_file():
+        raise SystemExit(
+            "ota_stress_rules: boat_p2_watch not running (missing %s). "
+            "Start: python3 boat_monitor/boat_p2_watch.py"
+            % path.name
+        )
+    age = time.time() - path.stat().st_mtime
+    if age > age_limit:
+        raise SystemExit(
+            "ota_stress_rules: boat_p2_watch stale (last poll %.0fs ago, max %ds)"
+            % (age, age_limit)
+        )
+
+
+def preflight_stress_campaign(
+    sheets,
+    spreadsheet_id,
+    *,
+    profile="underway",
+    device_fw: str = "",
+    repo_ver: str = "",
+    require_watch: bool = True,
+    events=None,
+):
+    """
+    Full preflight before stress ship or min_fw bump. Raises SystemExit on violation.
+    Returns list of stale keys cleared from sheet.
+    """
+    assert_version_only_manifest()
+    assert_master_manifest_policy()
+    if require_watch:
+        assert_watch_running()
+    if device_fw and repo_ver and device_ahead_of_repo(device_fw, repo_ver):
+        raise SystemExit(
+            "ota_stress_rules: device fw %s ahead of repo %s — sync repo or USB recovery first"
+            % (device_fw, repo_ver)
+        )
+    if events and device_fw and repo_ver:
+        trap = detect_reboot_trap(events, device_fw, repo_ver)
+        if trap:
+            pause_min_fw_to_device(sheets, spreadsheet_id, device_fw, trap)
+            raise SystemExit("ota_stress_rules: " + trap)
+    return preflight_sheet(sheets, spreadsheet_id, profile=profile)

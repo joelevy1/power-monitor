@@ -75,7 +75,7 @@ def _version():
     return m.group(1).strip()
 
 
-def _write_manifest(paths, notes, include_bundle=True):
+def _write_manifest(paths, notes, include_bundle=True, manifest_kind=""):
     full = json.loads(FULL.read_text(encoding="utf-8"))
     by_path = {e["path"]: e for e in full.get("files") or [] if e.get("path")}
     files = []
@@ -93,10 +93,18 @@ def _write_manifest(paths, notes, include_bundle=True):
         "notes": notes,
         "files": files,
     }
+    if manifest_kind:
+        data["manifest_kind"] = manifest_kind
     if not include_bundle:
         data.pop("bundle", None)
     OUT.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    print("OK: manifest %s with %d files" % (data["version"], len(files)))
+    print("OK: manifest %s with %d files (kind=%s)" % (data["version"], len(files), manifest_kind or "?"))
+    if len(files) > 2:
+        print(
+            "WARN: %d-file manifest is USB/Wi-Fi recovery only — CI blocks push to master."
+            % len(files),
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -124,40 +132,64 @@ def main(argv=None):
         action="store_true",
         help="5-file dock OTA fix: version, main, standby, ota_health, remote_boot_config",
     )
+    p.add_argument(
+        "--offline-recovery",
+        action="store_true",
+        help="Required for 3+ file manifests (USB/Wi-Fi only; CI blocks master push)",
+    )
     args = p.parse_args(argv)
+    offline_kinds = (
+        args.dock_fix,
+        args.ram_fix,
+        args.feature_pack,
+        args.recovery,
+    )
+    if any(offline_kinds) and not args.offline_recovery:
+        print(
+            "FAIL: 3+ file recovery manifests require --offline-recovery "
+            "(USB/Wi-Fi bench — never push to master for stress)",
+            file=sys.stderr,
+        )
+        return 1
     if args.dock_fix:
         return _write_manifest(
             DOCK_FIX_PATHS,
             "Dock OTA fix: Wi-Fi log / cellular boot OTA split + ENOMEM fallback.",
             include_bundle=False,
+            manifest_kind="dock-fix",
         )
     if args.bootstrap_rules:
         return _write_manifest(
             BOOTSTRAP_RULES_PATHS,
             "Bootstrap OTA: version.py + remote_boot_config.py (sheet backoff self-heal).",
             include_bundle=False,
+            manifest_kind="bootstrap",
         )
     if args.version_only:
         return _write_manifest(
             VERSION_ONLY_PATHS,
             "Patch OTA: version.py only (cellular heap safe).",
             include_bundle=False,
+            manifest_kind="stress",
         )
     if args.ram_fix:
         return _write_manifest(
             RAM_FIX_PATHS,
             "RAM-safe OTA: stream bundle download/extract + reboot cooldown (per-file, no bundle).",
             include_bundle=False,
+            manifest_kind="ram-fix",
         )
     if args.feature_pack:
         return _write_manifest(
             FEATURE_PACK_PATHS,
             "Feature-pack OTA: trace, LEDs, loop fix (~175KB bundle, streamed).",
+            manifest_kind="feature-pack",
         )
     if args.recovery:
         return _write_manifest(
             RECOVERY_PATHS,
             "Slim remote recovery OTA (reboot-loop fix; stream bundle extract).",
+            manifest_kind="recovery",
         )
     print("Specify --recovery, --feature-pack, or --ram-fix", file=sys.stderr)
     return 1

@@ -30,7 +30,7 @@ def main():
         return 1
 
     script = Path(__file__).resolve().parent / "validate_release.py"
-    for extra in ([], ["--check-github"]):
+    for extra in ([], ["--check-github", "--enforce-master-policy"]):
         cmd = [sys.executable, str(script)] + extra
         r = subprocess.run(cmd, check=False)
         if r.returncode != 0:

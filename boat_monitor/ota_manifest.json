@@ -1,5 +1,6 @@
 {
   "version": "1.1.108",
+  "manifest_kind": "bootstrap",
   "notes": "Bootstrap OTA: version.py + remote_boot_config.py (sheet backoff self-heal).",
   "files": [
     {
