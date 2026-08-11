@@ -51,6 +51,8 @@ RAM_FIX_PATHS = (
     "version.py",
 )
 
+VERSION_ONLY_PATHS = ("version.py",)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -94,7 +96,18 @@ def main(argv=None):
         action="store_true",
         help="7-file per-file OTA (streaming cellular + bundle extract); no .bmota",
     )
+    p.add_argument(
+        "--version-only",
+        action="store_true",
+        help="1-file manifest (version.py only) for patch stress on cellular",
+    )
     args = p.parse_args(argv)
+    if args.version_only:
+        return _write_manifest(
+            VERSION_ONLY_PATHS,
+            "Patch OTA: version.py only (cellular heap safe).",
+            include_bundle=False,
+        )
     if args.ram_fix:
         return _write_manifest(
             RAM_FIX_PATHS,
