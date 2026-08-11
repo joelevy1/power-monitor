@@ -499,7 +499,13 @@ def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int)
         dev_fw = _current_device_fw()
         if device_ahead_of_repo(dev_fw, start_ver):
             print("WARN: device fw %s ahead of repo %s" % (dev_fw, start_ver))
-        if not _bootstrap_rules_if_needed(dry_run):
+        # USB ram-fix already ships remote_boot_config.py; skip cellular bootstrap OTA.
+        if dev_fw and _parse_ver_tuple(dev_fw) >= _parse_ver_tuple(start_ver):
+            print(
+                "Bootstrap-rules skip: device fw %s >= repo %s (USB ram-fix assumed)"
+                % (dev_fw, start_ver)
+            )
+        elif not _bootstrap_rules_if_needed(dry_run):
             return 1
     if bootstrap and not dry_run:
         if not _wait_until_fw_at_least(start_ver, timeout_s=bootstrap_timeout_s):
