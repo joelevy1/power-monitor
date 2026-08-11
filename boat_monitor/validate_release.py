@@ -109,6 +109,12 @@ def main(argv=None):
         metavar="X.Y.Z",
         help="Fail if this min_fw_version is newer than local manifest (sheet safety)",
     )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        metavar="N",
+        help="Fail if manifest lists more than N files (stress: use 1)",
+    )
     args = parser.parse_args(argv)
 
     errors = []
@@ -143,6 +149,18 @@ def main(argv=None):
     for e in m_errs:
         print("FAIL:", e, file=sys.stderr)
     if m_errs:
+        return 1
+
+    if args.max_files is not None and len(files) > args.max_files:
+        print(
+            "FAIL: manifest has %d files (max %d). "
+            "Use apply_recovery_manifest --version-only for cellular stress."
+            % (len(files), args.max_files),
+            file=sys.stderr,
+        )
+        return 1
+    if args.max_files is not None and data.get("bundle"):
+        print("FAIL: manifest has bundle (not allowed with --max-files)", file=sys.stderr)
         return 1
 
     total_bytes = 0

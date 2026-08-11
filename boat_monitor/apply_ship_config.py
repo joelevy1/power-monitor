@@ -59,6 +59,12 @@ def main():
     sheets = build("sheets", "v4", credentials=creds, cache_discovery=False)
     sid = _sheet_id(creds)
     upsert_config_keys(sheets, sid, rows)
+
+    from ota_stress_rules import STALE_SHEET_KEYS
+
+    clear_rows = [(k, "", "apply_ship_config: clear one-shot") for k in STALE_SHEET_KEYS]
+    upsert_config_keys(sheets, sid, clear_rows)
+
     for key, val, _ in rows:
         print("OK:", key, "=", val)
     print("Sheet updated. Pico OTA when current < min_fw after master manifest ships.")

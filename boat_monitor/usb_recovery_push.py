@@ -96,6 +96,11 @@ def main(argv=None):
         help="Do not set boot_ota_prefer_wifi in remote_boot_config.json",
     )
     p.add_argument(
+        "--enable-boot-ota",
+        action="store_true",
+        help="OTA stress recovery: keep auto_ota_on_boot=true and pending_ota on device",
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="Print actions only",
@@ -114,6 +119,8 @@ def main(argv=None):
     patch_text = patch_src.read_text(encoding="utf-8")
     prefer = "True" if not args.no_prefer_wifi else "False"
     patch_text = patch_text.replace("PREFER_WIFI = True", "PREFER_WIFI = %s" % prefer)
+    auto_ota = "True" if args.enable_boot_ota else "False"
+    patch_text = patch_text.replace("AUTO_OTA_ON_BOOT = False", "AUTO_OTA_ON_BOOT = %s" % auto_ota)
     patch_local = ROOT / ".usb_recovery_patch_run.py"
     patch_local.write_text(patch_text, encoding="utf-8")
 

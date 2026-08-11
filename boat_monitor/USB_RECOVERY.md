@@ -6,7 +6,13 @@ When the Pico stops auto-logging or is stuck in a reboot/OTA loop, use USB from 
 
 ## Quick fix (keeps firmware on the Pico)
 
-Patches `remote_boot_config.json` (clears pending OTA, `auto_ota_on_boot=false`) and soft-resets. Does **not** copy files from the repo.
+Patches `remote_boot_config.json` (clears pending OTA, `auto_ota_on_boot=false` by default) and soft-resets. Does **not** copy files from the repo.
+
+For **OTA stress recovery** (device behind `min_fw`), use `--enable-boot-ota` so boot OTA runs after patch:
+
+```bat
+py boat_monitor\usb_recovery_push.py --patch-only --port COM7 --enable-boot-ota
+```
 
 ```bat
 cd path\to\power-monitor

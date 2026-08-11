@@ -144,6 +144,30 @@ def poll_once():
 
     last_pl = tail[-1] if tail else None
     last_fw = g(last_pl, "fw") if last_pl else "?"
+
+    def _truthy_cfg(key):
+        v = cfg.get(key, "")
+        return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+    if (
+        last_fw != "?"
+        and min_fw != "?"
+        and not _version_lt(last_fw, min_fw)
+        and (_truthy_cfg("force_ota") or _truthy_cfg("cmd_ota") or _truthy_cfg("boat-p2:cmd_ota"))
+    ):
+        from sheets_config_upsert import upsert_config_keys
+
+        upsert_config_keys(
+            sheets,
+            sid,
+            [
+                ("force_ota", "", "boat_p2_watch: stale at min_fw"),
+                ("cmd_ota", "", "boat_p2_watch: stale at min_fw"),
+                ("boat-p2:cmd_ota", "", "boat_p2_watch: stale at min_fw"),
+            ],
+        )
+        _log("ACTION cleared stale force_ota/cmd_ota (fw %s >= min %s)" % (last_fw, min_fw))
+
     last_ts = g(last_pl, "timestamp_utc") if last_pl else "none"
     last_mode = g(last_pl, "mode") if last_pl else "?"
 

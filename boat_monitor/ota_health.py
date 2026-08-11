@@ -45,11 +45,17 @@ def record_boot_ota_result(success, error=None, outcome=None):
             data.pop("cmd_ota_force", None)
         else:
             n = int(data.get("boot_ota_fail_count") or 0) + 1
-            data["boot_ota_fail_count"] = n
-            data["last_boot_ota_outcome"] = str(outcome or "failed")[:40]
+            outcome_s = str(outcome or "failed")
+            # Transient heap/flash preflight skips are not "bad OTA" — don't trap degraded.
+            preflight_only = outcome_s == "preflight" or (
+                error and str(error).startswith(("low_mem", "low_flash"))
+            )
+            if not preflight_only:
+                data["boot_ota_fail_count"] = n
+            data["last_boot_ota_outcome"] = outcome_s[:40]
             if error:
                 data["last_boot_ota_error"] = str(error)[:200]
-            if n >= FAIL_LIMIT_REBOOT_BLOCK:
+            if not preflight_only and n >= FAIL_LIMIT_REBOOT_BLOCK:
                 data["ota_degraded"] = True
         remote_boot_config.save(data)
         _emit(

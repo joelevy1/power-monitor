@@ -124,7 +124,8 @@ try:
                 except Exception:
                     pass
                 remote_boot_config.set_boot_ota_backoff(600)
-                remote_boot_config.clear_pending_ota()
+                if not remote_boot_config.needs_firmware_upgrade():
+                    remote_boot_config.clear_pending_ota()
                 try:
                     import ota_health
 

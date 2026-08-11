@@ -7,6 +7,7 @@ except ImportError:
 
 PATH = "remote_boot_config.json"
 PREFER_WIFI = False  # replaced by usb_recovery_push before copy (False = cellular boot OTA)
+AUTO_OTA_ON_BOOT = False  # usb_recovery_push may set True via --enable-boot-ota
 
 
 def main():
@@ -22,8 +23,17 @@ def main():
     data.pop("pending_ota", None)
     data.pop("cmd_ota_force", None)
     data.pop("boot_ota_backoff_until", None)
+    data.pop("boot_ota_skip_remaining", None)
     data["last_boot_ota_outcome"] = "usb_recovery"
-    data["auto_ota_on_boot"] = False
+    data["auto_ota_on_boot"] = bool(AUTO_OTA_ON_BOOT)
+    if AUTO_OTA_ON_BOOT:
+        try:
+            import version
+
+            data["pending_ota"] = True
+            print("remote_boot_config: pending_ota=True for boot OTA after USB recovery")
+        except Exception:
+            data["pending_ota"] = True
     if PREFER_WIFI:
         data["boot_ota_prefer_wifi"] = True
     with open(PATH, "w") as f:

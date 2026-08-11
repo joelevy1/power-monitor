@@ -217,18 +217,17 @@ def _wait_until_fw_at_least(min_fw: str, timeout_s: int = 3600, nudge_ota: bool 
             print("Bootstrap OK: device fw=%s" % fw)
             return True
         if nudge_ota and not nudged and fw:
+            from ota_stress_rules import preflight_sheet_or_exit
             from sheets_config_upsert import upsert_config_keys
 
             sheets, sid = _sheets()
+            preflight_sheet_or_exit(sheets, sid)
             upsert_config_keys(
                 sheets,
                 sid,
-                [
-                    ("min_fw_version", min_fw, "OTA stress bootstrap"),
-                    ("boat-p2:cmd_ota", "1", "OTA stress bootstrap one-shot"),
-                ],
+                [("min_fw_version", min_fw, "OTA stress bootstrap")],
             )
-            print("Bootstrap: set min_fw=%s + cmd_ota=1 (device was fw=%s)" % (min_fw, fw))
+            print("Bootstrap: sheet preflight + min_fw=%s (device was fw=%s)" % (min_fw, fw))
             nudged = True
         print(
             "  … bootstrap fw=%s need>=%s +%ds" % (fw or "?", min_fw, int(time.time() - start)),
@@ -271,8 +270,12 @@ def _write_results(path, start_ver, n, results, final=False):
 
 
 def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 2400):
+    from ota_stress_rules import BOOT_START_TIMEOUT_S
+
     start = time.time()
     run_report = {"target": target_fw, "phases": [], "phase_keys": set(), "success": False}
+    saw_boot_start = False
+    boot_start_deadline = start + BOOT_START_TIMEOUT_S
 
     while time.time() - start < timeout_s:
         count, tail = _fetch_power_tail()
@@ -295,6 +298,8 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
                 if pk not in run_report["phase_keys"]:
                     run_report["phase_keys"].add(pk)
                     run_report["phases"].append(item)
+                    if ph == "boot_start":
+                        saw_boot_start = True
         life = [p for p in run_report["phases"] if p.get("event") in ("ota_lifecycle", "boot_ota")]
 
         confirmed_row = None
@@ -319,10 +324,22 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
             return run_report
 
         if tail:
+            cur_fw = tail[-1].get("fw") or "?"
             print(
-                "  … waiting fw=%s (last %s @ %s) +%ds"
-                % (target_fw, tail[-1].get("fw"), tail[-1].get("ts"), int(time.time() - start))
+                "  … waiting fw=%s (last %s @ %s) +%ds boot_start=%s"
+                % (target_fw, cur_fw, tail[-1].get("ts"), int(time.time() - start), saw_boot_start)
             )
+            if (
+                not saw_boot_start
+                and time.time() > boot_start_deadline
+                and _parse_ver_tuple(cur_fw) < _parse_ver_tuple(target_fw)
+            ):
+                run_report["error"] = (
+                    "no_boot_start in %ds — flash backoff trap? USB patch-only --enable-boot-ota"
+                    % BOOT_START_TIMEOUT_S
+                )
+                print("FAIL:", run_report["error"])
+                break
         time.sleep(30)
 
     run_report["timeout_s"] = timeout_s
@@ -348,8 +365,18 @@ def _ship_version(new_ver: str) -> bool:
     )
     if fp.returncode != 0:
         print("WARN: version-only manifest step failed")
+    try:
+        from ota_stress_rules import assert_version_only_manifest
+
+        assert_version_only_manifest()
+    except SystemExit as exc:
+        print("FAIL:", exc)
+        return False
     # Patch stress: version.py only (~19 bytes) — full manifests ENOMEM on cellular boot OTA.
-    r = subprocess.run([sys.executable, str(ROOT / "validate_release.py")], cwd=str(ROOT))
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "validate_release.py"), "--max-files", "1"],
+        cwd=str(ROOT),
+    )
     if r.returncode != 0:
         return False
     branch = "cursor/ota-stress-%s-5a55" % new_ver.replace(".", "")
@@ -416,6 +443,23 @@ def _set_min_fw_only(ver: str):
 def run_rounds(n: int, dry_run: bool, bootstrap: bool, bootstrap_timeout_s: int):
     start_ver = _read_local_version()
     print("Local master version:", start_ver)
+    if not dry_run:
+        from ota_stress_rules import (
+            assert_version_only_manifest,
+            device_ahead_of_repo,
+            preflight_sheet_or_exit,
+        )
+
+        try:
+            assert_version_only_manifest()
+        except SystemExit as exc:
+            print("FAIL:", exc)
+            return 1
+        sheets, sid = _sheets()
+        preflight_sheet_or_exit(sheets, sid)
+        dev_fw = _current_device_fw()
+        if device_ahead_of_repo(dev_fw, start_ver):
+            print("WARN: device fw %s ahead of repo %s" % (dev_fw, start_ver))
     if bootstrap and not dry_run:
         if not _wait_until_fw_at_least(start_ver, timeout_s=bootstrap_timeout_s):
             return 1

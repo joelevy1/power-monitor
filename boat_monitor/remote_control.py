@@ -109,15 +109,27 @@ def apply_commands_payload(payload, device_id=""):
             print("remote_control: min_fw_version check failed:", exc)
 
     if _truthy(settings.get("cmd_ota")) or _truthy(settings.get("force_ota")):
-        actions.append("ota")
-        applied.append("cmd_ota=1")
-        applied.append("ota_action=1")
+        skip_ota_cmd = False
         try:
-            import remote_boot_config
+            import version
 
-            remote_boot_config.set_pending_ota(True)
-        except Exception as exc:
-            print("remote_control: set_pending_ota:", exc)
+            current = getattr(version, "VERSION", "0")
+            min_fw_cmd = settings.get("min_fw_version") or settings.get("target_fw_version")
+            if min_fw_cmd and not _version_lt(current, min_fw_cmd):
+                skip_ota_cmd = True
+                applied.append("ota_skipped_at_min_fw=1")
+        except Exception:
+            pass
+        if not skip_ota_cmd:
+            actions.append("ota")
+            applied.append("cmd_ota=1")
+            applied.append("ota_action=1")
+            try:
+                import remote_boot_config
+
+                remote_boot_config.set_pending_ota(True)
+            except Exception as exc:
+                print("remote_control: set_pending_ota:", exc)
     if _truthy(settings.get("cmd_reboot")) or _truthy(settings.get("force_reboot")):
         actions.append("reboot")
         applied.append("cmd_reboot=1")
