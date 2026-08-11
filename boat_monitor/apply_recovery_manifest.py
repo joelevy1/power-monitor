@@ -58,6 +58,14 @@ BOOTSTRAP_RULES_PATHS = (
     "remote_boot_config.py",
 )
 
+DOCK_FIX_PATHS = (
+    "version.py",
+    "main.py",
+    "standby_monitor.py",
+    "ota_health.py",
+    "remote_boot_config.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -111,7 +119,18 @@ def main(argv=None):
         action="store_true",
         help="2-file manifest: version.py + remote_boot_config.py (once per stress campaign)",
     )
+    p.add_argument(
+        "--dock-fix",
+        action="store_true",
+        help="5-file dock OTA fix: version, main, standby, ota_health, remote_boot_config",
+    )
     args = p.parse_args(argv)
+    if args.dock_fix:
+        return _write_manifest(
+            DOCK_FIX_PATHS,
+            "Dock OTA fix: Wi-Fi log / cellular boot OTA split + ENOMEM fallback.",
+            include_bundle=False,
+        )
     if args.bootstrap_rules:
         return _write_manifest(
             BOOTSTRAP_RULES_PATHS,
