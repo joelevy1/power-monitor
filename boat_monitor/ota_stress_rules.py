@@ -46,11 +46,11 @@ STRESS_RECOVERY_KEYS = (
     ("auto_ota_on_boot", "1", "ota_stress_rules: boot OTA enabled"),
 )
 
-# Dock / standby profile (switch+key off): Wi-Fi-first logging and boot OTA.
+# Dock / standby: Wi-Fi routine logs; cellular boot OTA (rare, heap-safe).
 DOCK_STRESS_KEYS = (
-    ("boot_ota_prefer_wifi", "1", "ota_stress_rules: dock Wi-Fi-first OTA"),
-    ("boat-p2:boot_ota_prefer_wifi", "1", "ota_stress_rules: dock Wi-Fi-first OTA"),
-    ("dock_mode", "home", "ota_stress_rules: dock standby profile"),
+    ("boot_ota_prefer_wifi", "0", "ota_stress_rules: dock cellular boot OTA"),
+    ("boat-p2:boot_ota_prefer_wifi", "0", "ota_stress_rules: dock cellular boot OTA"),
+    ("dock_mode", "home", "ota_stress_rules: dock Wi-Fi standby logs"),
 )
 
 

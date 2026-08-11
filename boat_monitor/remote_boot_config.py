@@ -4,8 +4,8 @@ Sheet-driven boot / OTA policy (persists on the Pico filesystem).
 Config tab keys (via Apps Script commands on each log POST):
   auto_ota_on_boot     — 1/true/yes overrides ota_config.py on every boot
   boot_ota_max_seconds — cap for boot-time OTA (default from ota_config)
-  boot_ota_prefer_wifi — 1|0: force Wi-Fi for boot OTA (home); omit = ble_policy default
-  dock_mode — home: same as boot_ota_prefer_wifi=1 for boot OTA at the dock
+  boot_ota_prefer_wifi — 1|0: force Wi-Fi for boot OTA; omit = policy below
+  dock_mode — home: Wi-Fi-first standby logging; boot OTA defaults to cellular
   ota_manifest_profile — micro | ram-fix | feature-pack (sheet override)
   cmd_ota_force — one-shot: allow boot OTA / reboot when ota_degraded (cleared on success)
   keep_modem_awake_underway — 1|0: skip AT+CPOF after cellular log while underway
@@ -177,14 +177,34 @@ def effective_boot_ota_max_seconds():
     return seconds
 
 
+def effective_standby_log_prefer_wifi():
+    """Standby Power_Log uplink: Wi-Fi at dock (dock_mode), else ble_policy default."""
+    data = load()
+    dock = str(data.get("dock_mode") or "").strip().lower()
+    if dock in ("home", "dock", "wifi"):
+        return True
+    if "standby_prefer_wifi" in data and str(data.get("standby_prefer_wifi")).strip() != "":
+        return bool(data["standby_prefer_wifi"])
+    try:
+        import ble_policy
+
+        return ble_policy.ota_prefer_wifi()
+    except Exception:
+        return False
+
+
 def effective_boot_ota_prefer_wifi():
-    """Boot-time OTA transport: sheet override, else ble_policy (Wi-Fi in standby only)."""
+    """Boot-time OTA transport only (not standby logging).
+
+    Rare OTAs: cellular is safer on Pico heap. dock_mode=home still uses Wi-Fi
+    for routine standby logs via effective_standby_log_prefer_wifi().
+    """
     data = load()
     if "boot_ota_prefer_wifi" in data:
         return bool(data["boot_ota_prefer_wifi"])
     dock = str(data.get("dock_mode") or "").strip().lower()
     if dock in ("home", "dock", "wifi"):
-        return True
+        return False
     try:
         import ble_policy
 

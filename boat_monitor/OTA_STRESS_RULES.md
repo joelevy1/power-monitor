@@ -63,13 +63,15 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 
 ## Dock / standby profile (switch+key off, V50 power)
 
-1. Use harness `--profile dock` — sets `boot_ota_prefer_wifi=1`, `dock_mode=home`,
-   clears cellular-only override left from underway stress (`boot_ota_prefer_wifi=0`).
+1. Use harness `--profile dock` — sets `dock_mode=home` (Wi‑Fi standby logs),
+   `boot_ota_prefer_wifi=0` (cellular boot OTA — rare updates, safer heap).
 2. Round timeout default **3600s** (5 min log interval + OTA).
 3. `--reset-v50` sets `boat-p2:v50_full_at_utc` for mAh / % tracking.
 4. Expect Power_Log `mode=docked_off`, `uplink=wifi` when home AP reachable.
 5. **Boot OTA Wi-Fi ENOMEM**: firmware retries cellular on same boot (`main.py`);
    standby skips auto_log while `min_fw` is ahead (`standby_monitor.py`).
+6. **Dock split policy**: `dock_mode=home` → Wi‑Fi logs; boot OTA defaults cellular
+   unless `boot_ota_prefer_wifi=1` explicitly set.
 
 ## Quick recovery
 

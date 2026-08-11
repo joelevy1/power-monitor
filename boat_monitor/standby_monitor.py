@@ -27,11 +27,11 @@ AUTO_LOG_FAIL_REBOOT_COUNT = 4
 
 
 def _standby_prefer_wifi():
-    """Match sheet boot_ota_prefer_wifi / dock_mode — False = cellular-only standby logs."""
+    """Wi-Fi-first standby logs at dock; independent of boot OTA transport."""
     try:
         import remote_boot_config
 
-        return remote_boot_config.effective_boot_ota_prefer_wifi()
+        return remote_boot_config.effective_standby_log_prefer_wifi()
     except Exception:
         return False
 
