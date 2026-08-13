@@ -609,15 +609,23 @@ class SheetsLogger:
         self._last_device = device
         self.ensure_data()
         try:
-            import ota_telemetry
+            import mem_guard
 
-            ota_telemetry.flush_pending_inline(self, device)
-        except Exception:
-            pass
-        try:
-            import ota_lifecycle
+            if mem_guard.heap_ok_for_https_post():
+                try:
+                    import ota_telemetry
 
-            ota_lifecycle.flush_pending(self, device)
+                    ota_telemetry.flush_pending_inline(self, device)
+                except Exception:
+                    pass
+                try:
+                    import ota_lifecycle
+
+                    ota_lifecycle.flush_pending(self, device)
+                except Exception:
+                    pass
+            else:
+                print("SheetsLogger: skip OTA inline flush (low heap)")
         except Exception:
             pass
         if on_progress:

@@ -7,10 +7,11 @@ except ImportError:
 
 PATH = "remote_boot_config.json"
 PREFER_WIFI = False
-AUTO_OTA_ON_BOOT = False
-DOCK_MODE = "home"
+AUTO_OTA_ON_BOOT = True
+DOCK_MODE = "away"
 OTA_MANIFEST_PROFILE = "stress"
-OTA_SELF_SUFFICIENT = False
+OTA_SELF_SUFFICIENT = True
+STANDBY_PREFER_WIFI = False
 
 
 def main():
@@ -33,6 +34,7 @@ def main():
         data["dock_mode"] = str(DOCK_MODE)
     if OTA_MANIFEST_PROFILE:
         data["ota_manifest_profile"] = str(OTA_MANIFEST_PROFILE)
+    data["standby_prefer_wifi"] = bool(STANDBY_PREFER_WIFI)
     if OTA_SELF_SUFFICIENT:
         data["ota_self_sufficient"] = True
         try:
@@ -56,8 +58,14 @@ def main():
     with open(PATH, "w") as f:
         json.dump(data, f)
     print(
-        "remote_boot_config patched: auto_ota=%s dock=%s profile=%s self_sufficient=%s"
-        % (AUTO_OTA_ON_BOOT, DOCK_MODE, OTA_MANIFEST_PROFILE, OTA_SELF_SUFFICIENT)
+        "remote_boot_config patched: auto_ota=%s dock=%s profile=%s self_sufficient=%s standby_wifi=%s"
+        % (
+            AUTO_OTA_ON_BOOT,
+            DOCK_MODE,
+            OTA_MANIFEST_PROFILE,
+            OTA_SELF_SUFFICIENT,
+            STANDBY_PREFER_WIFI,
+        )
     )
 
 

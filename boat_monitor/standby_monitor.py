@@ -304,7 +304,10 @@ def main():
                 diag_log.log("auto-log FAIL %s count=%s" % (exc, auto_log_failures))
                 print("standby_monitor: auto-log failed:", exc)
                 try:
-                    diag_log.upload_tail_to_events(device=device_id, lines=25)
+                    import mem_guard
+
+                    if not mem_guard.skip_network_diag_upload():
+                        diag_log.upload_tail_to_events(device=device_id, lines=25)
                 except Exception:
                     pass
                 if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:

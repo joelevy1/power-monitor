@@ -101,6 +101,14 @@ def flush_pending_stall_on_boot():
     pending = _load_pending_stall()
     if not pending:
         return False
+    try:
+        import mem_guard
+
+        if mem_guard.skip_network_diag_upload():
+            _clear_pending_stall()
+            return False
+    except Exception:
+        pass
     import diag_log
 
     device = pending.get("device") or "boat-p2"
@@ -128,16 +136,26 @@ def reboot_after_stall(device, reason, mode=None):
     write_pending_stall(device, reason, mode=mode)
     diag_log.log("stall reboot: %s" % reason)
     uploaded = False
+    skip_upload = False
     try:
-        uploaded = diag_log.upload_stall_report_bounded(
-            device,
-            reason,
-            mode=mode,
-            max_total_s=STALL_UPLOAD_MAX_S,
-            event="standby_stall_reboot",
-        )
-    except Exception as exc:
-        diag_log.log("stall upload bounded failed: %s" % exc)
+        import mem_guard
+
+        skip_upload = mem_guard.skip_network_diag_upload()
+        if skip_upload:
+            diag_log.log("stall upload skipped (low heap)")
+    except Exception:
+        pass
+    if not skip_upload:
+        try:
+            uploaded = diag_log.upload_stall_report_bounded(
+                device,
+                reason,
+                mode=mode,
+                max_total_s=STALL_UPLOAD_MAX_S,
+                event="standby_stall_reboot",
+            )
+        except Exception as exc:
+            diag_log.log("stall upload bounded failed: %s" % exc)
     if uploaded:
         _clear_pending_stall()
     import machine

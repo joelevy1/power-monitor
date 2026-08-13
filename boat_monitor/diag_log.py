@@ -97,6 +97,8 @@ def clear():
 
 def upload_tail_to_events(device="boat-p2", lines=15, event="diag", prefer_wifi=True):
     """Best-effort: post last diag lines to Events tab (one row)."""
+    if _skip_heavy_event_upload():
+        return
     try:
         with open(LOG_PATH, "r") as f:
             text = "\n".join(f.read().splitlines()[-lines:])
@@ -160,10 +162,24 @@ def _stall_report_detail(reason, mode=None, lines=40):
     return header, header + "\n--- boat_diag.log ---\n" + tail_text
 
 
+def _skip_heavy_event_upload():
+    try:
+        import mem_guard
+
+        if mem_guard.skip_network_diag_upload():
+            log("event upload skipped (low heap)")
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def upload_event_bounded(
     device, event, detail, diag_tail_lines=0, max_total_s=20, prefer_wifi=True
 ):
     """Best-effort Events POST with a wall-clock cap (custom detail text)."""
+    if _skip_heavy_event_upload():
+        return False
     try:
         start = time.time()
     except AttributeError:
@@ -219,6 +235,8 @@ def upload_stall_report_bounded(
     device, reason, mode=None, lines=12, max_total_s=12, event="standby_stall_reboot"
 ):
     """Best-effort Events POST with a wall-clock cap (never blocks reboot long)."""
+    if _skip_heavy_event_upload():
+        return False
     try:
         start = time.time()
     except AttributeError:

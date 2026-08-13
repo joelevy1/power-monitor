@@ -1,5 +1,5 @@
 @echo off
-REM OTA self-sufficient USB kit — full dock-fix stack + flash policy for week-away OTA.
+REM Week-away USB kit — ENOMEM lean logging + OTA self-sufficient policy (fw 1.1.113+).
 REM Close Thonny first. Default COM7.
 cd /d "%~dp0\.."
 git pull

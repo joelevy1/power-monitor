@@ -33,6 +33,15 @@ DEFAULT_PORT = "COM7"
 ROOT = Path(__file__).resolve().parent
 
 RECOVERY_FILES = (
+    "mem_guard.py",
+    "diag_log.py",
+    "resilience.py",
+    "remote_telemetry.py",
+    "auto_log.py",
+    "ble_policy.py",
+    "modem_policy.py",
+    "wifi_uplink.py",
+    "ble_service.py",
     "ota_health.py",
     "ota_bundle.py",
     "ota_diag.py",
@@ -130,12 +139,19 @@ def main(argv=None):
     patch_text = patch_src.read_text(encoding="utf-8")
     prefer = "True" if not args.no_prefer_wifi else "False"
     patch_text = re.sub(r"PREFER_WIFI = \w+", "PREFER_WIFI = %s" % prefer, patch_text, count=1)
-    auto_ota = "True" if args.enable_boot_ota else "False"
+    auto_ota = "True" if args.enable_boot_ota or args.ota_self_sufficient else "False"
     patch_text = re.sub(
         r"AUTO_OTA_ON_BOOT = \w+", "AUTO_OTA_ON_BOOT = %s" % auto_ota, patch_text, count=1
     )
     if args.ota_self_sufficient or args.enable_boot_ota:
         patch_text = re.sub(r"OTA_SELF_SUFFICIENT = \w+", "OTA_SELF_SUFFICIENT = True", patch_text, count=1)
+        patch_text = re.sub(r"DOCK_MODE = \"[^\"]*\"", "DOCK_MODE = \"away\"", patch_text, count=1)
+        patch_text = re.sub(
+            r"STANDBY_PREFER_WIFI = \w+",
+            "STANDBY_PREFER_WIFI = False",
+            patch_text,
+            count=1,
+        )
     else:
         patch_text = re.sub(r"OTA_SELF_SUFFICIENT = \w+", "OTA_SELF_SUFFICIENT = False", patch_text, count=1)
     patch_local = ROOT / ".usb_recovery_patch_run.py"
@@ -209,8 +225,9 @@ def main(argv=None):
     if args.ota_self_sufficient or args.enable_boot_ota:
         print(
             "\nNext: unplug USB, power-cycle, run:\n"
-            "  python3 boat_monitor/usb_recovery_verify.py --expect-fw 1.1.111\n"
-            "Then start week-away OTA:\n"
+            "  python3 boat_monitor/usb_recovery_verify.py --expect-fw 1.1.113\n"
+            "Sheet: min_fw_version=1.1.113, interval_engine_off_s=3600, clear force_ota/cmd_ota.\n"
+            "Then start week-away OTA (optional):\n"
             "  ./boat_monitor/run_week_away_dock_ota.sh"
         )
     return 0

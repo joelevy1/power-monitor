@@ -235,6 +235,15 @@ def maybe_report_auto_log_fail(device, mode, since_success_s, failures, summary,
     """POST auto_log_degraded when auto-log keeps failing (ENOMEM, POST errors, …)."""
     if not should_upload("auto_log_degraded", min_gap_s):
         return False
+    enomem = summary and "ENOMEM" in str(summary)
+    try:
+        import mem_guard
+
+        if enomem or mem_guard.skip_network_diag_upload():
+            return False
+    except Exception:
+        if enomem:
+            return False
     try:
         import diag_log
 
@@ -262,6 +271,13 @@ def maybe_report_standby_overdue(device, mode, since_success_s, interval_s, min_
         return False
     if not should_upload("standby_overdue", min_gap_s):
         return False
+    try:
+        import mem_guard
+
+        if mem_guard.skip_network_diag_upload():
+            return False
+    except Exception:
+        pass
     try:
         import diag_log
 

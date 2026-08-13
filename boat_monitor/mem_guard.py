@@ -6,7 +6,9 @@ def free_bytes():
         import gc
 
         gc.collect()
-        return gc.mem_free()
+        if hasattr(gc, "mem_free"):
+            return gc.mem_free()
+        return 99999999
     except Exception:
         return 0
 
@@ -30,5 +32,17 @@ def is_enomem(exc):
 
 
 def low_heap_threshold():
-  # Pico W: stay above ~20K before large HTTPS/json work
+    # Pico W: stay above ~20K before large HTTPS/json work
     return 22000
+
+
+def heap_ok_for_https_post():
+    """Enough free heap for a Sheets HTTPS POST (TLS + json.dumps)."""
+    return free_bytes() >= low_heap_threshold()
+
+
+def skip_network_diag_upload():
+    """Skip stall/degraded Events uploads that worsen ENOMEM loops."""
+    if not heap_ok_for_https_post():
+        return True
+    return False
