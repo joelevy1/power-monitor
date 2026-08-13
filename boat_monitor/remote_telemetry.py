@@ -155,6 +155,19 @@ def after_logging_session(device, mode, summary, prefer_wifi=False):
 
     if failed:
         try:
+            import mem_guard
+
+            if mem_guard.skip_followup_after_log_fail(summary):
+                try:
+                    import diag_log
+
+                    diag_log.log("after_logging_session skip ble_log_failed: %s" % summary[:120])
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+        try:
             import diag_log
 
             diag_log.report_ble_log_failure(device, summary, prefer_wifi=prefer_wifi)

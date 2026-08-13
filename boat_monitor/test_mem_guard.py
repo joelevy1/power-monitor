@@ -19,8 +19,14 @@ def test_heap_ok_for_https_post():
     assert not mem_guard.skip_network_diag_upload()
 
 
+def test_skip_followup_after_log_fail():
+    assert mem_guard.skip_followup_after_log_fail("power: failed: [Errno 12] ENOMEM")
+    assert not mem_guard.skip_followup_after_log_fail("power: ok")
+
+
 if __name__ == "__main__":
     test_is_enomem()
     test_low_heap_threshold()
     test_heap_ok_for_https_post()
+    test_skip_followup_after_log_fail()
     print("test_mem_guard OK")

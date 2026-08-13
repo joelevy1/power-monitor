@@ -46,3 +46,12 @@ def skip_network_diag_upload():
     if not heap_ok_for_https_post():
         return True
     return False
+
+
+def skip_followup_after_log_fail(summary_or_exc=None):
+    """After a failed log POST: never open a second HTTPS session (ENOMEM / fragmentation)."""
+    if summary_or_exc is not None:
+        text = str(summary_or_exc)
+        if "ENOMEM" in text or is_enomem(summary_or_exc):
+            return True
+    return skip_network_diag_upload()

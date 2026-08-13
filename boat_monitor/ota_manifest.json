@@ -1,6 +1,6 @@
 {
-  "version": "1.1.114",
-  "notes": "Patch OTA: version.py only (cellular heap safe).",
+  "version": "1.1.115",
+  "notes": "Skip ble_log_failed Events POST after ENOMEM (fragmentation-safe).",
   "files": [
     {
       "path": "version.py",

@@ -121,6 +121,14 @@ def upload_tail_to_events(device="boat-p2", lines=15, event="diag", prefer_wifi=
 def report_ble_log_failure(device, reason, lines=18, prefer_wifi=False):
     """After a failed BLE Log Now: keep local diag and try Events upload (cellular default)."""
     reason = str(reason)[:400]
+    try:
+        import mem_guard
+
+        if mem_guard.skip_followup_after_log_fail(reason):
+            log("ble_log_failed skip upload (ENOMEM/low heap): %s" % reason[:120])
+            return
+    except Exception:
+        pass
     log("ble_log_failed reason=%s" % reason)
     try:
         import version
@@ -132,13 +140,16 @@ def report_ble_log_failure(device, reason, lines=18, prefer_wifi=False):
     tail_text = "\n".join(recent_lines(lines))
     if tail_text:
         detail = detail + "\n--- boat_diag.log ---\n" + tail_text
+    upload_wifi = prefer_wifi
+    if "ENOMEM" in reason:
+        upload_wifi = False
     upload_event_bounded(
         device,
         "ble_log_failed",
         detail,
         diag_tail_lines=0,
         max_total_s=28,
-        prefer_wifi=prefer_wifi,
+        prefer_wifi=upload_wifi,
     )
 
 
