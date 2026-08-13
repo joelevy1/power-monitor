@@ -1,10 +1,15 @@
 {
   "version": "1.1.112",
+<<<<<<< HEAD
   "notes": "V50 sheet tracking: v50_energy mAh integrator + INA219 read_v50 fix.",
+=======
+  "notes": "Patch OTA: version.py only (cellular heap safe).",
+>>>>>>> master
   "files": [
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
+<<<<<<< HEAD
     },
     {
       "path": "v50_energy.py",
@@ -13,6 +18,8 @@
     {
       "path": "ble_service.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
+=======
+>>>>>>> master
     }
   ],
   "manifest_kind": "stress"
