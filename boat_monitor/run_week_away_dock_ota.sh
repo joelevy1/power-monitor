@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Week-away dock OTA: 6 version-only rounds, 3h log interval, watch + trap pause.
+# Week-away dock OTA: 6 version-only rounds, 1h log interval, watch + trap pause.
 set -euo pipefail
 cd /workspace
 export PYTHONUNBUFFERED=1
 
 EXPECT_FW="${EXPECT_FW:-1.1.111}"
 ROUNDS="${ROUNDS:-6}"
-LOG_INTERVAL="${LOG_INTERVAL:-10800}"
+LOG_INTERVAL="${LOG_INTERVAL:-3600}"
 
 echo "=== Week-away dock OTA ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
 echo "expect base fw=$EXPECT_FW rounds=$ROUNDS log_interval=${LOG_INTERVAL}s"
@@ -24,7 +24,7 @@ sid = _sheet_id(c)
 rows = [
     ("min_fw_version", "$EXPECT_FW", "week-away: match USB-loaded fw"),
     ("auto_ota_on_boot", "1", "week-away OTA enabled"),
-    ("interval_engine_off_s", "$LOG_INTERVAL", "week-away 3h dock logs"),
+    ("interval_engine_off_s", "$LOG_INTERVAL", "week-away 1h dock logs"),
     ("interval_engine_on_s", "600", "week-away 10m key-on"),
     ("dock_mode", "home", "week-away dock Wi-Fi logs"),
     ("boot_ota_prefer_wifi", "0", "week-away cellular boot OTA"),
