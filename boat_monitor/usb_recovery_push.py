@@ -225,8 +225,8 @@ def main(argv=None):
     if args.ota_self_sufficient or args.enable_boot_ota:
         print(
             "\nNext: unplug USB, power-cycle, run:\n"
-            "  python3 boat_monitor/usb_recovery_verify.py --expect-fw 1.1.113\n"
-            "Sheet: min_fw_version=1.1.113, interval_engine_off_s=3600, clear force_ota/cmd_ota.\n"
+            "  python3 boat_monitor/usb_recovery_verify.py --expect-fw 1.1.115\n"
+            "Sheet: min_fw_version=1.1.115, interval_engine_off_s=3600, clear force_ota/cmd_ota.\n"
             "Then start week-away OTA (optional):\n"
             "  ./boat_monitor/run_week_away_dock_ota.sh"
         )
