@@ -156,6 +156,7 @@ def main(argv=None):
             BOOTSTRAP_RULES_PATHS,
             "Bootstrap OTA: version.py + remote_boot_config.py (sheet backoff self-heal).",
             include_bundle=False,
+            manifest_kind="bootstrap",
         )
     if args.version_only:
         return _write_manifest(
