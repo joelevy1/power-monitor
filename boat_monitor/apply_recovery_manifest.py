@@ -66,6 +66,12 @@ DOCK_FIX_PATHS = (
     "remote_boot_config.py",
 )
 
+V50_TRACK_PATHS = (
+    "version.py",
+    "v50_energy.py",
+    "ble_service.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -126,7 +132,19 @@ def main(argv=None):
         action="store_true",
         help="5-file dock OTA fix: version, main, standby, ota_health, remote_boot_config",
     )
+    p.add_argument(
+        "--v50-track",
+        action="store_true",
+        help="3-file fix: version.py + v50_energy.py + ble_service read_v50",
+    )
     args = p.parse_args(argv)
+    if args.v50_track:
+        return _write_manifest(
+            V50_TRACK_PATHS,
+            "V50 sheet tracking: v50_energy mAh integrator + INA219 read_v50 fix.",
+            include_bundle=False,
+            manifest_kind="stress",
+        )
     if args.dock_fix:
         return _write_manifest(
             DOCK_FIX_PATHS,

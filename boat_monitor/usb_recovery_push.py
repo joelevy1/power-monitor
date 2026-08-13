@@ -49,6 +49,7 @@ RECOVERY_FILES = (
     "sheets_log.py",
     "remote_control.py",
     "ota_capability.py",
+    "v50_energy.py",
     "version.py",
 )
 

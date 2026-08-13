@@ -116,7 +116,7 @@ def read_v50():
         # With no USB bank on the harness, TPS IN1 can still show ~5 V at near-zero
         # amps (ghost on the unused leg). Treat as "not on bank" for logging/SOC.
         if abs(a) < 0.02:
-            return {"v": 0.0, "a": 0.0, "ok": True, "bank_idle": True}
+            return {"v": v, "a": a, "ok": True, "bank_idle": True}
         return {
             "v": v,
             "a": a,
