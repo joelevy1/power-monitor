@@ -273,7 +273,7 @@ def upload_stall_report_bounded(
     try:
         import sheets_log
 
-        logger = sheets_log.SheetsLogger(prefer_wifi=True)
+        logger = sheets_log.SheetsLogger(prefer_wifi=False)
         try:
             logger.ensure_data()
             if elapsed_s() >= max_total_s:

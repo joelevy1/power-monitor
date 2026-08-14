@@ -178,8 +178,11 @@ def effective_boot_ota_max_seconds():
 
 
 def effective_standby_log_prefer_wifi():
-    """Standby Power_Log uplink: Wi-Fi at dock (dock_mode), else ble_policy default."""
+    """Standby Power_Log uplink: explicit standby_prefer_wifi beats dock_mode Wi-Fi."""
     data = load()
+    if "standby_prefer_wifi" in data and str(data.get("standby_prefer_wifi")).strip() != "":
+        if not data["standby_prefer_wifi"]:
+            return False
     dock = str(data.get("dock_mode") or "").strip().lower()
     if dock in ("home", "dock", "wifi"):
         return True

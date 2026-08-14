@@ -43,6 +43,9 @@ def main():
             data["ota_self_sufficient_since"] = int(time.time())
         except Exception:
             pass
+    else:
+        data.pop("ota_self_sufficient", None)
+        data.pop("ota_self_sufficient_since", None)
     if AUTO_OTA_ON_BOOT:
         try:
             import version
