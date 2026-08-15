@@ -43,7 +43,7 @@ boat-monitor-sheets@your-project-id.iam.gserviceaccount.com
 ## 3. Create the spreadsheet and tabs
 
 1. [Google Sheets](https://sheets.google.com) → **Blank spreadsheet**
-2. Name it **Boat Monitor** (sheets_bootstrap.py's Drive API fallback looks for this exact title when `GOOGLE_SHEETS_ID` isn't set)
+2. Name it **Boat Monitor** (sheets_bootstrap.py's Drive API fallback looks for this exact title when `BOAT_MONITOR_SHEET_ID` isn't set)
 3. Add tabs (rename the default sheet and add others):
 
    | Tab name | Purpose |
@@ -86,13 +86,13 @@ Only needed if code will **create** spreadsheets via API. For a sheet you create
 ```powershell
 # Example — adjust paths
 $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\dev\secrets\boat-monitor-sheets.json"
-$env:GOOGLE_SHEETS_ID = "your-spreadsheet-id-here"
+$env:BOAT_MONITOR_SHEET_ID = "your-spreadsheet-id-here"
 ```
 
 Or in `boat_monitor/secrets.py` (gitignored):
 
 ```python
-GOOGLE_SHEETS_ID = "your-spreadsheet-id-here"
+BOAT_MONITOR_SHEET_ID = "your-spreadsheet-id-here"
 GOOGLE_SERVICE_ACCOUNT_FILE = r"C:\dev\secrets\boat-monitor-sheets.json"
 ```
 
@@ -102,10 +102,10 @@ Repo → **Settings** → **Secrets and variables** → **Actions**:
 
 | Secret name | Value |
 |-------------|--------|
-| `GOOGLE_SHEETS_ID` | Spreadsheet ID only (between `/d/` and `/edit` in the URL) |
+| `BOAT_MONITOR_SHEET_ID` | Spreadsheet ID only (between `/d/` and `/edit` in the URL) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Full service-account `.json` (see workarounds below) |
 
-**Rename:** If you created `YOUR_SPREADSHEET_ID`, add **`GOOGLE_SHEETS_ID`** with the same value (or keep `YOUR_SPREADSHEET_ID` — the bootstrap workflow accepts both).
+**Legacy names** `GOOGLE_SHEETS_ID` and `YOUR_SPREADSHEET_ID` still work if you have not renamed yet.
 
 #### JSON in the GitHub web UI
 
@@ -115,7 +115,7 @@ The **Value** field accepts multiline JSON. Paste the **entire** key file. Do no
 
 ```powershell
 gh auth login
-gh secret set GOOGLE_SHEETS_ID --repo joelevy1/power-monitor --body "PASTE_SPREADSHEET_ID_HERE"
+gh secret set BOAT_MONITOR_SHEET_ID --repo joelevy1/power-monitor --body "PASTE_SPREADSHEET_ID_HERE"
 Get-Content C:\dev\secrets\boat-monitor-sheets.json -Raw | gh secret set GOOGLE_SERVICE_ACCOUNT_JSON --repo joelevy1/power-monitor
 ```
 
@@ -131,9 +131,9 @@ Create secret **`GOOGLE_SERVICE_ACCOUNT_JSON_B64`** with that output. The **Boot
 
 - **`GOOGLE_SERVICE_ACCOUNT_JSON`** — leave as your **spending / categorize-spend** key (all repos).
 - **`BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON`** — **boat-monitor-sheets** JSON (power-monitor only).
-- **`GOOGLE_SHEETS_ID`** — boat spreadsheet ID.
+- **`BOAT_MONITOR_SHEET_ID`** — boat spreadsheet ID.
 
-Boat scripts prefer `BOAT_MONITOR_*` first so spending and boat do not conflict.
+Boat scripts prefer `BOAT_MONITOR_*` first so spending and boat do not conflict. Legacy `GOOGLE_SHEETS_ID` is still read if `BOAT_MONITOR_SHEET_ID` is unset.
 
 ---
 
@@ -158,7 +158,7 @@ python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r boat_monitor/requirements-sheets.txt
 $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\dev\secrets\boat-monitor-sheets.json"
-$env:GOOGLE_SHEETS_ID = "your-spreadsheet-id"
+$env:BOAT_MONITOR_SHEET_ID = "your-spreadsheet-id"
 python boat_monitor/sheets_test_append.py
 ```
 
@@ -178,7 +178,7 @@ Posting from the **Pico over cellular** with a service-account JWT is possible b
 - [ ] JSON key downloaded and stored safely
 - [ ] Sheet created with tabs
 - [ ] Sheet shared with `client_email` as **Editor**
-- [ ] `GOOGLE_SHEETS_ID` saved in `secrets.py` or env
+- [ ] `BOAT_MONITOR_SHEET_ID` saved in `secrets.py` or env
 - [ ] `sheets_test_append.py` succeeds
 
 When the test passes, you can paste **only** the spreadsheet ID here (not the JSON key) if you want help wiring Pico logging next.
