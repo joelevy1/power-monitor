@@ -1,6 +1,6 @@
 {
-  "version": "1.1.115",
-  "notes": "Bootstrap OTA: version.py + remote_boot_config.py (sheet backoff self-heal).",
+  "version": "1.1.116",
+  "notes": "Bootstrap OTA: remote_boot_config WiFi fix (standby_prefer_wifi wins).",
   "files": [
     {
       "path": "version.py",
