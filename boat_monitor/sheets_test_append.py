@@ -5,10 +5,10 @@ Requires:
   pip install -r boat_monitor/requirements-sheets.txt
 
 Environment:
-  GOOGLE_APPLICATION_CREDENTIALS  path to service account JSON
-  GOOGLE_SHEETS_ID                spreadsheet ID from the sheet URL
+  BOAT_MONITOR_SHEET_ID (or GOOGLE_SHEETS_ID) — spreadsheet ID from the sheet URL
+  GOOGLE_APPLICATION_CREDENTIALS — path to service account JSON
 
-Or boat_monitor/secrets.py with GOOGLE_SERVICE_ACCOUNT_FILE and GOOGLE_SHEETS_ID.
+Or boat_monitor/secrets.py with GOOGLE_SERVICE_ACCOUNT_FILE and BOAT_MONITOR_SHEET_ID.
 """
 
 from __future__ import annotations
@@ -23,23 +23,21 @@ TAB = "Power_Log"
 
 
 def _load_config():
-    sheet_id = os.environ.get("GOOGLE_SHEETS_ID", "").strip()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from sheets_bootstrap import _credentials_path, _sheet_id_from_env_or_secrets
+
+    sheet_id = _sheet_id_from_env_or_secrets()
     creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-
-    secrets = Path(__file__).resolve().parent / "secrets.py"
-    if secrets.is_file():
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("boat_secrets", secrets)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        sheet_id = sheet_id or getattr(mod, "GOOGLE_SHEETS_ID", "")
-        creds_path = creds_path or getattr(mod, "GOOGLE_SERVICE_ACCOUNT_FILE", "")
+    if not creds_path:
+        try:
+            creds_path = _credentials_path()
+        except SystemExit:
+            creds_path = ""
 
     if not sheet_id:
-        raise SystemExit("Missing GOOGLE_SHEETS_ID (env or secrets.py)")
+        raise SystemExit("Missing BOAT_MONITOR_SHEET_ID (env or secrets.py)")
     if not creds_path or not Path(creds_path).is_file():
-        raise SystemExit("Missing GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_SERVICE_ACCOUNT_FILE")
+        raise SystemExit("Missing GOOGLE_APPLICATION_CREDENTIALS or service account JSON")
     return sheet_id, creds_path
 
 

@@ -31,7 +31,7 @@
  * Saving Code.gs alone does NOT update the live /exec URL the Pico uses.
  */
 
-var RECEIVER_VERSION = 5;
+var RECEIVER_VERSION = 6;
 var TIMESTAMP_DISPLAY_FORMAT = 'mmm d, yyyy h:mm AM/PM';
 var CONFIG_TAB = 'Config';
 
@@ -197,6 +197,22 @@ function handleSetConfigGet_(params) {
   return { ok: true, device: deviceId, key: key, value: value, receiver_version: RECEIVER_VERSION };
 }
 
+function mergeConfigValue_(key, prev, next) {
+  var a = String(prev || '').trim().toLowerCase();
+  var b = String(next || '').trim().toLowerCase();
+  if (key === 'dock_mode') {
+    if (a === 'away' || b === 'away') {
+      return 'away';
+    }
+  }
+  if (key === 'standby_prefer_wifi' || key === 'boot_ota_prefer_wifi' || key === 'auto_ota_on_boot') {
+    if (!truthy_(prev) || !truthy_(next)) {
+      return '0';
+    }
+  }
+  return next;
+}
+
 function upsertConfigKey_(fullKey, value) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var config = ss.getSheetByName(CONFIG_TAB);
@@ -210,13 +226,22 @@ function upsertConfigKey_(fullKey, value) {
   }
   var searchEnd = Math.max(lastRow, 2);
   var keys = config.getRange(2, 1, searchEnd, 1).getValues();
+  var matchRows = [];
   for (var i = 0; i < keys.length; i++) {
     if (String(keys[i][0] || '').trim() === fullKey) {
-      var rowNum = i + 2;
-      config.getRange(rowNum, 2).setValue(value);
-      config.getRange(rowNum, 3).setValue(new Date());
-      return;
+      matchRows.push(i + 2);
     }
+  }
+  if (matchRows.length) {
+    var keepRow = matchRows[matchRows.length - 1];
+    for (var d = matchRows.length - 1; d >= 0; d--) {
+      if (matchRows[d] !== keepRow) {
+        config.deleteRow(matchRows[d]);
+      }
+    }
+    config.getRange(keepRow, 2).setValue(value);
+    config.getRange(keepRow, 3).setValue(new Date());
+    return;
   }
   config.appendRow([fullKey, value, new Date(), 'mobile app']);
 }
@@ -253,7 +278,11 @@ function readConfigSettingsOnly_(deviceId) {
       continue;
     }
 
-    settings[key] = value;
+    if (Object.prototype.hasOwnProperty.call(settings, key)) {
+      settings[key] = mergeConfigValue_(key, settings[key], value);
+    } else {
+      settings[key] = value;
+    }
   }
 
   return settings;
@@ -374,7 +403,11 @@ function readConfigCommands_(deviceId) {
       continue;
     }
 
-    settings[key] = value;
+    if (Object.prototype.hasOwnProperty.call(settings, key)) {
+      settings[key] = mergeConfigValue_(key, settings[key], value);
+    } else {
+      settings[key] = value;
+    }
   }
 
   for (var c = 0; c < clearRows.length; c++) {

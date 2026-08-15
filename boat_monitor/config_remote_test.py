@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Set Config tab rows for a remote OTA + interval test (PC / cloud agent).
 
-Requires GOOGLE_SHEETS_ID and service account JSON (same as sheets_bootstrap.py).
+Requires BOAT_MONITOR_SHEET_ID (or GOOGLE_SHEETS_ID) and service account JSON (same as sheets_bootstrap.py).
 """
 
 from __future__ import annotations

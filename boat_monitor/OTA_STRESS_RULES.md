@@ -23,11 +23,12 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 
 ## Sheet rules
 
-1. Before stress: `ota_stress_rules.preflight_sheet()` (or harness startup) sets
-   `clear_ota_degraded=1`, `clear_boot_ota_backoff=1`, `auto_ota_on_boot=1` and
-   clears `force_ota`, `cmd_ota`, `boat-p2:cmd_ota`, `cmd_clear_pending_ota`.
+1. Before stress: `ota_stress_rules.preflight_sheet()` dedupes Config, then sets
+   recovery keys and clears one-shots.
 2. After every ship: `apply_ship_config.py` clears the same one-shots.
-3. **Never** leave `force_ota=1` on Config while `current >= min_fw` — device
+3. **Never** duplicate singleton keys (`dock_mode`, `min_fw_version`, …). Run
+   `python3 sheets_config_validate.py` before week-away or after manual edits.
+4. **Never** leave `force_ota=1` on Config while `current >= min_fw` — device
    will `reboot_queued` every log cycle without upgrading.
 
 ## Device rules (firmware)

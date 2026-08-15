@@ -4,6 +4,8 @@
 # Template only: boat_monitor/secrets.example.py
 
 # Google Sheets (service account, PC-only — see SHEETS_SETUP.md)
+BOAT_MONITOR_SHEET_ID = ""
+# Legacy name (still supported):
 GOOGLE_SHEETS_ID = ""
 GOOGLE_SERVICE_ACCOUNT_FILE = r""
 
