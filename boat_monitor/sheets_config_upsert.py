@@ -79,6 +79,14 @@ def main(argv):
         triples.append((args[i], args[i + 1], args[i + 2]))
 
     upsert_config_keys(sheets, spreadsheet_id, triples)
+    try:
+        from sheets_config_policy import dedupe_config_keys
+
+        dupes, deleted = dedupe_config_keys(sheets, spreadsheet_id)
+        if dupes and deleted:
+            print("OK: deduped Config after upsert (%d row(s): %s)" % (deleted, ", ".join(sorted(dupes.keys()))))
+    except Exception as exc:
+        print("WARN: config dedupe after upsert:", exc)
     for key, value, _ in triples:
         print("OK:", key, "=", value)
     return 0

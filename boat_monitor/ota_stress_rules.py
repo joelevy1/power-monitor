@@ -55,11 +55,12 @@ STRESS_RECOVERY_KEYS = (
     ("auto_ota_on_boot", "1", "ota_stress_rules: boot OTA enabled"),
 )
 
-# Dock / standby: Wi-Fi routine logs; cellular boot OTA (rare, heap-safe).
+# Dock stress: Wi-Fi standby for OTA stress only — upsert + dedupe keeps one dock_mode row.
 DOCK_STRESS_KEYS = (
     ("boot_ota_prefer_wifi", "0", "ota_stress_rules: dock cellular boot OTA"),
     ("boat-p2:boot_ota_prefer_wifi", "0", "ota_stress_rules: dock cellular boot OTA"),
-    ("dock_mode", "home", "ota_stress_rules: dock Wi-Fi standby logs"),
+    ("dock_mode", "home", "ota_stress_rules: dock Wi-Fi standby (stress only)"),
+    ("standby_prefer_wifi", "1", "ota_stress_rules: dock Wi-Fi (stress only)"),
 )
 
 
@@ -102,17 +103,12 @@ def assert_version_only_manifest(manifest_path: Path | None = None) -> None:
 
 
 def read_config_map(sheets, spreadsheet_id):
-    rows = (
-        sheets.spreadsheets()
-        .values()
-        .get(spreadsheetId=spreadsheet_id, range="Config!A2:C")
-        .execute()
-        .get("values", [])
-    )
+    from sheets_config_policy import read_config_rows
+
+    rows = read_config_rows(sheets, spreadsheet_id)
     out = {}
-    for row in rows:
-        if row and row[0]:
-            out[str(row[0]).strip()] = str(row[1]).strip() if len(row) > 1 else ""
+    for _rn, key, val, _upd, _note in rows:
+        out[key] = str(val).strip() if val is not None else ""
     return out
 
 
@@ -121,8 +117,10 @@ def preflight_sheet(sheets, spreadsheet_id, note_prefix="ota_stress_rules", prof
     Normalize Config for a stress pass. Returns list of stale keys that were set.
     profile: 'underway' (cellular-first key on) or 'dock' (Wi-Fi-first standby).
     """
+    from sheets_config_policy import validate_config_or_exit
     from sheets_config_upsert import upsert_config_keys
 
+    validate_config_or_exit(sheets, spreadsheet_id, auto_fix=True)
     cfg = read_config_map(sheets, spreadsheet_id)
     stale = [k for k in STALE_SHEET_KEYS if _truthy(cfg.get(k))]
     rows = list(STRESS_RECOVERY_KEYS)
@@ -131,6 +129,7 @@ def preflight_sheet(sheets, spreadsheet_id, note_prefix="ota_stress_rules", prof
     for key in STALE_SHEET_KEYS:
         rows.append((key, "", "%s: clear stale one-shot" % note_prefix))
     upsert_config_keys(sheets, spreadsheet_id, rows)
+    validate_config_or_exit(sheets, spreadsheet_id, auto_fix=True)
     return stale
 
 

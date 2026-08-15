@@ -25,6 +25,23 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 
 Use **`boat-p2:v50_capacity_mah` only** — do not set legacy `v50_capacity_wh`. Run `python3 sheets_config_cleanup.py` to remove empty `cmd_*` dupes and backup rows.
 
+## Config hygiene (one row per key)
+
+Duplicate `key` rows are unsafe: Apps Script used **last row wins**, so `dock_mode=home` could override `dock_mode=away` and force Wi‑Fi ENOMEM at dock.
+
+**Rules (v6+ receiver, Python tools):**
+
+| Tool | Purpose |
+|------|---------|
+| `sheets_config_upsert.py` | Upsert + auto-dedupe after every write |
+| `sheets_config_validate.py` | Fail if duplicate singleton keys; `--fix` to merge |
+| `sheets_config_cleanup.py` | Full rewrite to canonical rows |
+| `ota_stress_rules.preflight_sheet()` | Dedupe before/after stress Config changes |
+
+**Deploy Apps Script v6** after editing `Code.gs` (new Web App version). v6 merges duplicates on read (`away` beats `home`) and deletes extra rows on `set_config`.
+
+**Do not** paste duplicate keys manually. Use upsert scripts or mobile `set_config` only.
+
 **Reset power bank to “100% full”:** In the iOS app → **Away from boat** → **Bank is 100% full** (needs Apps Script **v5** deployed). Or set Config `boat-p2:v50_full_at_utc` to an ISO timestamp (e.g. `2026-08-07T22:00:00Z`). The Pico applies it on the next successful log.
 
 **`wifi_networks` value** — one network per line in the **value** cell (use a tall cell or paste multiple lines):
