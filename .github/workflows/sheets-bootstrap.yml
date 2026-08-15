@@ -34,6 +34,7 @@ jobs:
 
       - name: Bootstrap tabs and headers
         env:
+          BOAT_MONITOR_SHEET_ID: ${{ secrets.BOAT_MONITOR_SHEET_ID }}
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
           YOUR_SPREADSHEET_ID: ${{ secrets.YOUR_SPREADSHEET_ID }}
         run: python3 boat_monitor/sheets_bootstrap.py
