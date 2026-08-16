@@ -169,7 +169,9 @@ def main():
     ]
 
     ok = True
-    sheet_id = os.environ.get("GOOGLE_SHEETS_ID", "").strip()
+    from sheets_bootstrap import _sheet_id_from_env_or_secrets
+
+    sheet_id = _sheet_id_from_env_or_secrets()
     for tab, data in tests:
         body = {"tab": tab, "token": token, "data": data}
         try:
