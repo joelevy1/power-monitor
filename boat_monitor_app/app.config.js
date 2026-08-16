@@ -2,6 +2,8 @@ const appJson = require('./app.json');
 
 const variant = process.env.EXPO_PUBLIC_APP_VARIANT || 'full';
 const isSmoke = variant === 'smoke';
+const defaultSheetsScriptUrl =
+  'https://script.google.com/macros/s/AKfycbyySDCjEf0qJcfwdlZkhOU21v10qgYGnOWi0mk3AgBxZy6n_sRf59KZFc8xn6lwNWctlg/exec';
 
 /** @type {import('@expo/config').ExpoConfig} */
 module.exports = ({ config }) => {
@@ -26,7 +28,7 @@ module.exports = ({ config }) => {
       sheetsScriptUrl:
         process.env.EXPO_PUBLIC_GOOGLE_APPS_SCRIPT_URL ||
         process.env.GOOGLE_APPS_SCRIPT_URL ||
-        '',
+        defaultSheetsScriptUrl,
       sheetsPostToken:
         process.env.EXPO_PUBLIC_SHEETS_POST_TOKEN || process.env.SHEETS_POST_TOKEN || '',
       boatDeviceId:

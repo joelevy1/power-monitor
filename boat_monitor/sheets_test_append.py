@@ -5,10 +5,11 @@ Requires:
   pip install -r boat_monitor/requirements-sheets.txt
 
 Environment:
-  BOAT_MONITOR_SHEET_ID (or GOOGLE_SHEETS_ID) — spreadsheet ID from the sheet URL
   GOOGLE_APPLICATION_CREDENTIALS — path to service account JSON
 
-Or boat_monitor/secrets.py with GOOGLE_SERVICE_ACCOUNT_FILE and BOAT_MONITOR_SHEET_ID.
+Or boat_monitor/secrets.py with GOOGLE_SERVICE_ACCOUNT_FILE. The production
+spreadsheet ID is committed in sheets_bootstrap.py; environment variables can
+still override it for development.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ def _load_config():
             creds_path = ""
 
     if not sheet_id:
-        raise SystemExit("Missing BOAT_MONITOR_SHEET_ID (env or secrets.py)")
+        raise SystemExit("Missing spreadsheet ID configuration")
     if not creds_path or not Path(creds_path).is_file():
         raise SystemExit("Missing GOOGLE_APPLICATION_CREDENTIALS or service account JSON")
     return sheet_id, creds_path

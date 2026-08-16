@@ -3,12 +3,14 @@
 # On the Pico: copy the same secrets.py to the Pico filesystem (Thonny → Save As).
 # Template only: boat_monitor/secrets.example.py
 
-# Google Sheets (service account, PC-only — see SHEETS_SETUP.md)
+# Google Sheets (service account, PC-only — see SHEETS_SETUP.md).
+# Optional override; the production spreadsheet ID is committed in
+# sheets_bootstrap.py.
 BOAT_MONITOR_SHEET_ID = ""
-# Legacy name (still supported):
-GOOGLE_SHEETS_ID = ""
 GOOGLE_SERVICE_ACCOUNT_FILE = r""
 
-# Google Sheets via Apps Script Web App (Pico + PC — see APPS_SCRIPT_SETUP.md)
+# Google Sheets via Apps Script Web App (Pico + PC — see APPS_SCRIPT_SETUP.md).
+# The production URL is committed in sheets_log.py; override it only when
+# targeting another deployment. SHEETS_POST_TOKEN remains secret and required.
 GOOGLE_APPS_SCRIPT_URL = ""
 SHEETS_POST_TOKEN = ""

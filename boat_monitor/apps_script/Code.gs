@@ -16,7 +16,7 @@
  *   4. Deploy -> New deployment -> type: Web app
  *        Execute as: Me
  *        Who has access: Anyone
- *   5. Deploy -> copy the /exec URL into secrets.py as GOOGLE_APPS_SCRIPT_URL
+ *   5. Deploy -> update the committed production URL if the /exec URL changed
  *
  * POST body (JSON): { "tab": "GPS_Log", "token": "...", "data": {...} }
  * "data" keys are matched by exact header name in row 1 of that tab

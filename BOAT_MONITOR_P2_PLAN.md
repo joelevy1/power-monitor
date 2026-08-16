@@ -71,7 +71,7 @@ Hook: commented `check_inbound_sms()` after `NETOPEN` in `modem.py` when you bui
 - [ ] **0.6** Sheet tabs: `Power_Log`, `GPS_Log`, `Bilge_Log`, `Events`, `Config` _(Sheets)_
 - [ ] **0.7** Apps Script POST JSON `{ tab, data }` → `{ ok: true }` _(Apps Script)_
 - [ ] **0.8** Apps Script read Config thresholds _(Apps Script)_
-- [ ] **0.9** `GOOGLE_APPS_SCRIPT_URL` in local `.env` for PC tests _(PC)_
+- [x] **0.9** Production Apps Script URL committed; env override remains available _(Repo)_
 - [ ] **0.10** `internet_acceptance_test.py --sheets "<url>"` passes _(PC)_
 
 ### Tests

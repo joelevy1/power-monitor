@@ -18,23 +18,16 @@ jobs:
 
       - name: Write service account key
         env:
-          JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          B64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}
+          JSON: ${{ secrets.BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
-          if [ -n "${B64:-}" ]; then
-            echo "$B64" | base64 -d > /tmp/sa.json
-          elif [ -n "${JSON:-}" ]; then
+          if [ -n "${JSON:-}" ]; then
             printf '%s' "$JSON" > /tmp/sa.json
           else
-            echo "::error::Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_B64"
+            echo "::error::Set BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON"
             exit 1
           fi
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json" >> "$GITHUB_ENV"
 
       - name: Bootstrap tabs and headers
-        env:
-          BOAT_MONITOR_SHEET_ID: ${{ secrets.BOAT_MONITOR_SHEET_ID }}
-          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
-          YOUR_SPREADSHEET_ID: ${{ secrets.YOUR_SPREADSHEET_ID }}
         run: python3 boat_monitor/sheets_bootstrap.py
