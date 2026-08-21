@@ -1,7 +1,9 @@
 """PC-side tests for remote_control.py (no Pico hardware)."""
 
 import importlib.util
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -42,9 +44,15 @@ def test_min_fw_version():
 
 
 def main():
-    test_interval_override()
-    test_one_shot_ota()
-    test_min_fw_version()
+    original_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        os.chdir(tmp)
+        try:
+            test_interval_override()
+            test_one_shot_ota()
+            test_min_fw_version()
+        finally:
+            os.chdir(original_cwd)
     print("remote_control tests OK")
 
 
