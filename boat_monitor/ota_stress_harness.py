@@ -346,6 +346,7 @@ def _wait_for_target_fw(
     timeout_s: int = 2400,
     expected_uplink: str | None = None,
     baseline_event_rows: int = 0,
+    boot_start_timeout_s: int | None = None,
 ):
     from ota_stress_rules import (
         BOOT_START_TIMEOUT_S,
@@ -357,7 +358,8 @@ def _wait_for_target_fw(
     start = time.time()
     run_report = {"target": target_fw, "phases": [], "phase_keys": set(), "success": False}
     saw_boot_start = False
-    boot_start_deadline = start + BOOT_START_TIMEOUT_S
+    boot_start_limit = int(boot_start_timeout_s or BOOT_START_TIMEOUT_S)
+    boot_start_deadline = start + boot_start_limit
     ota_success_at = None
 
     while time.time() - start < timeout_s:
@@ -486,7 +488,7 @@ def _wait_for_target_fw(
             ):
                 err = (
                     "no_boot_start in %ds — flash backoff trap? USB patch-only --enable-boot-ota"
-                    % BOOT_START_TIMEOUT_S
+                    % boot_start_limit
                 )
                 run_report["error"] = err
                 print("FAIL:", err)
@@ -884,12 +886,19 @@ def run_rounds(
             pl_before, _ = _fetch_power_tail()
             _set_min_fw_only(ver)
         expected_uplink = "wifi" if profile == "dock" else None
+        if profile == "dock":
+            from ota_stress_rules import DOCK_BOOT_START_TIMEOUT_S
+
+            boot_start_timeout_s = DOCK_BOOT_START_TIMEOUT_S
+        else:
+            boot_start_timeout_s = None
         rep = _wait_for_target_fw(
             ver,
             pl_before,
             timeout_s=round_timeout_s,
             expected_uplink=expected_uplink,
             baseline_event_rows=event_before if not dry_run else 0,
+            boot_start_timeout_s=boot_start_timeout_s,
         )
         rep["round"] = i + 1
         rep["profile"] = profile

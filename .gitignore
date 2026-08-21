@@ -34,6 +34,7 @@ boat_monitor_app/.expo/
 
 # OTA campaign runtime state
 boat_p2_watch_state.json
+boat_p2_watch.log
 ota_stress_results.json
 
 # Nested P1 clone (track via github.com/joelevy1/remotebatterystatus)

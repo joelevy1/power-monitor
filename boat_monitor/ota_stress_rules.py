@@ -24,6 +24,9 @@ MAX_STRESS_BUNDLE_BYTES = 0  # no bundle during stress
 
 # Round fails if device stays below min_fw with no boot_start (flash backoff trap).
 BOOT_START_TIMEOUT_S = 1200
+# Winter dock logging is hourly. The device cannot learn about a Sheet target
+# until its next scheduled POST, so allow one full interval plus 15m grace.
+DOCK_BOOT_START_TIMEOUT_S = 4500
 
 # After boot_ota outcome=success, Power_Log may lag reboot by several log cycles.
 POST_OTA_POWER_LOG_GRACE_S = 900

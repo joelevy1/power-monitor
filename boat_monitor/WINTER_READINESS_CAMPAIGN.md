@@ -136,3 +136,24 @@ Store campaign output in ignored runtime files:
 Summarize each completed round in this document or a dated companion report.
 Do not treat old Sheet history as current-round evidence; event baselines are
 captured immediately before each ship.
+
+## Campaign log
+
+### 2026-08-21 — Phase 0 attempt 1: safely paused
+
+- `1.1.117` merged and both GitHub API and raw CDN were verified before the
+  Sheet target changed.
+- Sheet was configured for Wi-Fi-only boot OTA and `min_fw_version=1.1.117`.
+- The Pico remained alive on `1.1.116`; a 6:24 AM Pacific diagnostic event
+  reported `power: ok` followed by a GPS/HTTPDATA failure, but no persisted
+  Power Log, `remote_config`, capability, or `boot_start` acknowledged the new
+  target.
+- At 20 minutes the operator applied the emergency brake: `min_fw_version`
+  returned to `1.1.116`, boot OTA was disabled, one-shots were cleared, and the
+  known cellular/away profile was restored.
+- This was not evidence that the Wi-Fi payload failed: the old 20-minute
+  `boot_start` deadline was shorter than the one-hour winter log interval, so
+  the device might not have fetched the new Sheet policy yet.
+- Guardrail correction: dock campaigns now allow 4500 seconds (one 3600-second
+  interval plus 15 minutes) for the first `boot_start`. Underway campaigns keep
+  the stricter 1200-second gate.
