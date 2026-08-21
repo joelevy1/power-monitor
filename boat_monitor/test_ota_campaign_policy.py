@@ -10,7 +10,11 @@ import remote_boot_config
 from apply_recovery_manifest import WINTER_HARDENING_PATHS, version_last
 from apply_ship_config import profile_rows
 from ota_stress_harness import ROOT, _ship_version, _uplink_matches
-from ota_stress_rules import DOCK_STRESS_KEYS, STALE_SHEET_KEYS
+from ota_stress_rules import (
+    DOCK_BOOT_START_TIMEOUT_S,
+    DOCK_STRESS_KEYS,
+    STALE_SHEET_KEYS,
+)
 
 
 def main():
@@ -40,6 +44,7 @@ def main():
     assert dock_keys["standby_prefer_wifi"] == "1"
     assert "cmd_ota_force" in STALE_SHEET_KEYS
     assert "boat-p2:cmd_ota_force" in STALE_SHEET_KEYS
+    assert DOCK_BOOT_START_TIMEOUT_S >= 3600 + 900
 
     original_path = remote_boot_config.PATH
     with tempfile.TemporaryDirectory() as tmp:
