@@ -4,7 +4,7 @@ When the Pico stops auto-logging or is stuck in a reboot/OTA loop, use USB from 
 
 **Before you start:** Close **Thonny** (or any serial monitor). Plug Pico USB; bank power can stay on.
 
-## Week-away kit (recommended — 1.1.113 ENOMEM fix)
+## Week-away kit (recommended)
 
 One USB session loads the full stack **plus** lean failure paths when heap is low, cellular
 standby logs at dock (`dock_mode=away`), V50 energy tracking, and OTA self-sufficiency.
@@ -23,13 +23,13 @@ py boat_monitor\usb_recovery_push.py --ota-self-sufficient --enable-boot-ota --p
 
 **Files copied:** `mem_guard.py`, `diag_log.py`, `resilience.py`, `remote_telemetry.py`,
 `ble_service.py`, `v50_energy.py`, `standby_monitor.py`, `sheets_log.py`, `ota_*`, `main.py`,
-`version.py` (1.1.113), …
+`version.py` (the current repository version), …
 
 **Flash patch sets:** clears `ota_degraded`/backoff, `auto_ota_on_boot=true`, `dock_mode=away`,
 `standby_prefer_wifi=0` (cellular logs — avoids dock Wi-Fi ENOMEM), `boot_ota_prefer_wifi=0`,
 `ota_manifest_profile=stress`, `ota_self_sufficient=1`, `pending_ota=true`.
 
-### ENOMEM rules (1.1.113)
+### ENOMEM rules
 
 | When heap &lt; ~22K or ENOMEM on POST | Firmware skips |
 |---------------------------------------|----------------|
@@ -50,12 +50,14 @@ a successful cellular log clears fragmentation.
 4. Run verification gate (from repo on PC):
 
 ```bat
-py boat_monitor\usb_recovery_verify.py --expect-fw 1.1.113
+for /f "tokens=2 delims== " %V in ('findstr VERSION boat_monitor\version.py') do py boat_monitor\usb_recovery_verify.py --expect-fw %~V
 ```
 
-Green = `fw>=1.1.113`, no reboot trap, `ota_capability` Events row with `will_boot_ota=`.
+Green = device firmware at the repository version, no reboot trap, and an
+`ota_capability` Events row containing `will_boot_ota=`.
 
-5. **Sheet Config** (agent or manual): `min_fw_version=1.1.113`, `interval_engine_off_s=3600`,
+5. **Sheet Config** (agent or manual): `min_fw_version` = current repository
+   version, `interval_engine_off_s=3600`,
    clear `force_ota`, `cmd_ota`, `cmd_ota_force`.
 
 6. Optional OTA stress campaign (not required for week-away monitoring):
@@ -113,5 +115,5 @@ py -m mpremote connect COM7 run boat_monitor\usb_bench_log.py
 
 ## Confidence
 
-After 1.1.113 USB kit + verify + 1h logging: **high** for week-away monitoring without USB.
+After the current USB kit + verify + 1h logging: **high** for week-away monitoring without USB.
 USB may still be needed for catastrophic flash corruption or multi-file feature packs.

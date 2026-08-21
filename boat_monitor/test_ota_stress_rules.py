@@ -63,7 +63,29 @@ def test_master_policy_blocks_recovery():
         "files": [{"path": "version.py"}, {"path": "main.py"}, {"path": "ota.py"}],
     }
     errs = master_manifest_policy_errors(data)
-    assert errs and "3 files" in errs[0]
+    assert errs and "wifi-feature" in errs[0]
+
+
+def test_master_policy_wifi_feature():
+    data = {
+        "manifest_kind": "wifi-feature",
+        "files": [
+            {"path": "resilience.py"},
+            {"path": "cellular.py"},
+            {"path": "version.py"},
+        ],
+    }
+    assert master_manifest_policy_errors(data) == []
+
+    wrong_order = {
+        "manifest_kind": "wifi-feature",
+        "files": [
+            {"path": "version.py"},
+            {"path": "cellular.py"},
+        ],
+    }
+    errs = master_manifest_policy_errors(wrong_order)
+    assert errs and "version.py last" in errs[0]
 
 
 def test_master_policy_bootstrap_wrong_kind():
@@ -91,6 +113,7 @@ def main():
     test_master_policy_stress()
     test_master_policy_bootstrap()
     test_master_policy_blocks_recovery()
+    test_master_policy_wifi_feature()
     test_master_policy_bootstrap_wrong_kind()
     test_assert_version_only_manifest()
     print("ota_stress_rules tests OK")

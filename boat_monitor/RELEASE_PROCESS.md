@@ -26,6 +26,22 @@ of versions.
 Violating this wastes field time and breaks trust. Treat repeat violations as a
 process failure.
 
+### Controlled qualification exception
+
+The owner may explicitly authorize a sequential OTA resilience campaign whose
+purpose is to prove repeated unattended upgrades. That exception is governed by
+`WINTER_READINESS_CAMPAIGN.md` and `OTA_STRESS_RULES.md`:
+
+- every round is version-only;
+- every target is published and remotely validated before the Sheet changes;
+- each round must pass independently before the next release;
+- any ship, transport, telemetry, flash, or reboot failure pauses the target and
+  stops the campaign;
+- `--allow-master-push` / `ALLOW_MASTER_PUSH=1` records explicit authorization.
+
+This exception is for controlled testing only. Normal feature work still ships
+as one batched release.
+
 ## Never do this
 
 1. Set **`min_fw_version`** (or run `apply_ship_config.py`) to a version **newer

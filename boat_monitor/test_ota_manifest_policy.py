@@ -35,11 +35,18 @@ def test_dock_fix_wifi_ok():
     assert ok
 
 
+def test_wifi_feature_requires_wifi():
+    manifest = {"files": [{}] * 6, "manifest_kind": "wifi-feature"}
+    assert not check_manifest_policy(manifest, used_wifi=False)[0]
+    assert check_manifest_policy(manifest, used_wifi=True)[0]
+
+
 def main():
     test_stress_one_file()
     test_bootstrap_two_cellular()
     test_dock_fix_cellular_blocked()
     test_dock_fix_wifi_ok()
+    test_wifi_feature_requires_wifi()
     print("ota_health manifest policy tests OK")
 
 

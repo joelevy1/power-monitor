@@ -5,6 +5,7 @@ Config tab keys (via Apps Script commands on each log POST):
   auto_ota_on_boot     — 1/true/yes overrides ota_config.py on every boot
   boot_ota_max_seconds — cap for boot-time OTA (default from ota_config)
   boot_ota_prefer_wifi — 1|0: force Wi-Fi for boot OTA; omit = policy below
+  standby_prefer_wifi  — 1|0: force Wi-Fi-first or cellular standby logging
   dock_mode — home: Wi-Fi-first standby logging; boot OTA defaults to cellular
   ota_manifest_profile — micro | ram-fix | feature-pack (sheet override)
   cmd_ota_force — one-shot: allow boot OTA / reboot when ota_degraded (cleared on success)
@@ -65,6 +66,9 @@ def apply_settings(settings):
     if "boot_ota_prefer_wifi" in settings and str(settings.get("boot_ota_prefer_wifi")).strip() != "":
         data["boot_ota_prefer_wifi"] = _truthy(settings["boot_ota_prefer_wifi"])
         applied.append("boot_ota_prefer_wifi=%s" % (1 if data["boot_ota_prefer_wifi"] else 0))
+    if "standby_prefer_wifi" in settings and str(settings.get("standby_prefer_wifi")).strip() != "":
+        data["standby_prefer_wifi"] = _truthy(settings["standby_prefer_wifi"])
+        applied.append("standby_prefer_wifi=%s" % (1 if data["standby_prefer_wifi"] else 0))
     if "dock_mode" in settings and str(settings.get("dock_mode")).strip() != "":
         mode = str(settings.get("dock_mode")).strip().lower()
         data["dock_mode"] = mode
