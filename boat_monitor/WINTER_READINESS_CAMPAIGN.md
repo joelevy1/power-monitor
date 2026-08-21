@@ -157,3 +157,30 @@ captured immediately before each ship.
 - Guardrail correction: dock campaigns now allow 4500 seconds (one 3600-second
   interval plus 15 minutes) for the first `boot_start`. Underway campaigns keep
   the stricter 1200-second gate.
+
+### 2026-08-21 — Phase 0 attempt 2: failed before OTA
+
+- The corrected timing gate was merged and the target was re-armed with stale
+  pending-clear commands blank.
+- No Power Log or heartbeat appeared during the next scheduled hourly window.
+  The final telemetry remained:
+  - Power Log: `1.1.116`, cellular, 6:09 AM Pacific.
+  - Event: 6:24 AM Pacific, `power: ok` followed by a GPS HTTPDATA prompt
+    failure.
+- There was no `remote_config`, capability, `aware`, `boot_start`, or reboot
+  evidence for the retry. Therefore the device never proved it fetched the new
+  Wi-Fi-only policy; the `1.1.117` payload was not attempted.
+- Most likely failure: `1.1.116` became blocked in a modem/HTTP operation after
+  its temporary on-device watchdog disable. With no watchdog reset and no
+  out-of-band command channel, Sheet changes cannot recover a blocked process.
+- The emergency brake restored `min_fw_version=1.1.116`, disabled boot OTA,
+  restored the known cellular/away profile, and cleared OTA one-shots.
+- The six-round campaign did not start.
+
+Required recovery before another campaign attempt:
+
+1. Physically power-cycle V50; USB flashing is not initially required.
+2. Confirm a fresh `1.1.116` Power Log and capability row.
+3. Do not re-arm `1.1.117` until the device has acknowledged the safe rollback.
+4. If it hangs again before acknowledgment, USB-install the `1.1.117` hardening
+   files because the old firmware has no remaining remote recovery path.
