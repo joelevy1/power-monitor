@@ -54,6 +54,7 @@ RECOVERY_FILES = (
     "ota.py",
     "main.py",
     "cellular.py",
+    "gps.py",
     "standby_monitor.py",
     "sheets_log.py",
     "remote_control.py",
