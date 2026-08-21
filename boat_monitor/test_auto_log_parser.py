@@ -21,7 +21,7 @@ from auto_log import (  # noqa: E402
 )
 
 
-def run():
+def _run_checks():
     failures = []
 
     def check(name, condition):
@@ -124,6 +124,20 @@ def run():
         return 1
     print("ALL CHECKS PASSED")
     return 0
+
+
+def run():
+    import tempfile
+
+    import remote_boot_config
+
+    original_path = remote_boot_config.PATH
+    with tempfile.TemporaryDirectory() as tmp:
+        remote_boot_config.PATH = str(Path(tmp) / "remote_boot_config.json")
+        try:
+            return _run_checks()
+        finally:
+            remote_boot_config.PATH = original_path
 
 
 if __name__ == "__main__":

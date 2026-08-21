@@ -17,9 +17,11 @@ PENDING_STALL_PATH = "pending_stall_reboot.json"
 STALL_UPLOAD_MAX_S = 12
 # RP2040 max ~8388 ms; fed from diag_log.log() and standby loop.
 WDT_TIMEOUT_MS = 8000
+WDT_FEED_INTERVAL_MS = 2500
 HARDWARE_WDT = True
 
 _wdt = None
+_last_watchdog_feed_ms = None
 
 
 def _ticks_ms():
@@ -37,7 +39,7 @@ def _ticks_diff(a, b):
 
 
 def enable_watchdog(timeout_ms=None):
-    global _wdt
+    global _wdt, _last_watchdog_feed_ms
     if not HARDWARE_WDT:
         return None
     if _wdt is not None:
@@ -47,6 +49,7 @@ def enable_watchdog(timeout_ms=None):
 
         ms = int(timeout_ms or WDT_TIMEOUT_MS)
         _wdt = machine.WDT(timeout=ms)
+        _last_watchdog_feed_ms = _ticks_ms()
         return _wdt
     except Exception as exc:
         print("resilience: WDT unavailable:", exc)
@@ -55,12 +58,41 @@ def enable_watchdog(timeout_ms=None):
 
 def feed_watchdog():
     """Feed the hardware WDT only if standby already enabled it."""
+    global _last_watchdog_feed_ms
     if _wdt is None:
         return
     try:
         _wdt.feed()
+        _last_watchdog_feed_ms = _ticks_ms()
     except Exception:
         pass
+
+
+def feed_watchdog_if_due(interval_ms=None):
+    """Feed a live WDT at a bounded cadence from progressing I/O loops.
+
+    Polling loops can legally run much longer than the RP2040's ~8 second
+    maximum watchdog timeout. Feeding every few seconds keeps slow I/O alive
+    without hiding a deadlock that stops the loop entirely.
+    """
+    if _wdt is None:
+        return
+    gap = int(interval_ms or WDT_FEED_INTERVAL_MS)
+    now = _ticks_ms()
+    if _last_watchdog_feed_ms is None or _ticks_diff(now, _last_watchdog_feed_ms) >= gap:
+        feed_watchdog()
+
+
+def sleep_with_watchdog(seconds, slice_s=1, sleep_fn=None):
+    """Sleep in bounded slices while preserving a live standby watchdog."""
+    remaining = max(0, float(seconds))
+    sleeper = sleep_fn or time.sleep
+    feed_watchdog()
+    while remaining > 0:
+        step = min(float(slice_s), remaining)
+        sleeper(step)
+        remaining -= step
+        feed_watchdog_if_due()
 
 
 def write_pending_stall(device, reason, mode=None):

@@ -14,18 +14,20 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 2. **Stress rounds ship version-only** — `ota_manifest.json` must contain only
    `version.py` (~19 bytes). No `bundle`, no multi-file manifests on cellular
    boot OTA.
-2. **`validate_release.py --max-files 1`** must pass before any stress ship or
+3. **`validate_release.py --max-files 1`** must pass before any stress ship or
    `apply_ship_config.py`.
-3. **`apply_recovery_manifest.py --version-only`** runs in the harness before
+4. **`apply_recovery_manifest.py --version-only`** runs in the harness before
    every git push.
-4. Full / ram-fix / feature-pack manifests are for **USB push** or **Wi‑Fi bench**
-   only, not automated cellular stress.
+5. Multi-file master releases are allowed only as explicit `wifi-feature`
+   manifests: no bundle, at most eight files, and `version.py` last. Device
+   policy refuses them over cellular.
 
 ## Sheet rules
 
 1. Before stress: `ota_stress_rules.preflight_sheet()` (or harness startup) sets
    `clear_ota_degraded=1`, `clear_boot_ota_backoff=1`, `auto_ota_on_boot=1` and
-   clears `force_ota`, `cmd_ota`, `boat-p2:cmd_ota`, `cmd_clear_pending_ota`.
+   clears `force_ota`, `cmd_ota`, `cmd_ota_force`, device-scoped equivalents,
+   `cmd_clear_pending_ota`, and `ota_action`.
 2. After every ship: `apply_ship_config.py` clears the same one-shots.
 3. **Never** leave `force_ota=1` on Config while `current >= min_fw` — device
    will `reboot_queued` every log cycle without upgrading.
@@ -60,18 +62,27 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
    reboot (grace `POST_OTA_POWER_LOG_GRACE_S`, default 15 min).
 5. Sheet preflight runs before **each** round ship (not only at startup).
 6. `ota_stress_monitor.py` polls sheet + harness log every 5 min during runs.
+7. Live campaigns require `--allow-master-push` (wrapper:
+   `ALLOW_MASTER_PUSH=1`). Any git, CDN, or Sheet ship failure stops the pass.
+8. Events are baselined immediately before each ship; old lifecycle rows do not
+   count as current-round progress.
 
 ## Dock / standby profile (switch+key off, V50 power)
 
 1. Use harness `--profile dock` — sets `dock_mode=home` (Wi‑Fi standby logs),
    `boot_ota_prefer_wifi=0` (cellular boot OTA — rare updates, safer heap).
-2. Round timeout default **3600s** (5 min log interval + OTA).
+2. The winter wrapper uses a **7200s** round timeout with a one-hour dock
+   interval; release tooling preserves that cadence.
 3. `--reset-v50` sets `boat-p2:v50_full_at_utc` for mAh / % tracking.
 4. Expect Power_Log `mode=docked_off`, `uplink=wifi` when home AP reachable.
 5. **Boot OTA Wi-Fi ENOMEM**: firmware retries cellular on same boot (`main.py`);
    standby skips auto_log while `min_fw` is ahead (`standby_monitor.py`).
 6. **Dock split policy**: `dock_mode=home` → Wi‑Fi logs; boot OTA defaults cellular
    unless `boot_ota_prefer_wifi=1` explicitly set.
+7. Dock rounds require the target-version Power Log to show a Wi-Fi SSID.
+   A cellular target-version row does not satisfy the round.
+
+See `WINTER_READINESS_CAMPAIGN.md` for the full six-round and transport matrix.
 
 ## Quick recovery
 

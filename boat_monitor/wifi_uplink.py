@@ -31,6 +31,27 @@ wifi_uplink_test.py before relying on it.
 import time
 
 
+WIFI_IO_SLICE_TIMEOUT_S = 5
+
+
+def _feed_watchdog_if_due():
+    try:
+        import resilience
+
+        resilience.feed_watchdog_if_due()
+    except Exception:
+        pass
+
+
+def _sleep_with_watchdog(seconds):
+    try:
+        import resilience
+
+        resilience.sleep_with_watchdog(seconds, sleep_fn=time.sleep)
+    except Exception:
+        time.sleep(seconds)
+
+
 class WifiError(Exception):
     pass
 
@@ -132,6 +153,7 @@ def connect(timeout_s=15):
 
         start = time.ticks_ms()
         while time.ticks_diff(time.ticks_ms(), start) < timeout_s * 1000:
+            _feed_watchdog_if_due()
             if wlan.isconnected():
                 print("wifi_uplink: connected to", ssid, wlan.ifconfig())
                 try:
@@ -152,7 +174,7 @@ def connect(timeout_s=15):
                 except Exception:
                     pass
                 break
-            time.sleep(0.5)
+            _sleep_with_watchdog(0.5)
         else:
             print("wifi_uplink: timed out connecting to", ssid)
             try:
@@ -305,9 +327,11 @@ class WifiHttp:
 
         addr = socket.getaddrinfo(host, port)[0][-1]
         sock = socket.socket()
-        sock.settimeout(timeout_s)
+        sock.settimeout(min(timeout_s, WIFI_IO_SLICE_TIMEOUT_S))
         try:
+            _feed_watchdog_if_due()
             sock.connect(addr)
+            _feed_watchdog_if_due()
             if is_https:
                 try:
                     import ussl as ssl
@@ -317,13 +341,17 @@ class WifiHttp:
                     sock = ssl.wrap_socket(sock, server_hostname=host)
                 except TypeError:
                     sock = ssl.wrap_socket(sock)
+                _feed_watchdog_if_due()
 
             sock.write(request_text.encode())
+            _feed_watchdog_if_due()
             if body_bytes:
                 sock.write(body_bytes)
+                _feed_watchdog_if_due()
 
             response = b""
             while True:
+                _feed_watchdog_if_due()
                 try:
                     chunk = sock.recv(1024)
                 except OSError:
@@ -423,9 +451,11 @@ class WifiHttp:
         )
         addr = socket.getaddrinfo(host, port)[0][-1]
         sock = socket.socket()
-        sock.settimeout(timeout_s)
+        sock.settimeout(min(timeout_s, WIFI_IO_SLICE_TIMEOUT_S))
         try:
+            _feed_watchdog_if_due()
             sock.connect(addr)
+            _feed_watchdog_if_due()
             if is_https:
                 try:
                     import ussl as ssl
@@ -435,11 +465,14 @@ class WifiHttp:
                     sock = ssl.wrap_socket(sock, server_hostname=host)
                 except TypeError:
                     sock = ssl.wrap_socket(sock)
+                _feed_watchdog_if_due()
 
             sock.write(request_text.encode())
+            _feed_watchdog_if_due()
 
             header = b""
             while b"\r\n\r\n" not in header:
+                _feed_watchdog_if_due()
                 chunk = sock.recv(256)
                 if not chunk:
                     raise WifiError("connection closed before HTTP headers")
@@ -481,6 +514,7 @@ class WifiHttp:
                 if body:
                     out.write(body)
                 while got < need:
+                    _feed_watchdog_if_due()
                     chunk = sock.recv(min(1024, need - got))
                     if not chunk:
                         raise WifiError("short read %d/%d" % (got, need))

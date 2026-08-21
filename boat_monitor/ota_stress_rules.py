@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent
 # Cellular boot OTA on Pico W: version-only manifest (~19 bytes) is the stress default.
 MAX_STRESS_MANIFEST_FILES = 1
 MAX_BOOTSTRAP_MANIFEST_FILES = 2
+MAX_WIFI_FEATURE_MANIFEST_FILES = 8
 MAX_STRESS_BUNDLE_BYTES = 0  # no bundle during stress
 
 # Round fails if device stays below min_fw with no boot_start (flash backoff trap).
@@ -37,13 +38,20 @@ WATCH_STATE_MAX_AGE_S = 120
 # manifest_kind values allowed on GitHub master (Pico raw CDN).
 MASTER_MANIFEST_KIND_STRESS = "stress"
 MASTER_MANIFEST_KIND_BOOTSTRAP = "bootstrap"
-MASTER_ALLOWED_MANIFEST_KINDS = (MASTER_MANIFEST_KIND_STRESS, MASTER_MANIFEST_KIND_BOOTSTRAP)
+MASTER_MANIFEST_KIND_WIFI_FEATURE = "wifi-feature"
+MASTER_ALLOWED_MANIFEST_KINDS = (
+    MASTER_MANIFEST_KIND_STRESS,
+    MASTER_MANIFEST_KIND_BOOTSTRAP,
+    MASTER_MANIFEST_KIND_WIFI_FEATURE,
+)
 
 # Sheet keys that must be empty before stress / after ship (one-shot storms).
 STALE_SHEET_KEYS = (
     "force_ota",
     "cmd_ota",
+    "cmd_ota_force",
     "boat-p2:cmd_ota",
+    "boat-p2:cmd_ota_force",
     "cmd_clear_pending_ota",
     "ota_action",
 )
@@ -60,6 +68,8 @@ DOCK_STRESS_KEYS = (
     ("boot_ota_prefer_wifi", "0", "ota_stress_rules: dock cellular boot OTA"),
     ("boat-p2:boot_ota_prefer_wifi", "0", "ota_stress_rules: dock cellular boot OTA"),
     ("dock_mode", "home", "ota_stress_rules: dock Wi-Fi standby logs"),
+    ("standby_prefer_wifi", "1", "ota_stress_rules: require dock Wi-Fi standby logs"),
+    ("boat-p2:standby_prefer_wifi", "1", "ota_stress_rules: require dock Wi-Fi standby logs"),
 )
 
 
@@ -225,14 +235,26 @@ def manifest_kind(data) -> str:
 
 def master_manifest_policy_errors(data, file_count: int | None = None) -> list[str]:
     """
-    CI / pre-ship gate: master CDN manifest must be stress (1 file) or bootstrap (2).
-    Recovery / dock-fix / feature-pack manifests must never land on master.
+    CI / pre-ship gate: master CDN manifest must be stress (1 file), bootstrap
+    (2), or an explicitly Wi-Fi-only feature release (up to 8, version last).
     """
     files = (data or {}).get("files") or []
     n = file_count if file_count is not None else len(files)
     if data.get("bundle"):
         return ["manifest has bundle — not allowed on master stress CDN"]
     kind = manifest_kind(data)
+    paths = [str(e.get("path") or "") for e in files]
+    if kind == MASTER_MANIFEST_KIND_WIFI_FEATURE:
+        if n < 2 or n > MAX_WIFI_FEATURE_MANIFEST_FILES:
+            return [
+                "wifi-feature manifest has %d files (expected 2..%d)"
+                % (n, MAX_WIFI_FEATURE_MANIFEST_FILES)
+            ]
+        if not paths or paths[-1] != "version.py":
+            return ["wifi-feature manifest must install version.py last, got %s" % paths]
+        if len(set(paths)) != len(paths):
+            return ["wifi-feature manifest contains duplicate paths"]
+        return []
     if n <= 1:
         if kind and kind not in (MASTER_MANIFEST_KIND_STRESS, "version-only", ""):
             return [
@@ -246,15 +268,18 @@ def master_manifest_policy_errors(data, file_count: int | None = None) -> list[s
                 "manifest has 2 files but manifest_kind=%r (expected %r for master)"
                 % (kind, MASTER_MANIFEST_KIND_BOOTSTRAP)
             ]
-        paths = sorted(str(e.get("path") or "") for e in files)
+        sorted_paths = sorted(paths)
         want = ["remote_boot_config.py", "version.py"]
-        if paths != want:
-            return ["bootstrap manifest must be version.py + remote_boot_config.py, got %s" % paths]
+        if sorted_paths != want:
+            return [
+                "bootstrap manifest must be version.py + remote_boot_config.py, got %s"
+                % sorted_paths
+            ]
         return []
     return [
-        "manifest has %d files — master allows at most 2 (bootstrap). "
-        "Use USB recovery; do not push multi-file recovery to master."
-        % n
+        "manifest has %d files with kind=%r — multi-file master releases must "
+        "be explicit wifi-feature manifests (version.py last); otherwise use USB."
+        % (n, kind)
     ]
 
 

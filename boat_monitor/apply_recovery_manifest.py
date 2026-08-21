@@ -72,6 +72,15 @@ V50_TRACK_PATHS = (
     "ble_service.py",
 )
 
+WINTER_HARDENING_PATHS = (
+    "resilience.py",
+    "cellular.py",
+    "gps.py",
+    "wifi_uplink.py",
+    "remote_boot_config.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -81,7 +90,14 @@ def _version():
     return m.group(1).strip()
 
 
+def version_last(paths):
+    return tuple(path for path in paths if path != "version.py") + (
+        ("version.py",) if "version.py" in paths else ()
+    )
+
+
 def _write_manifest(paths, notes, include_bundle=True, manifest_kind=""):
+    paths = version_last(paths)
     full = json.loads(FULL.read_text(encoding="utf-8"))
     by_path = {e["path"]: e for e in full.get("files") or [] if e.get("path")}
     files = []
@@ -137,7 +153,19 @@ def main(argv=None):
         action="store_true",
         help="3-file fix: version.py + v50_energy.py + ble_service read_v50",
     )
+    p.add_argument(
+        "--winter-hardening",
+        action="store_true",
+        help="6-file Wi-Fi-only WDT/network hardening release",
+    )
     args = p.parse_args(argv)
+    if args.winter_hardening:
+        return _write_manifest(
+            WINTER_HARDENING_PATHS,
+            "Winter hardening: bounded WDT feeds + Wi-Fi policy control.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.v50_track:
         return _write_manifest(
             V50_TRACK_PATHS,
@@ -181,7 +209,10 @@ def main(argv=None):
             RECOVERY_PATHS,
             "Slim remote recovery OTA (reboot-loop fix; stream bundle extract).",
         )
-    print("Specify --recovery, --feature-pack, or --ram-fix", file=sys.stderr)
+    print(
+        "Specify --recovery, --feature-pack, --ram-fix, or --winter-hardening",
+        file=sys.stderr,
+    )
     return 1
 
 

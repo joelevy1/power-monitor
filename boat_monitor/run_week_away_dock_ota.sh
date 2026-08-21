@@ -4,9 +4,15 @@ set -euo pipefail
 cd /workspace
 export PYTHONUNBUFFERED=1
 
-EXPECT_FW="${EXPECT_FW:-1.1.111}"
+EXPECT_FW="${EXPECT_FW:-$(python3 -c 'import sys; sys.path.insert(0, "boat_monitor"); import version; print(version.VERSION)')}"
 ROUNDS="${ROUNDS:-6}"
 LOG_INTERVAL="${LOG_INTERVAL:-3600}"
+ALLOW_MASTER_PUSH="${ALLOW_MASTER_PUSH:-0}"
+
+if [[ "$ALLOW_MASTER_PUSH" != "1" ]]; then
+  echo "FAIL: set ALLOW_MASTER_PUSH=1 only after explicit approval for six master releases" >&2
+  exit 2
+fi
 
 echo "=== Week-away dock OTA ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
 echo "expect base fw=$EXPECT_FW rounds=$ROUNDS log_interval=${LOG_INTERVAL}s"
@@ -27,6 +33,7 @@ rows = [
     ("interval_engine_off_s", "$LOG_INTERVAL", "week-away 1h dock logs"),
     ("interval_engine_on_s", "600", "week-away 10m key-on"),
     ("dock_mode", "home", "week-away dock Wi-Fi logs"),
+    ("standby_prefer_wifi", "1", "week-away require Wi-Fi-first standby logs"),
     ("boot_ota_prefer_wifi", "0", "week-away cellular boot OTA"),
     ("boot_ota_max_seconds", "420", "week-away boot OTA budget"),
     ("force_ota", "", "clear"),
@@ -37,11 +44,7 @@ upsert_config_keys(s, sid, rows)
 print("OK: week-away sheet profile applied")
 PY
 
-python3 boat_monitor/ota_stress_preflight.py --profile dock 2>/dev/null || {
-  python3 boat_monitor/validate_release.py --max-files 1 2>/dev/null || {
-    echo "WARN: preflight skipped — ensure manifest is version-only before stress"
-  }
-}
+python3 boat_monitor/ota_stress_preflight.py --profile dock
 
 SESSION="week-away-watch"
 tmux -f /exec-daemon/tmux.portal.conf has-session -t "=$SESSION" 2>/dev/null \
@@ -54,7 +57,7 @@ tmux -f /exec-daemon/tmux.portal.conf has-session -t "=$SESSION2" 2>/dev/null \
   && tmux -f /exec-daemon/tmux.portal.conf kill-session -t "$SESSION2" 2>/dev/null || true
 tmux -f /exec-daemon/tmux.portal.conf new-session -d -s "$SESSION2" -c "/workspace" -- "${SHELL:-zsh}" -l
 tmux -f /exec-daemon/tmux.portal.conf send-keys -t "$SESSION2:0.0" \
-  "python3 boat_monitor/ota_stress_harness.py --profile dock --rounds $ROUNDS --no-bootstrap --round-timeout 7200 2>&1 | tee boat_monitor/week_away_ota.log" C-m
+  "python3 boat_monitor/ota_stress_harness.py --profile dock --rounds $ROUNDS --no-bootstrap --round-timeout 7200 --allow-master-push 2>&1 | tee boat_monitor/week_away_ota.log" C-m
 
 echo "Started boat_p2_watch (tmux $SESSION) and stress harness (tmux $SESSION2)"
 echo "Log: boat_monitor/week_away_ota.log"

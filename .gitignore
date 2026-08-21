@@ -32,5 +32,9 @@ desktop.ini
 boat_monitor_app/node_modules/
 boat_monitor_app/.expo/
 
+# OTA campaign runtime state
+boat_p2_watch_state.json
+ota_stress_results.json
+
 # Nested P1 clone (track via github.com/joelevy1/remotebatterystatus)
 remotebatterystatus/

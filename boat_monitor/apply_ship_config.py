@@ -7,6 +7,7 @@ min_fw_version is always set to VERSION in version.py (not a future PR version).
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -23,7 +24,32 @@ def _shipped_version():
     return getattr(version, "VERSION", "").strip()
 
 
-def main():
+def profile_rows(profile, version):
+    if profile == "dock":
+        intervals = [
+            ("interval_engine_on_s", "600", "10 min while key_on during dock campaign"),
+            ("interval_engine_off_s", "3600", "1 hour winter dock interval"),
+        ]
+    else:
+        intervals = [
+            ("interval_engine_on_s", "60", "1 min while key_on (engine charging)"),
+            ("interval_engine_off_s", "300", "5 min docked / standby battery test"),
+        ]
+    return intervals + [
+        ("boot_ota_max_seconds", "420", "cellular full manifest needs 3–7 min"),
+        ("min_fw_version", version, "OTA floor (= GitHub master manifest %s)" % version),
+    ]
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Apply validated release settings to the boat sheet")
+    parser.add_argument(
+        "--profile",
+        choices=("underway", "dock"),
+        default="underway",
+        help="preserve the intended logging cadence while setting min_fw",
+    )
+    args = parser.parse_args(argv)
     v = _shipped_version()
     if not v:
         print("Missing VERSION in version.py", file=sys.stderr)
@@ -40,12 +66,7 @@ def main():
             )
             return r.returncode
 
-    rows = [
-        ("interval_engine_on_s", "60", "1 min while key_on (engine charging)"),
-        ("interval_engine_off_s", "300", "5 min docked / standby battery test"),
-        ("boot_ota_max_seconds", "420", "cellular full manifest needs 3–7 min"),
-        ("min_fw_version", v, "OTA floor (= GitHub master manifest %s)" % v),
-    ]
+    rows = profile_rows(args.profile, v)
 
     creds_path = _credentials_path()
     if not creds_path:

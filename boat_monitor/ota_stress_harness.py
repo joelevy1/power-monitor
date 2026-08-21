@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -29,6 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parent
+OTA_STRESS_BRANCH_SUFFIX = os.environ.get("OTA_STRESS_BRANCH_SUFFIX", "abe2").strip() or "abe2"
 
 
 def _sheets():
@@ -80,6 +82,12 @@ def _fetch_power_tail():
                 {
                     "ts": row[0],
                     "fw": row[idx.get("fw", 11)] if len(row) > idx.get("fw", 11) else "",
+                    "uplink": (
+                        row[idx.get("uplink", 12)]
+                        if len(row) > idx.get("uplink", 12)
+                        else ""
+                    ),
+                    "mode": row[idx.get("mode", 2)] if len(row) > idx.get("mode", 2) else "",
                 }
             )
     return len(rows), out[-5:]
@@ -323,7 +331,22 @@ def _pause_stress_on_failure(reason: str):
     pause_min_fw_to_device(sheets, sid, fw, reason)
 
 
-def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 2400):
+def _uplink_matches(actual, expected):
+    actual = str(actual or "").strip().lower()
+    if not expected:
+        return True
+    if expected == "wifi":
+        return bool(actual) and actual != "cellular"
+    return actual == expected
+
+
+def _wait_for_target_fw(
+    target_fw: str,
+    baseline_pl_rows: int,
+    timeout_s: int = 2400,
+    expected_uplink: str | None = None,
+    baseline_event_rows: int = 0,
+):
     from ota_stress_rules import (
         BOOT_START_TIMEOUT_S,
         POST_OTA_POWER_LOG_GRACE_S,
@@ -339,8 +362,8 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
 
     while time.time() - start < timeout_s:
         count, tail = _fetch_power_tail()
-        all_ev = _fetch_events()
-        telem = _telemetry_since(all_ev)
+        round_events = _fetch_events(since_row_count=baseline_event_rows)
+        telem = _telemetry_since(round_events)
         for item in telem:
             tfw = item.get("target_fw") or ""
             ph = item.get("phase") or ""
@@ -361,6 +384,23 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
                     if ph == "boot_start":
                         saw_boot_start = True
         life = [p for p in run_report["phases"] if p.get("event") in ("ota_lifecycle", "boot_ota")]
+        fatal = None
+        for item in reversed(run_report["phases"]):
+            detail = " ".join(
+                str(item.get(key) or "")
+                for key in ("error", "outcome", "detail_raw")
+            ).lower()
+            if "low_flash" in detail or "no space left" in detail:
+                fatal = "fatal OTA storage preflight: %s" % detail[:240]
+                break
+        if fatal:
+            cur_fw = tail[-1].get("fw") if tail else "?"
+            if cur_fw and cur_fw != "?":
+                sheets, sid = _sheets()
+                pause_min_fw_to_device(sheets, sid, cur_fw, fatal)
+            run_report["error"] = fatal
+            print("FAIL:", fatal)
+            break
         ota_ok = _boot_ota_success_for_target(life, target_fw)
         if ota_ok and ota_success_at is None:
             ota_success_at = time.time()
@@ -377,7 +417,11 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
                 if row.get("fw") == target_fw:
                     confirmed_row = row
                     break
-        pl_confirmed = confirmed_row and (
+        transport_confirmed = confirmed_row and _uplink_matches(
+            confirmed_row.get("uplink"),
+            expected_uplink,
+        )
+        pl_confirmed = confirmed_row and transport_confirmed and (
             count > baseline_pl_rows
             or (tail and tail[-1].get("fw") == target_fw)
             or ota_ok
@@ -386,7 +430,7 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
             ota_success_at is not None
             and (time.time() - ota_success_at) >= POST_OTA_POWER_LOG_GRACE_S
         )
-        if pl_confirmed or ota_grace_expired:
+        if pl_confirmed or (ota_grace_expired and not expected_uplink):
             run_report["success"] = True
             run_report["confirmed_fw"] = (
                 confirmed_row["fw"] if confirmed_row else target_fw
@@ -394,6 +438,9 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
             run_report["confirmed_ts"] = (
                 confirmed_row["ts"] if confirmed_row else "boot_ota_only"
             )
+            if confirmed_row:
+                run_report["confirmed_uplink"] = confirmed_row.get("uplink")
+                run_report["confirmed_mode"] = confirmed_row.get("mode")
             if ota_ok and not confirmed_row:
                 run_report["confirmed_via"] = "boot_ota"
             run_report["wall_elapsed_s"] = int(time.time() - start)
@@ -406,7 +453,7 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
 
         if tail:
             cur_fw = tail[-1].get("fw") or "?"
-            trap = detect_reboot_trap(all_ev, cur_fw, target_fw)
+            trap = detect_reboot_trap(round_events, cur_fw, target_fw)
             if trap:
                 sheets, sid = _sheets()
                 pause_min_fw_to_device(sheets, sid, cur_fw, trap)
@@ -416,6 +463,11 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
             ota_note = ""
             if ota_success_at:
                 ota_note = " ota_ok+%ds" % int(time.time() - ota_success_at)
+            if confirmed_row and not transport_confirmed:
+                ota_note += " target_fw_seen_uplink=%s need=%s" % (
+                    confirmed_row.get("uplink") or "?",
+                    expected_uplink,
+                )
             print(
                 "  … waiting fw=%s (last %s @ %s) +%ds boot_start=%s%s"
                 % (
@@ -452,7 +504,121 @@ def _wait_for_target_fw(target_fw: str, baseline_pl_rows: int, timeout_s: int = 
     return run_report
 
 
-def _ship_version(new_ver: str, manifest_mode: str = "version-only") -> bool:
+def _run_checked(command, description):
+    try:
+        subprocess.run(command, cwd=str(REPO), check=True)
+        return True
+    except subprocess.CalledProcessError as exc:
+        print("FAIL: %s (exit %s): %s" % (description, exc.returncode, " ".join(command)))
+        return False
+
+
+def _release_worktree_ready():
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=str(REPO),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if branch != "master":
+        print("FAIL: OTA ship must start on master, current branch is %s" % (branch or "?"))
+        return False
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=str(REPO),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if status:
+        print("FAIL: tracked worktree changes present before OTA ship:\n%s" % status)
+        return False
+    return True
+
+
+def _normalize_master_manifest_for_stress(version, allow_master_push):
+    """Commit a version-only manifest at the installed baseline before round 1."""
+    if not allow_master_push:
+        print("FAIL: normalizing the master manifest requires --allow-master-push")
+        return False
+    if not _release_worktree_ready():
+        return False
+    manifest = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "apply_recovery_manifest.py"),
+            "--version-only",
+        ],
+        cwd=str(ROOT),
+    )
+    if manifest.returncode != 0:
+        return False
+    validate = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "validate_release.py"),
+            "--max-files",
+            "1",
+            "--enforce-master-policy",
+        ],
+        cwd=str(ROOT),
+    )
+    if validate.returncode != 0:
+        return False
+    changed = subprocess.run(
+        ["git", "diff", "--quiet", "--", "boat_monitor/ota_manifest.json"],
+        cwd=str(REPO),
+    ).returncode
+    if changed == 0:
+        return True
+
+    branch = "cursor/ota-stress-baseline-%s-%s" % (
+        version.replace(".", ""),
+        OTA_STRESS_BRANCH_SUFFIX,
+    )
+    commands = (
+        (["git", "checkout", "-b", branch], "create baseline manifest branch"),
+        (["git", "add", "boat_monitor/ota_manifest.json"], "stage baseline manifest"),
+        (
+            ["git", "commit", "-m", "release: prepare OTA stress baseline %s" % version],
+            "commit baseline manifest",
+        ),
+        (["git", "push", "-u", "origin", branch], "push baseline manifest branch"),
+        (["git", "checkout", "master"], "return to master"),
+        (["git", "pull", "origin", "master"], "update master"),
+        (
+            ["git", "merge", branch, "-m", "release: prepare OTA stress baseline %s" % version],
+            "merge baseline manifest",
+        ),
+        (["git", "push", "-u", "origin", "master"], "push baseline master"),
+    )
+    for command, description in commands:
+        if not _run_checked(command, description):
+            return False
+    for _ in range(12):
+        remote = subprocess.run(
+            [sys.executable, str(ROOT / "validate_release.py"), "--check-github"],
+            cwd=str(ROOT),
+        )
+        if remote.returncode == 0:
+            return True
+        time.sleep(15)
+    print("FAIL: GitHub raw baseline manifest did not converge")
+    return False
+
+
+def _ship_version(
+    new_ver: str,
+    manifest_mode: str = "version-only",
+    profile: str = "underway",
+    allow_master_push: bool = False,
+) -> bool:
+    if not allow_master_push:
+        print("FAIL: live shipping requires --allow-master-push")
+        return False
+    if not _release_worktree_ready():
+        return False
     vpath = ROOT / "version.py"
     mpath = ROOT / "ota_manifest.json"
     vpath.write_text('VERSION = "%s"\n' % new_ver, encoding="utf-8")
@@ -472,10 +638,10 @@ def _ship_version(new_ver: str, manifest_mode: str = "version-only") -> bool:
     fp = subprocess.run(
         [sys.executable, str(ROOT / "apply_recovery_manifest.py"), manifest_arg],
         cwd=str(ROOT),
-        check=False,
     )
     if fp.returncode != 0:
-        print("WARN: manifest step failed (%s)" % manifest_arg)
+        print("FAIL: manifest step failed (%s)" % manifest_arg)
+        return False
     if manifest_check:
         try:
             manifest_check()
@@ -494,24 +660,29 @@ def _ship_version(new_ver: str, manifest_mode: str = "version-only") -> bool:
     )
     if r.returncode != 0:
         return False
-    branch = "cursor/ota-stress-%s-5a55" % new_ver.replace(".", "")
-    subprocess.run(["git", "checkout", "-B", branch], cwd=str(REPO), check=False)
-    subprocess.run(["git", "add", "boat_monitor/version.py", "boat_monitor/ota_manifest.json"], cwd=str(REPO))
-    subprocess.run(
-        ["git", "commit", "-m", "release: OTA stress %s" % new_ver],
-        cwd=str(REPO),
-        check=False,
+    branch = "cursor/ota-stress-%s-%s" % (new_ver.replace(".", ""), OTA_STRESS_BRANCH_SUFFIX)
+    commands = (
+        (["git", "checkout", "-b", branch], "create release branch"),
+        (
+            ["git", "add", "boat_monitor/version.py", "boat_monitor/ota_manifest.json"],
+            "stage release files",
+        ),
+        (
+            ["git", "commit", "-m", "release: OTA stress %s" % new_ver],
+            "commit release",
+        ),
+        (["git", "push", "-u", "origin", branch], "push release branch"),
+        (["git", "checkout", "master"], "return to master"),
+        (["git", "pull", "origin", "master"], "update master"),
+        (
+            ["git", "merge", branch, "-m", "release: OTA stress %s" % new_ver],
+            "merge release",
+        ),
+        (["git", "push", "-u", "origin", "master"], "push master"),
     )
-    subprocess.run(["git", "push", "-u", "origin", branch], cwd=str(REPO), check=False)
-    subprocess.run(["git", "checkout", "master"], cwd=str(REPO), check=False)
-    subprocess.run(["git", "pull", "origin", "master"], cwd=str(REPO), check=False)
-    subprocess.run(
-        ["git", "merge", branch, "-m", "release: OTA stress %s" % new_ver],
-        cwd=str(REPO),
-        check=False,
-    )
-    subprocess.run(["git", "push", "origin", "master"], cwd=str(REPO), check=False)
-    subprocess.run(["git", "checkout", "master"], cwd=str(REPO), check=False)
+    for command, description in commands:
+        if not _run_checked(command, description):
+            return False
     # raw.githubusercontent.com can lag GitHub master by a few minutes
     for attempt in range(12):
         r2 = subprocess.run(
@@ -522,19 +693,20 @@ def _ship_version(new_ver: str, manifest_mode: str = "version-only") -> bool:
             break
         time.sleep(15)
     else:
-        print("WARN: GitHub raw manifest still stale; applying sheet min_fw anyway")
-    r3 = subprocess.run([sys.executable, str(ROOT / "apply_ship_config.py")], cwd=str(ROOT))
+        print("FAIL: GitHub raw manifest still stale; sheet target was not changed")
+        return False
+    r3 = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "apply_ship_config.py"),
+            "--profile",
+            profile,
+        ],
+        cwd=str(ROOT),
+    )
     if r3.returncode != 0:
-        from sheets_config_upsert import upsert_config_keys
-
-        sheets, sid = _sheets()
-        upsert_config_keys(
-            sheets,
-            sid,
-            [("min_fw_version", new_ver, "OTA stress harness target %s (CDN fallback)" % new_ver)],
-        )
-        print("CONFIG min_fw_version =", new_ver, "(fallback)")
-        return True
+        print("FAIL: release shipped but sheet configuration was not changed")
+        return False
     return r3.returncode == 0
 
 
@@ -558,7 +730,11 @@ def _set_min_fw_only(ver: str):
 ROUND_COOLDOWN_S = 90
 
 
-def _bootstrap_rules_if_needed(dry_run: bool) -> bool:
+def _bootstrap_rules_if_needed(
+    dry_run: bool,
+    profile: str,
+    allow_master_push: bool,
+) -> bool:
     """Ship remote_boot_config.py once so version-only rounds can self-heal backoff."""
     dev_fw = _current_device_fw()
     if not dev_fw:
@@ -572,16 +748,25 @@ def _bootstrap_rules_if_needed(dry_run: bool) -> bool:
     if dry_run:
         return True
     pl_before, _ = _fetch_power_tail()
-    if not _ship_version(target, manifest_mode="bootstrap-rules"):
+    event_before = len(_fetch_events())
+    if not _ship_version(
+        target,
+        manifest_mode="bootstrap-rules",
+        profile=profile,
+        allow_master_push=allow_master_push,
+    ):
         print("FAIL: bootstrap-rules ship", target)
         return False
-    rep = _wait_for_target_fw(target, pl_before, timeout_s=2400)
+    rep = _wait_for_target_fw(
+        target,
+        pl_before,
+        timeout_s=2400,
+        baseline_event_rows=event_before,
+    )
     print("BOOTSTRAP-RULES RESULT:", json.dumps(rep, indent=2))
     if not rep.get("success"):
-        print(
-            "WARN: bootstrap-rules did not confirm — continue with version-only "
-            "(USB: cp remote_boot_config.py + patch-only --enable-boot-ota)"
-        )
+        print("FAIL: bootstrap-rules did not confirm; version-only rounds were not started")
+        return False
     time.sleep(ROUND_COOLDOWN_S)
     return True
 
@@ -594,6 +779,7 @@ def run_rounds(
     profile: str = "underway",
     round_timeout_s: int = 2400,
     reset_v50: bool = False,
+    allow_master_push: bool = False,
 ):
     start_ver = _read_local_version()
     print("Local master version:", start_ver, "profile:", profile)
@@ -609,8 +795,13 @@ def run_rounds(
         try:
             assert_version_only_manifest()
         except SystemExit as exc:
-            print("FAIL:", exc)
-            return 1
+            print("Baseline manifest requires normalization:", exc)
+            if not _normalize_master_manifest_for_stress(
+                start_ver,
+                allow_master_push=allow_master_push,
+            ):
+                return 1
+            assert_version_only_manifest()
         sheets, sid = _sheets()
         if reset_v50:
             reset_v50_full(sheets, sid)
@@ -646,7 +837,11 @@ def run_rounds(
                 "Bootstrap-rules skip: device fw %s >= repo %s (USB ram-fix assumed)"
                 % (dev_fw, start_ver)
             )
-        elif not _bootstrap_rules_if_needed(dry_run):
+        elif not _bootstrap_rules_if_needed(
+            dry_run,
+            profile=profile,
+            allow_master_push=allow_master_push,
+        ):
             return 1
     if bootstrap and not dry_run:
         if not _wait_until_fw_at_least(start_ver, timeout_s=bootstrap_timeout_s):
@@ -654,7 +849,6 @@ def run_rounds(
     elif bootstrap:
         fw = _current_device_fw()
         print("Dry-run bootstrap skip (device fw=%s, need>=%s)" % (fw, start_ver))
-    baseline_rows, _ = _fetch_power_tail()
     results = []
     ver = start_ver
     for i in range(n):
@@ -675,16 +869,31 @@ def run_rounds(
                 results.append({"round": i + 1, "target": ver, "error": trap})
                 break
             preflight_sheet(sheets, sid, profile=profile)
-            if not _ship_version(ver):
+            pl_before, _ = _fetch_power_tail()
+            event_before = len(_fetch_events())
+            if not _ship_version(
+                ver,
+                profile=profile,
+                allow_master_push=allow_master_push,
+            ):
                 print("FAIL: ship", ver)
                 results.append({"round": i + 1, "target": ver, "error": "ship_failed"})
-                continue
+                _pause_stress_on_failure("ship failed for %s" % ver)
+                break
         else:
+            pl_before, _ = _fetch_power_tail()
             _set_min_fw_only(ver)
-        pl_before, _ = _fetch_power_tail()
-        rep = _wait_for_target_fw(ver, pl_before, timeout_s=round_timeout_s)
+        expected_uplink = "wifi" if profile == "dock" else None
+        rep = _wait_for_target_fw(
+            ver,
+            pl_before,
+            timeout_s=round_timeout_s,
+            expected_uplink=expected_uplink,
+            baseline_event_rows=event_before if not dry_run else 0,
+        )
         rep["round"] = i + 1
         rep["profile"] = profile
+        rep["expected_uplink"] = expected_uplink
         results.append(rep)
         print("ROUND RESULT:", json.dumps(rep, indent=2))
         _write_results(REPO / "ota_stress_results.json", start_ver, n, results, final=False)
@@ -747,11 +956,18 @@ def main():
         action="store_true",
         help="set boat-p2:v50_full_at_utc now (bank 100%% baseline)",
     )
+    p.add_argument(
+        "--allow-master-push",
+        action="store_true",
+        help="explicitly authorize release branches, merges, and pushes to master",
+    )
     p.add_argument("--watch", action="store_true")
     args = p.parse_args()
     if args.watch:
         watch()
         return 0
+    if not args.dry_run and not args.allow_master_push:
+        p.error("live campaigns require --allow-master-push")
     from ota_stress_rules import DOCK_ROUND_TIMEOUT_S
 
     round_timeout = args.round_timeout
@@ -765,6 +981,7 @@ def main():
         profile=args.profile,
         round_timeout_s=round_timeout,
         reset_v50=args.reset_v50,
+        allow_master_push=args.allow_master_push,
     )
 
 

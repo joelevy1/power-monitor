@@ -28,6 +28,18 @@ def _ge(a, b):
     return _parse_ver(a) >= _parse_ver(b)
 
 
+def recovery_gate(fw, expect_fw, trap, events):
+    capabilities = [r for r in events if len(r) > 3 and r[2] == "ota_capability"]
+    full_capability = str(capabilities[-1][3]) if capabilities else ""
+    ok = (
+        fw != "?"
+        and _ge(fw, expect_fw)
+        and not trap
+        and "will_boot_ota=" in full_capability
+    )
+    return ok, full_capability
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="Verify USB recovery succeeded on the sheet")
     p.add_argument("--expect-fw", required=True, metavar="X.Y.Z")
@@ -45,17 +57,20 @@ def main(argv=None):
         fw = _current_device_fw() or "?"
         ev = _fetch_events()
         trap = count_reboot_queued(ev) >= 3 and not saw_boot_start(ev)
-        cap = [r for r in ev if len(r) > 2 and r[2] == "ota_capability"]
-        last_cap = str(cap[-1][3])[:200] if cap else ""
-        ok_fw = fw != "?" and _ge(fw, args.expect_fw)
-        ok_trap = not trap
+        recovery_ok, full_capability = recovery_gate(fw, args.expect_fw, trap, ev)
+        capability_preview = full_capability[:200]
         print(
             "%s fw=%s trap=%s capability=%s"
-            % (datetime.now(timezone.utc).strftime("%H:%M:%SZ"), fw, trap, "yes" if last_cap else "no")
+            % (
+                datetime.now(timezone.utc).strftime("%H:%M:%SZ"),
+                fw,
+                trap,
+                "yes" if full_capability else "no",
+            )
         )
-        if last_cap:
-            print("  ", last_cap)
-        if ok_fw and ok_trap and last_cap and "will_boot_ota=" in last_cap:
+        if capability_preview:
+            print("  ", capability_preview)
+        if recovery_ok:
             print("\nOK: USB recovery verified fw=%s" % fw)
             return 0
         time.sleep(max(15, args.poll))
