@@ -157,3 +157,52 @@ captured immediately before each ship.
 - Guardrail correction: dock campaigns now allow 4500 seconds (one 3600-second
   interval plus 15 minutes) for the first `boot_start`. Underway campaigns keep
   the stricter 1200-second gate.
+
+### 2026-08-21 — Phase 0 attempt 2: failed before OTA
+
+- The corrected timing gate was merged and the target was re-armed with stale
+  pending-clear commands blank.
+- No Power Log or heartbeat appeared during the next scheduled hourly window.
+  The final telemetry remained:
+  - Power Log: `1.1.116`, cellular, 6:09 AM Pacific.
+  - Event: 6:24 AM Pacific, `power: ok` followed by a GPS HTTPDATA prompt
+    failure.
+- There was no `remote_config`, capability, `aware`, `boot_start`, or reboot
+  evidence for the retry. Therefore the device never proved it fetched the new
+  Wi-Fi-only policy; the `1.1.117` payload was not attempted.
+- Most likely failure: `1.1.116` became blocked in a modem/HTTP operation after
+  its temporary on-device watchdog disable. With no watchdog reset and no
+  out-of-band command channel, Sheet changes cannot recover a blocked process.
+- The emergency brake restored `min_fw_version=1.1.116`, disabled boot OTA,
+  restored the known cellular/away profile, and cleared OTA one-shots.
+- The six-round campaign did not start.
+
+Required recovery before another campaign attempt:
+
+1. Physically power-cycle V50; USB flashing is not initially required.
+2. Confirm a fresh `1.1.116` Power Log and capability row.
+3. Do not re-arm `1.1.117` until the device has acknowledged the safe rollback.
+4. If it hangs again before acknowledgment, USB-install the `1.1.117` hardening
+   files because the old firmware has no remaining remote recovery path.
+
+### 2026-08-21 — Phase 0 attempt 3: Wi-Fi preflight blocked by low flash
+
+- A physical V50 power cycle recovered the blocked process. Fresh cellular
+  Power Logs appeared at 7:24 and 7:31 AM Pacific.
+- The target was re-armed. At 7:42 AM the Pico acknowledged the Wi-Fi-only
+  policy; lifecycle telemetry then showed:
+  - `boot_start`, firmware `1.1.116`, `prefer_wifi=True`
+  - `device_stats ... fs_free_b=0`
+  - `boot_end ... error=low_flash_4096; outcome=failed`
+- The preflight correctly refused the six-file payload before any file was
+  installed. The Pico returned on `1.1.116`; a second reboot was queued because
+  `min_fw` remained ahead during the reporting cycle.
+- The emergency brake immediately restored `min_fw_version=1.1.116`, disabled
+  boot OTA, restored the cellular/away profile, and cleared pending/one-shot
+  state.
+- No stress round started and no partial `1.1.117` installation occurred.
+
+Conclusion: winter qualification cannot continue remotely from this flash
+state. USB cleanup is required to remove `.bak`, `.new`, bundle, and diagnostic
+artifacts. The subsequent full USB push must include `gps.py` as well as the
+other watchdog-aware network modules before the hardware watchdog is re-enabled.
