@@ -257,7 +257,7 @@ def run():
         powered_off = Sim7600Modem.power_off(shutdown)
         check("power_off uses AT+CPOF after alive probe", shutdown.commands == ["AT", "AT+CPOF"])
         check("power_off accepts acknowledged shutdown", powered_off is True)
-        check("power_off allows five-second shutdown settling", fake_time.now_ms == 5000)
+        check("power_off allows eight-second shutdown settling", fake_time.now_ms == 8000)
     finally:
         cellular_module.time = real_time
 

@@ -25,6 +25,24 @@ directly without extra try/except.
 import time
 
 
+def _feed_watchdog_if_due():
+    try:
+        import resilience
+
+        resilience.feed_watchdog_if_due()
+    except Exception:
+        pass
+
+
+def _sleep_with_watchdog(seconds):
+    try:
+        import resilience
+
+        resilience.sleep_with_watchdog(seconds, sleep_fn=time.sleep)
+    except Exception:
+        time.sleep(seconds)
+
+
 def gps_to_decimal(value, hemi):
     """Convert one NMEA-style ddmm.mmmm(mm) field + hemisphere to decimal degrees."""
     if not value:
@@ -87,6 +105,7 @@ class Gps:
         start = time.ticks_ms()
         buf = b""
         while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            _feed_watchdog_if_due()
             if self.uart.any():
                 buf += self.uart.read()
                 if b"\r\nOK\r\n" in buf or b"\r\nERROR\r\n" in buf:
@@ -113,9 +132,10 @@ class Gps:
         start = time.ticks_ms()
         raw = ""
         while time.ticks_diff(time.ticks_ms(), start) < timeout_s * 1000:
+            _feed_watchdog_if_due()
             raw = self._send("AT+CGPSINFO")
             lat, lon, line = parse_cgpsinfo(raw)
             if lat is not None and lon is not None:
                 return {"ok": True, "lat": lat, "lon": lon, "raw": line}
-            time.sleep(poll_interval_s)
+            _sleep_with_watchdog(poll_interval_s)
         return {"ok": False, "lat": None, "lon": None, "raw": raw, "error": "no fix within %ds" % timeout_s}

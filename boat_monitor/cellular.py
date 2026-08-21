@@ -54,6 +54,24 @@ def _diag(msg):
         pass
 
 
+def _feed_watchdog_if_due():
+    try:
+        import resilience
+
+        resilience.feed_watchdog_if_due()
+    except Exception:
+        pass
+
+
+def _sleep_with_watchdog(seconds):
+    try:
+        import resilience
+
+        resilience.sleep_with_watchdog(seconds, sleep_fn=time.sleep)
+    except Exception:
+        time.sleep(seconds)
+
+
 # SIMCom's official SIM7500_SIM7600 Series AT Command Manual (HTTP(S) AT
 # Commands chapter) documents "Maximum Response Time: 120000ms" for
 # AT+HTTPINIT, AT+HTTPTERM, AT+HTTPACTION, and AT+HTTPREAD. This code was
@@ -307,7 +325,7 @@ class Sim7600Modem:
         self.rst.value(0)
         time.sleep(0.3)
         self.rst.value(1)
-        time.sleep(3)
+        _sleep_with_watchdog(3)
 
     def ensure_awake(self, boot_timeout_s=30):
         """Wake a modem shut down by AT+CPOF; return True if newly started.
@@ -324,7 +342,7 @@ class Sim7600Modem:
         for attempt in range(1, 4):
             if attempt > 1:
                 print("PWRKEY wake retry %d/3..." % attempt)
-                time.sleep(8)
+                _sleep_with_watchdog(8)
             self.pwrkey.value(1)
             time.sleep(1.2)
             self.pwrkey.value(0)
@@ -332,7 +350,7 @@ class Sim7600Modem:
             wait_s = boot_timeout_s if attempt == 1 else 18
             start = time.ticks_ms()
             while time.ticks_diff(time.ticks_ms(), start) < wait_s * 1000:
-                time.sleep(1)
+                _sleep_with_watchdog(1)
                 if "OK" in self.at("AT", 900, quiet=True):
                     print("Modem woke via PWRKEY.")
                     return True
@@ -355,7 +373,7 @@ class Sim7600Modem:
             return False
 
         # Allow UART/power rail to settle after CPOF before the next PWRKEY wake.
-        time.sleep(8)
+        _sleep_with_watchdog(8)
         print("Modem power-off accepted.")
         return True
 
@@ -371,6 +389,7 @@ class Sim7600Modem:
         stop_tokens = tuple(token.encode() for token in stop_tokens)
 
         while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            _feed_watchdog_if_due()
             if self.uart.any():
                 buf += self.uart.read()
                 for token in stop_tokens:
@@ -450,6 +469,7 @@ class Sim7600Modem:
         scan_pos = 0
 
         while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            _feed_watchdog_if_due()
             if self.uart.any():
                 buf += self.uart.read()
 
@@ -520,6 +540,7 @@ class Sim7600Modem:
         scan_pos = 0
 
         while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            _feed_watchdog_if_due()
             if self.uart.any():
                 buf += self.uart.read()
 
@@ -665,7 +686,7 @@ class Sim7600Modem:
                 print("Registered. Signal:", last_csq)
                 return
 
-            time.sleep(3)
+            _sleep_with_watchdog(3)
 
         raise CellularError(
             "Not registered on the cellular network after %ds (last signal: %s) -- "
