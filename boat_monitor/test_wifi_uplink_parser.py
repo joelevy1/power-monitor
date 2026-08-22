@@ -21,6 +21,7 @@ from wifi_uplink import (  # noqa: E402
     WifiHttp,
     _configured_scan_selection,
     _decode_chunked,
+    _negative_status_retry,
     _recv_response,
     format_configured_scan,
     split_url,
@@ -204,6 +205,84 @@ def run():
         "configured scan report stays bounded",
         len(format_configured_scan(many_networks, [])) <= wifi_uplink.SCAN_TEXT_MAX_CHARS,
     )
+
+    check("negative status requests first retry", _negative_status_retry(-3, False))
+    check("negative status does not request second retry", not _negative_status_retry(-3, True))
+    check("non-negative status does not retry", not _negative_status_retry(1, False))
+
+    class FakeWlan:
+        def __init__(self, attempt_results):
+            self.attempt_results = list(attempt_results)
+            self.current = None
+            self.connect_calls = []
+            self.active_calls = []
+            self.disconnect_calls = 0
+
+        def active(self, value=None):
+            if value is not None:
+                self.active_calls.append(value)
+            return self.active_calls[-1] if self.active_calls else False
+
+        def scan(self):
+            return [(b"Levy-Guest", b"hidden-bssid", 1, -38, 3, 0)]
+
+        def connect(self, ssid, password):
+            self.connect_calls.append((ssid, password))
+            self.current = self.attempt_results[len(self.connect_calls) - 1]
+
+        def isconnected(self):
+            return self.current == "connected"
+
+        def status(self, *args):
+            if args:
+                return -38
+            return self.current
+
+        def disconnect(self):
+            self.disconnect_calls += 1
+            self.current = None
+
+        def ifconfig(self):
+            return ("192.0.2.1", "255.255.255.0", "192.0.2.254", "192.0.2.254")
+
+    original_load = wifi_uplink._load_networks
+    original_wlan = wifi_uplink._wlan
+    original_sleep = wifi_uplink._sleep_with_watchdog
+    try:
+        wifi_uplink._load_networks = lambda: [("Levy-Guest", "do-not-report")]
+        wifi_uplink._sleep_with_watchdog = lambda _seconds: None
+
+        retry_success = FakeWlan([-3, "connected"])
+        wifi_uplink._wlan = lambda: retry_success
+        check("negative status retry succeeds on same SSID", wifi_uplink.connect(timeout_s=1) == "Levy-Guest")
+        check("successful retry occurs exactly once", len(retry_success.connect_calls) == 2)
+        check("retry fully disconnects STA", retry_success.disconnect_calls == 1)
+        check("retry deactivates and reactivates STA", retry_success.active_calls[:3] == [True, False, True])
+        success_report = wifi_uplink.get_last_connection_report()
+        check(
+            "successful retry report has both statuses and outcome",
+            "first_status=-3" in success_report
+            and "retry_status=connected" in success_report
+            and "outcome=wifi" in success_report,
+        )
+        check("successful retry report excludes password", "do-not-report" not in success_report)
+
+        retry_failure = FakeWlan([-3, -3])
+        wifi_uplink._wlan = lambda: retry_failure
+        check("double negative status falls back", wifi_uplink.connect(timeout_s=1) is None)
+        check("failed retry occurs exactly once", len(retry_failure.connect_calls) == 2)
+        failure_report = wifi_uplink.get_last_connection_report()
+        check(
+            "failed retry report has both statuses and fallback",
+            "first_status=-3" in failure_report
+            and "retry_status=-3" in failure_report
+            and "outcome=fallback" in failure_report,
+        )
+        check("connection report remains bounded", len(failure_report) <= wifi_uplink.CONNECTION_REPORT_MAX_CHARS)
+    finally:
+        wifi_uplink._load_networks = original_load
+        wifi_uplink._wlan = original_wlan
+        wifi_uplink._sleep_with_watchdog = original_sleep
 
     print()
     if failures:

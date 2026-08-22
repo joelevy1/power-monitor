@@ -17,6 +17,8 @@ spec2 = importlib.util.spec_from_file_location("auto_log", ROOT / "auto_log.py")
 auto_log = importlib.util.module_from_spec(spec2)
 spec2.loader.exec_module(auto_log)
 
+import remote_boot_config  # noqa: E402
+
 
 def test_interval_override():
     auto_log.set_interval_overrides(engine_off_s=999)
@@ -32,6 +34,28 @@ def test_one_shot_ota():
     )
     assert actions == ["ota"]
     assert "one_shot=ota" in detail
+
+
+def test_one_shot_ota_force_and_unknown():
+    remote_boot_config.save({})
+    actions, detail = remote_control.apply_commands_payload(
+        {"settings": {}, "one_shots": ["ota_force", "future-command"]},
+        device_id="boat-p2",
+    )
+    assert actions == ["ota"]
+    assert "one_shot=ota_force" in detail
+    assert "one_shot_unknown=future-command" in detail
+    state = remote_boot_config.load()
+    assert state.get("pending_ota") is True
+    assert state.get("cmd_ota_force") is True
+
+    remote_boot_config.save({})
+    actions, detail = remote_control.apply_commands_payload(
+        {"settings": {}, "one_shots": ["force"]},
+        device_id="boat-p2",
+    )
+    assert actions == ["ota"]
+    assert remote_boot_config.load().get("cmd_ota_force") is True
 
 
 def test_min_fw_version():
@@ -50,6 +74,7 @@ def main():
         try:
             test_interval_override()
             test_one_shot_ota()
+            test_one_shot_ota_force_and_unknown()
             test_min_fw_version()
         finally:
             os.chdir(original_cwd)

@@ -188,6 +188,45 @@ def _sleep_with_watchdog(seconds):
         time.sleep(seconds)
 
 
+def _negative_status_retry(status, retry_used):
+    """Pure retry decision: one retry only for a negative WLAN status."""
+    return status is not None and status < 0 and not retry_used
+
+
+def _wait_for_connection(wlan, timeout_s):
+    """Return (outcome, status) for one bounded WLAN connection attempt."""
+    start = _ticks_ms()
+    while _ticks_diff(_ticks_ms(), start) < timeout_s * 1000:
+        _feed_watchdog_if_due()
+        if wlan.isconnected():
+            return "connected", None
+        status = None
+        if hasattr(wlan, "status"):
+            try:
+                status = wlan.status()
+            except Exception:
+                pass
+        if status is not None and status < 0:
+            return "negative", status
+        _sleep_with_watchdog(0.5)
+    return "timeout", None
+
+
+def _reset_sta_for_retry(wlan):
+    """Fully reset STA between a failed auth/connection and its sole retry."""
+    try:
+        wlan.disconnect()
+    except Exception:
+        pass
+    try:
+        wlan.active(False)
+    except Exception:
+        pass
+    _sleep_with_watchdog(0.5)
+    wlan.active(True)
+    _feed_watchdog_if_due()
+
+
 def _recv_response(sock, timeout_s):
     """Read until peer close, tolerating bounded socket timeout slices."""
     start = _ticks_ms()
@@ -315,36 +354,38 @@ def connect(timeout_s=15):
         visible_rssi[scanned_key] = scanned_rssi
     any_configured_visible = any(rssi is not None for rssi in visible_rssi.values())
     last_failure = "reason=connection failed"
+    retry_detail = ""
 
     for ssid, password in networks:
         if wlan.isconnected():
             wlan.disconnect()
             time.sleep(0.2)
 
-        print("wifi_uplink: trying", ssid)
-        try:
-            import diag_log
-
-            diag_log.log("wifi trying %s" % ssid)
-        except Exception:
-            pass
-        try:
-            wlan.connect(ssid, password)
-        except OSError as exc:
-            last_failure = "reason=connect error ssid=%s" % _ssid_text(ssid)
-            print("wifi_uplink: connect() raised for %s: %s" % (ssid, exc))
+        retry_used = False
+        first_status = None
+        while True:
+            print("wifi_uplink: trying", ssid, "(retry)" if retry_used else "")
             try:
                 import diag_log
 
-                diag_log.log("wifi connect() error %s: %s" % (ssid, exc))
+                diag_log.log("wifi trying %s retry=%s" % (ssid, retry_used))
             except Exception:
                 pass
-            continue
+            try:
+                wlan.connect(ssid, password)
+            except OSError as exc:
+                last_failure = "reason=connect error ssid=%s" % _ssid_text(ssid)
+                print("wifi_uplink: connect() raised for %s: %s" % (ssid, exc))
+                try:
+                    import diag_log
 
-        start = time.ticks_ms()
-        while time.ticks_diff(time.ticks_ms(), start) < timeout_s * 1000:
-            _feed_watchdog_if_due()
-            if wlan.isconnected():
+                    diag_log.log("wifi connect() error %s: %s" % (ssid, exc))
+                except Exception:
+                    pass
+                break
+
+            outcome, status = _wait_for_connection(wlan, timeout_s)
+            if outcome == "connected":
                 report_ssid = _ssid_text(ssid)
                 rssi = visible_rssi.get(_ssid_value(ssid))
                 if rssi is None and hasattr(wlan, "status"):
@@ -352,9 +393,18 @@ def connect(timeout_s=15):
                         rssi = int(wlan.status("rssi"))
                     except Exception:
                         pass
+                status_detail = ""
+                if retry_used:
+                    status_detail = " first_status=%s retry_status=connected outcome=wifi" % first_status
+                elif retry_detail:
+                    status_detail = " " + retry_detail + " outcome=wifi"
                 _set_connection_report(
-                    "connected=%s rssi=%s"
-                    % (report_ssid, rssi if rssi is not None else "unknown"),
+                    "connected=%s rssi=%s%s"
+                    % (
+                        report_ssid,
+                        rssi if rssi is not None else "unknown",
+                        status_detail,
+                    ),
                     scan_text,
                 )
                 print("wifi_uplink: connected to", ssid, wlan.ifconfig())
@@ -365,19 +415,32 @@ def connect(timeout_s=15):
                 except Exception:
                     pass
                 return ssid
-            # status() < 0 means the connect attempt already failed (wrong
-            # password, not found, etc) -- no point waiting out the timeout.
-            status = None
-            if hasattr(wlan, "status"):
-                try:
-                    status = wlan.status()
-                except Exception:
-                    pass
-            if status is not None and status < 0:
-                last_failure = "reason=early status failure ssid=%s status=%s" % (
-                    _ssid_text(ssid),
-                    status,
-                )
+
+            if outcome == "negative":
+                if _negative_status_retry(status, retry_used):
+                    first_status = status
+                    print("wifi_uplink: %s failed early (status %s); resetting STA for retry" % (ssid, status))
+                    try:
+                        import diag_log
+
+                        diag_log.log("wifi early fail %s status=%s retrying once" % (ssid, status))
+                    except Exception:
+                        pass
+                    _reset_sta_for_retry(wlan)
+                    retry_used = True
+                    continue
+                if retry_used:
+                    retry_detail = "retry_ssid=%s first_status=%s retry_status=%s" % (
+                        _ssid_text(ssid),
+                        first_status,
+                        status,
+                    )
+                    last_failure = "reason=status failure %s outcome=fallback" % retry_detail
+                else:
+                    last_failure = "reason=early status failure ssid=%s status=%s" % (
+                        _ssid_text(ssid),
+                        status,
+                    )
                 print("wifi_uplink: %s failed early (status %s)" % (ssid, status))
                 try:
                     import diag_log
@@ -386,8 +449,7 @@ def connect(timeout_s=15):
                 except Exception:
                     pass
                 break
-            _sleep_with_watchdog(0.5)
-        else:
+
             last_failure = "reason=timeout ssid=%s" % _ssid_text(ssid)
             print("wifi_uplink: timed out connecting to", ssid)
             try:
@@ -396,9 +458,10 @@ def connect(timeout_s=15):
                 diag_log.log("wifi timeout %s" % ssid)
             except Exception:
                 pass
+            break
 
     wlan.active(False)
-    if scan_text != "scan=failed" and not any_configured_visible:
+    if scan_text != "scan=failed" and not any_configured_visible and not retry_detail:
         last_failure = "reason=no configured network visible"
     _set_connection_report(last_failure, scan_text)
     try:
