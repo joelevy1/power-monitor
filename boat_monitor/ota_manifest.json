@@ -1,11 +1,27 @@
 {
-  "version": "1.1.127",
-  "notes": "Patch OTA: version.py only (cellular heap safe).",
+  "version": "1.1.128",
+  "notes": "Keep healthy dock Wi-Fi association between logs.",
   "files": [
+    {
+      "path": "wifi_uplink.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
+    },
+    {
+      "path": "sheets_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+    },
+    {
+      "path": "log_session.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/log_session.py"
+    },
+    {
+      "path": "remote_boot_config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+    },
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
     }
   ],
-  "manifest_kind": "stress"
+  "manifest_kind": "wifi-feature"
 }
