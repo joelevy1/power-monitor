@@ -32,6 +32,106 @@ import time
 
 
 WIFI_IO_SLICE_TIMEOUT_S = 5
+CONNECTION_REPORT_MAX_CHARS = 146
+SCAN_TEXT_MAX_CHARS = 108
+_last_connection_report = ""
+
+
+def _ssid_value(value):
+    """Normalize bytes/text SSIDs for exact configured-network matching."""
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8", "replace")
+        except Exception:
+            try:
+                return value.decode()
+            except Exception:
+                return "<bytes>"
+    return str(value)
+
+
+def _ssid_text(value):
+    """Return a short, delimiter-safe SSID string for telemetry."""
+    value = _ssid_value(value)
+    out = ""
+    for char in value:
+        if char in ",;=@\r\n\t" or ord(char) < 32:
+            char = "_"
+        out += char
+        if len(out) >= 32:
+            break
+    return out or "<empty>"
+
+
+def _configured_scan_details(networks, scan_results):
+    """Return exact key, safe label, and strongest RSSI for configured SSIDs."""
+    ordered = []
+    strongest = {}
+    labels = {}
+    for item in networks or []:
+        if not item:
+            continue
+        key = _ssid_value(item[0])
+        if key not in strongest:
+            strongest[key] = None
+            labels[key] = _ssid_text(key)
+            ordered.append(key)
+
+    for row in scan_results or []:
+        try:
+            if len(row) < 4:
+                continue
+            key = _ssid_value(row[0])
+            if key not in strongest:
+                continue
+            rssi = int(row[3])
+            if strongest[key] is None or rssi > strongest[key]:
+                strongest[key] = rssi
+        except (TypeError, ValueError, IndexError):
+            continue
+    return [(key, labels[key], strongest[key]) for key in ordered]
+
+
+def _configured_scan_selection(networks, scan_results):
+    """Return configured SSID labels and strongest RSSI, in config order."""
+    return [
+        (label, rssi)
+        for _key, label, rssi in _configured_scan_details(networks, scan_results)
+    ]
+
+
+def _format_scan_selection(selection):
+    """Bound scan text while keeping entries whole where possible."""
+    text = "scan="
+    added = False
+    for ssid, rssi in selection:
+        part = "%s:%s" % (ssid, rssi if rssi is not None else "missing")
+        candidate = text + ("," if added else "") + part
+        if len(candidate) > SCAN_TEXT_MAX_CHARS:
+            if len(text) + 4 <= SCAN_TEXT_MAX_CHARS:
+                text += ",..." if added else "..."
+            break
+        text = candidate
+        added = True
+    return text if added else "scan=none"
+
+
+def format_configured_scan(networks, scan_results):
+    """Compact configured-only scan text; never exposes BSSIDs or neighbors."""
+    return _format_scan_selection(_configured_scan_selection(networks, scan_results))
+
+
+def _set_connection_report(detail, scan_text=""):
+    global _last_connection_report
+    text = str(detail or "reason=unknown")
+    if scan_text:
+        text += " " + scan_text
+    _last_connection_report = text[:CONNECTION_REPORT_MAX_CHARS]
+
+
+def get_last_connection_report():
+    """Return the bounded report produced by the most recent connect() call."""
+    return _last_connection_report
 
 
 def _ticks_ms():
@@ -169,6 +269,7 @@ def connect(timeout_s=15):
     """
     networks = _load_networks()
     if not networks:
+        _set_connection_report("reason=no configured networks")
         print(
             "wifi_uplink: no networks configured "
             "(wifi_credentials.py, wifi_sheet.json, or wifi_known_networks.py)"
@@ -185,6 +286,36 @@ def connect(timeout_s=15):
     wlan = _wlan()
     wlan.active(True)
 
+    scan_details = []
+    scan_selection = []
+    scan_text = "scan=failed"
+    scan_results = None
+    try:
+        _feed_watchdog_if_due()
+        scan_results = wlan.scan()
+        scan_details = _configured_scan_details(networks, scan_results)
+        scan_selection = [(label, rssi) for _key, label, rssi in scan_details]
+        scan_text = _format_scan_selection(scan_selection)
+    except Exception as exc:
+        print("wifi_uplink: scan failed:", exc)
+    finally:
+        # WLAN scans can allocate a large tuple list. Drop it before any
+        # subsequent HTTPS/TLS work and opportunistically reclaim the heap.
+        scan_results = None
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+        _feed_watchdog_if_due()
+
+    visible_rssi = {}
+    for scanned_key, _scanned_label, scanned_rssi in scan_details:
+        visible_rssi[scanned_key] = scanned_rssi
+    any_configured_visible = any(rssi is not None for rssi in visible_rssi.values())
+    last_failure = "reason=connection failed"
+
     for ssid, password in networks:
         if wlan.isconnected():
             wlan.disconnect()
@@ -200,6 +331,7 @@ def connect(timeout_s=15):
         try:
             wlan.connect(ssid, password)
         except OSError as exc:
+            last_failure = "reason=connect error ssid=%s" % _ssid_text(ssid)
             print("wifi_uplink: connect() raised for %s: %s" % (ssid, exc))
             try:
                 import diag_log
@@ -213,6 +345,18 @@ def connect(timeout_s=15):
         while time.ticks_diff(time.ticks_ms(), start) < timeout_s * 1000:
             _feed_watchdog_if_due()
             if wlan.isconnected():
+                report_ssid = _ssid_text(ssid)
+                rssi = visible_rssi.get(_ssid_value(ssid))
+                if rssi is None and hasattr(wlan, "status"):
+                    try:
+                        rssi = int(wlan.status("rssi"))
+                    except Exception:
+                        pass
+                _set_connection_report(
+                    "connected=%s rssi=%s"
+                    % (report_ssid, rssi if rssi is not None else "unknown"),
+                    scan_text,
+                )
                 print("wifi_uplink: connected to", ssid, wlan.ifconfig())
                 try:
                     import diag_log
@@ -223,17 +367,28 @@ def connect(timeout_s=15):
                 return ssid
             # status() < 0 means the connect attempt already failed (wrong
             # password, not found, etc) -- no point waiting out the timeout.
-            if hasattr(wlan, "status") and wlan.status() < 0:
-                print("wifi_uplink: %s failed early (status %s)" % (ssid, wlan.status()))
+            status = None
+            if hasattr(wlan, "status"):
+                try:
+                    status = wlan.status()
+                except Exception:
+                    pass
+            if status is not None and status < 0:
+                last_failure = "reason=early status failure ssid=%s status=%s" % (
+                    _ssid_text(ssid),
+                    status,
+                )
+                print("wifi_uplink: %s failed early (status %s)" % (ssid, status))
                 try:
                     import diag_log
 
-                    diag_log.log("wifi early fail %s status=%s" % (ssid, wlan.status()))
+                    diag_log.log("wifi early fail %s status=%s" % (ssid, status))
                 except Exception:
                     pass
                 break
             _sleep_with_watchdog(0.5)
         else:
+            last_failure = "reason=timeout ssid=%s" % _ssid_text(ssid)
             print("wifi_uplink: timed out connecting to", ssid)
             try:
                 import diag_log
@@ -243,6 +398,9 @@ def connect(timeout_s=15):
                 pass
 
     wlan.active(False)
+    if scan_text != "scan=failed" and not any_configured_visible:
+        last_failure = "reason=no configured network visible"
+    _set_connection_report(last_failure, scan_text)
     try:
         import diag_log
 

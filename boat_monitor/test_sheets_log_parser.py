@@ -8,11 +8,12 @@ importable here). Run directly with:
 """
 
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from sheets_log import maps_link_url  # noqa: E402
+from sheets_log import SheetsLogger, append_wifi_fallback_note, maps_link_url  # noqa: E402
 
 
 def run():
@@ -45,6 +46,68 @@ def run():
     check("maps_link_url blank when lat is None", maps_link_url(None, 121.354) == "")
     check("maps_link_url blank when lon is None", maps_link_url(31.222388, None) == "")
     check("maps_link_url blank when both are None", maps_link_url(None, None) == "")
+
+    report = "reason=timeout ssid=Dock scan=Dock:-82,Boat:missing"
+    check(
+        "fallback report appends to existing note",
+        append_wifi_fallback_note("scheduled", report)
+        == "scheduled; wifi_fallback " + report,
+    )
+    check(
+        "fallback report omitted when empty",
+        append_wifi_fallback_note("scheduled", "") == "scheduled",
+    )
+    bounded = append_wifi_fallback_note("x" * 200, "reason=" + ("y" * 200))
+    check("fallback note stays bounded", len(bounded) <= 160)
+    check("bounded fallback note retains telemetry marker", "wifi_fallback " in bounded)
+    check("bounded fallback note retains existing note prefix", bounded.startswith("x"))
+
+    fake_wifi = types.ModuleType("wifi_uplink")
+    fake_wifi.load_networks = lambda: [("Dock", "password")]
+    fake_wifi.connect = lambda timeout_s=15: None
+    fake_wifi.get_last_connection_report = lambda: "reason=timeout ssid=Dock scan=Dock:-82"
+
+    fake_cellular = types.ModuleType("cellular")
+
+    class FakeCellularError(Exception):
+        pass
+
+    class FakeModem:
+        def ensure_data(self, registration_timeout_s=60):
+            return None
+
+    fake_cellular.CellularError = FakeCellularError
+    fake_cellular.Sim7600Modem = FakeModem
+    fake_config = types.ModuleType("config")
+    fake_config.ALLOW_CELLULAR_WIFI_FALLBACK = True
+    fake_diag = types.ModuleType("diag_log")
+    fake_diag.log = lambda _message: None
+    module_names = ("wifi_uplink", "cellular", "config", "diag_log")
+    originals = {name: sys.modules.get(name) for name in module_names}
+    try:
+        sys.modules["wifi_uplink"] = fake_wifi
+        sys.modules["cellular"] = fake_cellular
+        sys.modules["config"] = fake_config
+        sys.modules["diag_log"] = fake_diag
+        logger = SheetsLogger(url="https://example.test/exec")
+        logger.ensure_data(registration_timeout_s=1)
+        check(
+            "successful cellular fallback captures Wi-Fi report",
+            logger._wifi_fallback_report == fake_wifi.get_last_connection_report(),
+        )
+
+        cellular_only = SheetsLogger(url="https://example.test/exec", prefer_wifi=False)
+        cellular_only.ensure_data(registration_timeout_s=1)
+        check(
+            "cellular-only request has no Wi-Fi fallback report",
+            cellular_only._wifi_fallback_report == "",
+        )
+    finally:
+        for name, original in originals.items():
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
 
     print()
     if failures:

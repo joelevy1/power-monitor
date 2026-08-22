@@ -55,6 +55,24 @@ def maps_link_url(lat, lon):
     return "https://www.google.com/maps?q=%.7f,%.7f" % (lat, lon)
 
 
+def append_wifi_fallback_note(note, report, max_chars=160):
+    """Append bounded Wi-Fi fallback telemetry to a Power_Log note."""
+    if not report:
+        return str(note or "")
+    suffix = "wifi_fallback " + str(report)
+    prefix = str(note or "")
+    if not prefix:
+        return suffix[:max_chars]
+    separator = "; "
+    # Reserve some room for the existing note even when a full scan report
+    # reaches its bound. The reason leads the report, so tail truncation drops
+    # lower-value scan entries first.
+    suffix_limit = max_chars - len(separator) - min(40, max_chars // 4)
+    suffix = suffix[:suffix_limit]
+    room = max_chars - len(separator) - len(suffix)
+    return prefix[:room] + separator + suffix
+
+
 def _config_value(name):
     if secrets is not None:
         value = getattr(secrets, name, "")
@@ -78,6 +96,7 @@ class SheetsLogger:
         self._data_open = False
         self._wifi_ssid = None
         self._used_cellular = False
+        self._wifi_fallback_report = ""
 
     def uplink_label(self):
         """SSID string when on Wi-Fi, or 'cellular' after ensure_data()."""
@@ -96,6 +115,7 @@ class SheetsLogger:
         """
         if self._data_open:
             return
+        self._wifi_fallback_report = ""
 
         try:
             import diag_log
@@ -121,6 +141,7 @@ class SheetsLogger:
                 except Exception:
                     pass
                 raise SheetsLogError(msg)
+            wifi_report = ""
             try:
                 ssid = wifi_uplink.connect(timeout_s=15)
                 if ssid:
@@ -142,6 +163,13 @@ class SheetsLogger:
                     diag_log.log("ensure_data wifi failed %s" % exc)
                 except Exception:
                     pass
+            try:
+                wifi_report = (
+                    wifi_uplink.get_last_connection_report()
+                    or "reason=connection failed"
+                )
+            except Exception:
+                wifi_report = "reason=connection failed"
             msg = "Wi-Fi configured (%d network(s)) but could not connect" % len(nets)
             try:
                 import diag_log
@@ -228,6 +256,8 @@ class SheetsLogger:
             raise SheetsLogError(str(exc))
         self._used_cellular = True
         self._data_open = True
+        if self.prefer_wifi:
+            self._wifi_fallback_report = wifi_report
         try:
             import status_led
 
@@ -631,6 +661,7 @@ class SheetsLogger:
         if on_progress:
             on_progress("logging_power")
         status_note = note
+        power_note = append_wifi_fallback_note(note, self._wifi_fallback_report)
         power_outcome = "ok"
         last_response = None
         remote_actions = []
@@ -648,7 +679,7 @@ class SheetsLogger:
                 engine=engine,
                 house=house,
                 v50=v50,
-                note=status_note,
+                note=power_note,
                 fw=fw,
                 uplink=self.uplink_label(),
             )
