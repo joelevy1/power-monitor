@@ -42,6 +42,7 @@ RECOVERY_FILES = (
     "modem_policy.py",
     "wifi_uplink.py",
     "ble_service.py",
+    "status_led.py",
     "ota_health.py",
     "ota_bundle.py",
     "ota_diag.py",
