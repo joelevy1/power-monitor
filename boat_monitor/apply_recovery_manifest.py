@@ -97,6 +97,11 @@ OTA_STREAM_FIX_PATHS = (
     "version.py",
 )
 
+WIFI_RESPONSE_FIX_PATHS = (
+    "wifi_uplink.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -184,7 +189,19 @@ def main(argv=None):
         action="store_true",
         help="2-file streamed per-file OTA bootstrap",
     )
+    p.add_argument(
+        "--wifi-response-fix",
+        action="store_true",
+        help="2-file Wi-Fi response polling fix",
+    )
     args = p.parse_args(argv)
+    if args.wifi_response_fix:
+        return _write_manifest(
+            WIFI_RESPONSE_FIX_PATHS,
+            "Wi-Fi logging: tolerate cold-start response timeout slices.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.ota_stream_fix:
         return _write_manifest(
             OTA_STREAM_FIX_PATHS,
@@ -251,7 +268,7 @@ def main(argv=None):
         )
     print(
         "Specify --recovery, --feature-pack, --ram-fix, --winter-hardening, "
-        "--standby-wifi-fix, or --ota-stream-fix",
+        "--standby-wifi-fix, --ota-stream-fix, or --wifi-response-fix",
         file=sys.stderr,
     )
     return 1
