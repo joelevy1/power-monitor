@@ -141,6 +141,62 @@ def write_file(path, data):
         raise OtaError("failed replacing %s: %s" % (path, exc))
 
 
+def download_file_streaming(client, url, path, min_size=1, attempts=2):
+    """Download directly to flash when the transport supports streaming.
+
+    Both Wi-Fi and cellular clients implement download_to_file(). Keeping the
+    source body out of the MicroPython heap avoids ENOMEM on larger modules.
+    """
+    if not hasattr(client, "download_to_file"):
+        data = _http_get_retry(client, url, attempts=attempts)
+        if len(data) < min_size:
+            raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
+        write_file(path, data)
+        return len(data)
+
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        try:
+            try:
+                import ota_trace
+
+                ota_trace.note_http_session()
+                ota_trace.step("http_stream", url=url[-48:], path=path, attempt=attempt)
+            except Exception:
+                pass
+            try:
+                nbytes = client.download_to_file(url, path, timeout_s=120)
+            except TypeError:
+                nbytes = client.download_to_file(url, path)
+            if nbytes < min_size:
+                raise OtaError("%s was too small (%d bytes)" % (path, nbytes))
+            try:
+                import os
+
+                os.remove(path + ".bak")
+            except OSError:
+                pass
+            return nbytes
+        except Exception as exc:
+            last_exc = exc
+            print("OTA: stream attempt %d/%d failed: %s" % (attempt, attempts, exc))
+            try:
+                import os
+
+                os.remove(path + ".new")
+            except OSError:
+                pass
+            try:
+                import gc
+
+                gc.collect()
+            except Exception:
+                pass
+            if attempt < attempts:
+                time.sleep(1.5)
+    raise OtaError(str(last_exc))
+
+
 def _ota_prune_bak_files(paths):
     try:
         import os
@@ -577,10 +633,12 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
                     ota_trace.step("per_file_start", path=path)
                 except Exception:
                     pass
-                data = _http_get_retry(client, url)
-                if len(data) < min_size:
-                    raise OtaError("%s was too small (%d bytes)" % (path, len(data)))
-                write_file(path, data)
+                downloaded_bytes = download_file_streaming(
+                    client,
+                    url,
+                    path,
+                    min_size=min_size,
+                )
                 try:
                     import ota_diag
                     import ota_lifecycle
@@ -591,13 +649,12 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
                         inline=False,
                         target_fw=target_version,
                         path=path,
-                        bytes=len(data),
+                        bytes=downloaded_bytes,
                         mem_free=snap.get("mem_free"),
                         fs_free_b=snap.get("fs_free_b"),
                     )
                 except Exception:
                     pass
-                data = None
                 try:
                     import gc
 
