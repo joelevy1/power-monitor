@@ -2,7 +2,7 @@
 Standby operation: no BLE radio — automatic logging over Wi-Fi (cellular fallback).
 
 Entered from main.py when switch/key are off and no USB host is connected.
-Reboots when ble_policy.ble_wanted() becomes true so ble_service can start.
+Reboots when ble_policy.ble_wanted() becomes true so the BLE service can start.
 """
 
 import time
@@ -11,7 +11,8 @@ import auto_log
 import ble_policy
 import diag_log
 import resilience
-from ble_service import log_power_and_gps, read_status
+from boat_status import read_status
+from log_session import log_power_and_gps
 
 
 # Minutes after an auto-log attempt before we probe the modem (logging can

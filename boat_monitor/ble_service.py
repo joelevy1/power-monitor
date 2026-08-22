@@ -3,7 +3,6 @@ import time
 import bluetooth
 import machine
 import micropython
-from machine import I2C, Pin
 from micropython import const
 
 try:
@@ -11,14 +10,21 @@ try:
 except ImportError:
     import json
 
-try:
-    import version
-except ImportError:
-    version = None
-
 import auto_log
 import ble_policy
-import config as cfg
+from boat_status import (
+    INA219,
+    INA260,
+    current_mode,
+    i2c_bus,
+    input_on,
+    read_ina260,
+    read_status,
+    read_v50,
+)
+from log_session import _wifi_uplink_configured
+from log_session import log_power_and_gps as _log_power_and_gps
+from wifi_uplink import ensure_wifi_off
 
 
 # Faster connectable advertising (µs). 128 ms is aggressive but helps iOS find/connect.
@@ -39,149 +45,6 @@ STATUS_UUID = bluetooth.UUID("7e400002-b5a3-f393-e0a9-e50e24dcca9e")
 COMMAND_UUID = bluetooth.UUID("7e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
 
-class INA260:
-    REG_CURRENT = 0x01
-    REG_VOLTAGE = 0x02
-    REG_POWER = 0x03
-
-    def __init__(self, i2c, address=0x40):
-        self.i2c = i2c
-        self.addr = address
-
-    def _read16(self, reg):
-        data = self.i2c.readfrom_mem(self.addr, reg, 2)
-        raw = (data[0] << 8) | data[1]
-        if raw > 32767:
-            raw -= 65536
-        return raw
-
-    def voltage_v(self):
-        return self._read16(self.REG_VOLTAGE) * 1.25 / 1000
-
-    def current_a(self):
-        return self._read16(self.REG_CURRENT) * 1.25 / 1000
-
-    def power_w(self):
-        raw = self._read16(self.REG_POWER)
-        if raw < 0:
-            raw = (raw + 65536) % 65536
-        return raw * 10 / 1000
-
-
-class INA219:
-    def __init__(self, i2c, address=0x40):
-        self.i2c = i2c
-        self.addr = address
-        self._write(0x00, 0x399F)
-        self._write(0x05, 4096)
-
-    def _write(self, reg, value):
-        self.i2c.writeto_mem(self.addr, reg, value.to_bytes(2, "big"))
-
-    def _read(self, reg):
-        return int.from_bytes(self.i2c.readfrom_mem(self.addr, reg, 2), "big")
-
-    def voltage_v(self):
-        return (self._read(0x02) >> 3) * 0.004
-
-    def current_a(self):
-        raw = self._read(0x04)
-        if raw > 32767:
-            raw -= 65536
-        return abs(raw * 0.1) / 1000
-
-
-def i2c_bus(sda, scl, bus_id):
-    return I2C(bus_id, sda=Pin(sda), scl=Pin(scl), freq=100000)
-
-
-def read_ina260(sda, scl, bus_id, addr):
-    try:
-        sensor = INA260(i2c_bus(sda, scl, bus_id), addr)
-        return {
-            "v": round(sensor.voltage_v(), 3),
-            "a": round(sensor.current_a(), 4),
-            "w": round(sensor.power_w(), 3),
-            "ok": True,
-        }
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
-def read_v50():
-    try:
-        sensor = INA219(i2c_bus(cfg.I2C_V50_SDA, cfg.I2C_V50_SCL, 0), cfg.INA219_V50_ADDR)
-        a = round(sensor.current_a(), 4)
-        v = round(sensor.voltage_v(), 3)
-        # With no USB bank on the harness, TPS IN1 can still show ~5 V at near-zero
-        # amps (ghost on the unused leg). Treat as "not on bank" for logging/SOC.
-        if abs(a) < 0.02:
-            return {"v": v, "a": a, "ok": True, "bank_idle": True}
-        return {
-            "v": v,
-            "a": a,
-            "ok": True,
-        }
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
-def input_on(gpio):
-    return Pin(gpio, Pin.IN, Pin.PULL_UP).value() == 0
-
-
-def current_mode(inputs):
-    if inputs["key"]:
-        return "key_on"
-    if inputs["switch"]:
-        return "switch_on_key_off"
-    if inputs["mid_float"] or inputs["aft_float"]:
-        return "float_alert"
-    if inputs["mid_bilge"] or inputs["aft_bilge"]:
-        return "bilge_active"
-    return "docked_off"
-
-
-def read_status(command_result=None, sensors=True):
-    inputs = {
-        "switch": input_on(cfg.PIN_BATTERY_SWITCH),
-        "key": input_on(cfg.PIN_KEY),
-        "mid_bilge": input_on(cfg.PIN_BILGE_MID),
-        "aft_bilge": input_on(cfg.PIN_BILGE_AFT),
-        "mid_float": input_on(cfg.PIN_FLOAT_MID),
-        "aft_float": input_on(cfg.PIN_FLOAT_AFT),
-    }
-
-    status = {
-        "device": "boat-p2",
-        "fw": getattr(version, "VERSION", "unknown") if version else "unknown",
-        "mode": current_mode(inputs),
-        "inputs": inputs,
-        "note": "negative current means solar charging",
-    }
-    if sensors:
-        status["engine"] = read_ina260(
-            cfg.I2C_ENGINE_SDA, cfg.I2C_ENGINE_SCL, 0, cfg.INA260_ENGINE_ADDR
-        )
-        status["house"] = read_ina260(
-            cfg.I2C_HOUSE_SDA, cfg.I2C_HOUSE_SCL, 1, cfg.INA260_HOUSE_ADDR
-        )
-        status["v50"] = read_v50()
-
-    if command_result:
-        status["command_result"] = command_result
-        low = str(command_result).lower()
-        if "fail" in low or "logged (power:" in low:
-            try:
-                import diag_log
-
-                status["diag_tail"] = diag_log.recent_lines(8)
-            except Exception:
-                pass
-
-    return status
-
-
 def log_power_and_gps(
     note,
     on_progress=None,
@@ -189,107 +52,18 @@ def log_power_and_gps(
     prefer_wifi=True,
     ble_monitor=None,
 ):
-    """Log Power_Log + GPS_Log. prefer_wifi=True tries known Wi-Fi first when
-    safe (no active BLE central). Manual BLE 'Log Now' passes prefer_wifi=False
-    so the phone connection stays up and cellular carries the upload.
-    """
-    import sheets_log
-
-    if ble_monitor is not None and getattr(ble_monitor, "_cellular_busy", False):
-        msg = "power: failed: cellular session busy, gps: skipped"
-        print("log_power_and_gps:", msg)
-        try:
-            import diag_log
-
-            diag_log.log(msg)
-        except Exception:
-            pass
-        return msg
-
+    """Backward-compatible BLE wrapper around the radio-independent logger."""
+    wifi_handoff = None
     if ble_monitor is not None:
-        ble_monitor._cellular_busy = True
-    try:
-        try:
-            import diag_log
-
-            diag_log.log(
-                "log_power_and_gps entry note=%s prefer_wifi=%s ble=%s"
-                % (note, prefer_wifi, ble_monitor is not None)
-            )
-        except Exception:
-            pass
-
-        def _run(prefer):
-            logger = sheets_log.SheetsLogger(prefer_wifi=prefer)
-            actions = []
-            log_mode = None
-            try:
-                import version
-
-                fw = getattr(version, "VERSION", "")
-                status = read_status()
-                log_mode = status.get("mode")
-                try:
-                    import gpio_probe
-
-                    log_note = gpio_probe.enrich_note(note, status)
-                except Exception:
-                    log_note = note
-                summary = logger.log_power_and_gps(
-                    device=status["device"],
-                    mode=status["mode"],
-                    engine=status["engine"],
-                    house=status["house"],
-                    v50=status["v50"],
-                    note=log_note,
-                    fw=fw,
-                    gps_timeout_s=gps_timeout_s,
-                    on_progress=on_progress,
-                )
-                actions = getattr(logger, "_last_remote_actions", []) or []
-                return summary, actions
-            finally:
-                logger.close_data(mode=log_mode)
-
-        if prefer_wifi and not _wifi_uplink_configured():
-            msg = "power: failed: no Wi-Fi networks on Pico, gps: skipped"
-            print("log_power_and_gps:", msg)
-            try:
-                import diag_log
-
-                diag_log.log(msg)
-            except Exception:
-                pass
-            return msg
-
-        use_wifi = prefer_wifi and _wifi_uplink_configured()
-        if use_wifi and ble_monitor is not None and ble_monitor.connections:
-            use_wifi = False
-
-        if use_wifi and ble_monitor is not None:
-            summary, actions = _wifi_handoff_log(ble_monitor, lambda: _run(True))
-        else:
-            summary, actions = _run(prefer_wifi if ble_monitor is None else use_wifi)
-
-        try:
-            import ota_reboot
-
-            ota_reboot.reboot_if_upgrade_pending(source="log_power_and_gps")
-        except Exception:
-            pass
-        return summary
-    finally:
-        if ble_monitor is not None:
-            ble_monitor._cellular_busy = False
-
-
-def _wifi_uplink_configured():
-    try:
-        import wifi_uplink
-
-        return bool(wifi_uplink.load_networks())
-    except Exception:
-        return False
+        wifi_handoff = lambda fn: _wifi_handoff_log(ble_monitor, fn)
+    return _log_power_and_gps(
+        note,
+        on_progress=on_progress,
+        gps_timeout_s=gps_timeout_s,
+        prefer_wifi=prefer_wifi,
+        ble_monitor=ble_monitor,
+        wifi_handoff=wifi_handoff,
+    )
 
 
 def _wifi_handoff_log(ble_monitor, fn):
@@ -340,38 +114,6 @@ def check_gps_fix(timeout_s=30, poll_interval_s=2):
         return "gps: fix (lat: %.7f, lon: %.7f, maps: %s)" % (lat, lon, maps_link_url(lat, lon))
 
     return "gps: no_fix (%s)" % (fix.get("error") or fix.get("raw") or "no fix")
-
-
-def ensure_wifi_off():
-    """Pico W: CYW43439 cannot reliably advertise BLE while WiFi STA/AP is active
-    (shared radio). Same fix applied on the Ballast Monitor Pico firmware.
-
-    If WiFi was actually active (e.g. left over from field_console.py in a
-    prior session that was only *soft*-rebooted, not power-cycled), give the
-    radio a moment to settle before any BLE HCI command runs — otherwise
-    ble.active(True) / gatts_register_services can raise OSError ETIMEDOUT
-    waiting on a co-processor that's still mid-transition. A soft reboot
-    (Ctrl-D in Thonny) does not reset this hardware state; only a real power
-    cycle reliably does, which is why this alone is a mitigation, not a fix.
-    """
-    try:
-        import network
-    except ImportError:
-        return
-
-    disabled_any = False
-    for label, iface in (("STA", network.STA_IF), ("AP", network.AP_IF)):
-        try:
-            wlan = network.WLAN(iface)
-            if wlan.active():
-                wlan.active(False)
-                disabled_any = True
-                print("WiFi %s disabled for BLE" % label)
-        except Exception as exc:
-            print("WiFi %s off: %s" % (label, exc))
-
-    if disabled_any:
-        time.sleep_ms(250)
 
 
 def advertising_payload(name=None, service_uuid=None):

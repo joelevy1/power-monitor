@@ -34,6 +34,28 @@ import time
 WIFI_IO_SLICE_TIMEOUT_S = 5
 
 
+def ensure_wifi_off():
+    """Disable STA/AP and settle the shared radio before BLE starts."""
+    try:
+        import network
+    except ImportError:
+        return
+
+    disabled_any = False
+    for label, iface in (("STA", network.STA_IF), ("AP", network.AP_IF)):
+        try:
+            wlan = network.WLAN(iface)
+            if wlan.active():
+                wlan.active(False)
+                disabled_any = True
+                print("WiFi %s disabled for BLE" % label)
+        except Exception as exc:
+            print("WiFi %s off: %s" % (label, exc))
+
+    if disabled_any:
+        time.sleep_ms(250)
+
+
 def _feed_watchdog_if_due():
     try:
         import resilience

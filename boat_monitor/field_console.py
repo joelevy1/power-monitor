@@ -672,7 +672,7 @@ def log_html():
         # ble_service.py's manual 'log' command and its automatic
         # background logging -- previously this page had its own
         # separate (near-identical) copy of this logic.
-        from ble_service import log_power_and_gps
+        from log_session import log_power_and_gps
 
         return "Logged: %s" % log_power_and_gps(note="wifi_console_log_now", prefer_wifi=True)
 
