@@ -92,6 +92,11 @@ STANDBY_WIFI_FIX_PATHS = (
     "version.py",
 )
 
+OTA_STREAM_FIX_PATHS = (
+    "ota.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -174,7 +179,19 @@ def main(argv=None):
         action="store_true",
         help="8-file standby Wi-Fi memory refactor (no bundle)",
     )
+    p.add_argument(
+        "--ota-stream-fix",
+        action="store_true",
+        help="2-file streamed per-file OTA bootstrap",
+    )
     args = p.parse_args(argv)
+    if args.ota_stream_fix:
+        return _write_manifest(
+            OTA_STREAM_FIX_PATHS,
+            "OTA bootstrap: stream each source file directly to flash.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.standby_wifi_fix:
         return _write_manifest(
             STANDBY_WIFI_FIX_PATHS,
@@ -234,7 +251,7 @@ def main(argv=None):
         )
     print(
         "Specify --recovery, --feature-pack, --ram-fix, --winter-hardening, "
-        "or --standby-wifi-fix",
+        "--standby-wifi-fix, or --ota-stream-fix",
         file=sys.stderr,
     )
     return 1
