@@ -15,7 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from wifi_uplink import WifiHttp, _decode_chunked, split_url  # noqa: E402
+import wifi_uplink  # noqa: E402
+from wifi_uplink import WifiError, WifiHttp, _decode_chunked, _recv_response, split_url  # noqa: E402
 
 
 def run():
@@ -113,6 +114,56 @@ def run():
     )
     check("parse_response chunked 200", status == 200)
     check("parse_response chunked body", body == '{"ok": true, "tab": "x"}')
+
+    class FakeTime:
+        def __init__(self):
+            self.now = 0
+
+        def ticks_ms(self):
+            self.now += 1000
+            return self.now
+
+        @staticmethod
+        def ticks_diff(new, old):
+            return new - old
+
+    class FakeSocket:
+        def __init__(self, results):
+            self.results = list(results)
+
+        def recv(self, _size):
+            result = self.results.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+    original_time = wifi_uplink.time
+    try:
+        wifi_uplink.time = FakeTime()
+        response = _recv_response(
+            FakeSocket(
+                [
+                    OSError("slice timeout"),
+                    OSError("slice timeout"),
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK",
+                    b"",
+                ]
+            ),
+            timeout_s=10,
+        )
+        check("recv_response survives timeout slices", response.endswith(b"\r\n\r\nOK"))
+
+        wifi_uplink.time = FakeTime()
+        try:
+            _recv_response(
+                FakeSocket([OSError("slice timeout")] * 10),
+                timeout_s=3,
+            )
+            check("recv_response raises after overall timeout", False)
+        except WifiError:
+            check("recv_response raises after overall timeout", True)
+    finally:
+        wifi_uplink.time = original_time
 
     print()
     if failures:

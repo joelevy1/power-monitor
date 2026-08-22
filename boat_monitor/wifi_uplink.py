@@ -34,6 +34,20 @@ import time
 WIFI_IO_SLICE_TIMEOUT_S = 5
 
 
+def _ticks_ms():
+    try:
+        return time.ticks_ms()
+    except AttributeError:
+        return int(time.time() * 1000)
+
+
+def _ticks_diff(new, old):
+    try:
+        return time.ticks_diff(new, old)
+    except AttributeError:
+        return new - old
+
+
 def ensure_wifi_off():
     """Disable STA/AP and settle the shared radio before BLE starts."""
     try:
@@ -72,6 +86,28 @@ def _sleep_with_watchdog(seconds):
         resilience.sleep_with_watchdog(seconds, sleep_fn=time.sleep)
     except Exception:
         time.sleep(seconds)
+
+
+def _recv_response(sock, timeout_s):
+    """Read until peer close, tolerating bounded socket timeout slices."""
+    start = _ticks_ms()
+    response = b""
+    last_error = None
+    while _ticks_diff(_ticks_ms(), start) < int(timeout_s * 1000):
+        _feed_watchdog_if_due()
+        try:
+            chunk = sock.recv(1024)
+        except OSError as exc:
+            # A 5s socket timeout is only a watchdog-safe polling slice, not
+            # the overall HTTP deadline. Apps Script cold starts can exceed it.
+            last_error = exc
+            continue
+        if not chunk:
+            return response
+        response += chunk
+    if response:
+        return response
+    raise WifiError("HTTP response timeout: %s" % (last_error or "no data"))
 
 
 class WifiError(Exception):
@@ -371,16 +407,7 @@ class WifiHttp:
                 sock.write(body_bytes)
                 _feed_watchdog_if_due()
 
-            response = b""
-            while True:
-                _feed_watchdog_if_due()
-                try:
-                    chunk = sock.recv(1024)
-                except OSError:
-                    break
-                if not chunk:
-                    break
-                response += chunk
+            response = _recv_response(sock, timeout_s)
         finally:
             sock.close()
 
