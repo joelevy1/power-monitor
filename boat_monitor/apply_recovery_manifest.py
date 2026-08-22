@@ -134,6 +134,11 @@ PERSISTENT_DOCK_WIFI_PATHS = (
     "version.py",
 )
 
+BLE_TRANSITION_FIX_PATHS = (
+    "standby_monitor.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -246,7 +251,19 @@ def main(argv=None):
         action="store_true",
         help="5-file persistent dock Wi-Fi association release",
     )
+    p.add_argument(
+        "--ble-transition-fix",
+        action="store_true",
+        help="2-file dock-to-BLE Wi-Fi teardown release",
+    )
     args = p.parse_args(argv)
+    if args.ble_transition_fix:
+        return _write_manifest(
+            BLE_TRANSITION_FIX_PATHS,
+            "Deinitialize shared Wi-Fi radio before dock-to-BLE reboot.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.persistent_dock_wifi:
         return _write_manifest(
             PERSISTENT_DOCK_WIFI_PATHS,
