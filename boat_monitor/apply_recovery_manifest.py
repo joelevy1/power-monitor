@@ -108,6 +108,13 @@ WIFI_SCAN_TELEMETRY_PATHS = (
     "version.py",
 )
 
+OPTIONAL_TELEMETRY_DEDUPE_PATHS = (
+    "telemetry_dedupe.py",
+    "sheets_log.py",
+    "ota_capability.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -205,7 +212,19 @@ def main(argv=None):
         action="store_true",
         help="3-file configured-SSID scan telemetry release",
     )
+    p.add_argument(
+        "--optional-telemetry-dedupe",
+        action="store_true",
+        help="4-file optional Event deduplication release",
+    )
     args = p.parse_args(argv)
+    if args.optional_telemetry_dedupe:
+        return _write_manifest(
+            OPTIONAL_TELEMETRY_DEDUPE_PATHS,
+            "Reduce TLS pressure by deduplicating unchanged optional Events.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.wifi_scan_telemetry:
         return _write_manifest(
             WIFI_SCAN_TELEMETRY_PATHS,
@@ -287,7 +306,7 @@ def main(argv=None):
     print(
         "Specify --recovery, --feature-pack, --ram-fix, --winter-hardening, "
         "--standby-wifi-fix, --ota-stream-fix, --wifi-response-fix, "
-        "or --wifi-scan-telemetry",
+        "--wifi-scan-telemetry, or --optional-telemetry-dedupe",
         file=sys.stderr,
     )
     return 1

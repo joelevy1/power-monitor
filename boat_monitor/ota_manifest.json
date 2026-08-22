@@ -1,14 +1,18 @@
 {
-  "version": "1.1.121",
-  "notes": "Wi-Fi fallback: report configured SSID visibility and RSSI.",
+  "version": "1.1.122",
+  "notes": "Reduce TLS pressure by deduplicating unchanged optional Events.",
   "files": [
     {
-      "path": "wifi_uplink.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
+      "path": "telemetry_dedupe.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/telemetry_dedupe.py"
     },
     {
       "path": "sheets_log.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+    },
+    {
+      "path": "ota_capability.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_capability.py"
     },
     {
       "path": "version.py",
