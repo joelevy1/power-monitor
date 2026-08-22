@@ -15,6 +15,7 @@ from ota_stress_rules import (
     DOCK_STRESS_KEYS,
     STALE_SHEET_KEYS,
 )
+from usb_recovery_push import RECOVERY_FILES
 
 
 def main():
@@ -32,6 +33,7 @@ def main():
     assert _uplink_matches("cellular", "cellular")
     assert version_last(("version.py", "cellular.py")) == ("cellular.py", "version.py")
     assert WINTER_HARDENING_PATHS[-1] == "version.py"
+    assert "status_led.py" in RECOVERY_FILES
 
     version_before = (ROOT / "version.py").read_text(encoding="utf-8")
     manifest_before = (ROOT / "ota_manifest.json").read_text(encoding="utf-8")
