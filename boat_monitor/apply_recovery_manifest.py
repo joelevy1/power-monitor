@@ -126,6 +126,14 @@ WIFI_AUTH_OTA_GATE_PATHS = (
     "version.py",
 )
 
+PERSISTENT_DOCK_WIFI_PATHS = (
+    "wifi_uplink.py",
+    "sheets_log.py",
+    "log_session.py",
+    "remote_boot_config.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -233,7 +241,19 @@ def main(argv=None):
         action="store_true",
         help="5-file Wi-Fi auth retry and OTA gate diagnostics release",
     )
+    p.add_argument(
+        "--persistent-dock-wifi",
+        action="store_true",
+        help="5-file persistent dock Wi-Fi association release",
+    )
     args = p.parse_args(argv)
+    if args.persistent_dock_wifi:
+        return _write_manifest(
+            PERSISTENT_DOCK_WIFI_PATHS,
+            "Keep healthy dock Wi-Fi association between logs.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.wifi_auth_ota_gate:
         return _write_manifest(
             WIFI_AUTH_OTA_GATE_PATHS,

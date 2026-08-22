@@ -111,8 +111,9 @@ def test_log_session_uses_optional_handoff_without_bluetooth():
     calls = []
 
     class FakeLogger:
-        def __init__(self, prefer_wifi):
+        def __init__(self, prefer_wifi, keep_wifi_connected=None):
             calls.append(("logger", prefer_wifi))
+            assert keep_wifi_connected is False
             self._last_remote_actions = []
 
         def log_power_and_gps(self, **kwargs):

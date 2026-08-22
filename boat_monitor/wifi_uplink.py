@@ -35,6 +35,8 @@ WIFI_IO_SLICE_TIMEOUT_S = 5
 CONNECTION_REPORT_MAX_CHARS = 146
 SCAN_TEXT_MAX_CHARS = 108
 _last_connection_report = ""
+RP2_PM_NONE = 0xA11140
+RP2_PM_POWERSAVE = 0xA11142
 
 
 def _ssid_value(value):
@@ -149,7 +151,7 @@ def _ticks_diff(new, old):
 
 
 def ensure_wifi_off():
-    """Disable STA/AP and settle the shared radio before BLE starts."""
+    """Fully disable/deinitialize STA/AP and settle the radio for BLE."""
     try:
         import network
     except ImportError:
@@ -159,8 +161,31 @@ def ensure_wifi_off():
     for label, iface in (("STA", network.STA_IF), ("AP", network.AP_IF)):
         try:
             wlan = network.WLAN(iface)
-            if wlan.active():
+            was_active = False
+            try:
+                was_active = bool(wlan.active())
+            except Exception:
+                pass
+            if label == "STA":
+                try:
+                    wlan.disconnect()
+                except Exception:
+                    pass
+            try:
                 wlan.active(False)
+            except Exception:
+                pass
+            if hasattr(wlan, "deinit"):
+                try:
+                    wlan.deinit()
+                except Exception:
+                    pass
+            # Some ports leave the interface active after a partial deinit.
+            try:
+                wlan.active(False)
+            except Exception:
+                pass
+            if was_active:
                 disabled_any = True
                 print("WiFi %s disabled for BLE" % label)
         except Exception as exc:
@@ -212,8 +237,122 @@ def _wait_for_connection(wlan, timeout_s):
     return "timeout", None
 
 
+def _valid_ipv4(value):
+    """Reject unset/link-local addresses without doing an internet request."""
+    try:
+        parts = str(value or "").split(".")
+        if len(parts) != 4:
+            return False
+        nums = [int(part) for part in parts]
+        if any(part < 0 or part > 255 for part in nums):
+            return False
+        return (
+            nums[0] not in (0, 127)
+            and nums[:2] != [169, 254]
+            and nums != [255, 255, 255, 255]
+        )
+    except Exception:
+        return False
+
+
+def _status_value(wlan):
+    try:
+        return wlan.status()
+    except Exception:
+        return None
+
+
+def _association_healthy(wlan):
+    """Validate driver state and local DHCP state before reusing association."""
+    try:
+        if not wlan.active() or not wlan.isconnected():
+            return False
+        status = _status_value(wlan)
+        try:
+            import network
+
+            got_ip = getattr(network, "STAT_GOT_IP", 3)
+        except Exception:
+            got_ip = 3
+        if status != got_ip:
+            return False
+        config = wlan.ifconfig()
+        return bool(config) and _valid_ipv4(config[0])
+    except Exception:
+        return False
+
+
+def _associated_ssid(wlan, networks):
+    for getter in (
+        lambda: wlan.config("ssid"),
+        lambda: wlan.status("ssid"),
+    ):
+        try:
+            value = getter()
+            if value:
+                return _ssid_value(value)
+        except Exception:
+            pass
+    # RP2 builds have not always exposed the current SSID. Persistence is only
+    # entered after connecting one of these configured networks.
+    return _ssid_value(networks[0][0]) if networks else "<associated>"
+
+
+def _rssi(wlan):
+    try:
+        return int(wlan.status("rssi"))
+    except Exception:
+        return None
+
+
+def _set_pm(wlan, idle=False):
+    """Best-effort RP2 PM selection; return a bounded telemetry label."""
+    try:
+        import network
+
+        if idle:
+            value = getattr(network, "PM_POWERSAVE", RP2_PM_POWERSAVE)
+            label = "powersave"
+        else:
+            value = getattr(network, "PM_NONE", RP2_PM_NONE)
+            label = "none"
+        wlan.config(pm=value)
+        return label
+    except Exception:
+        return "unsupported"
+
+
+def _configure_association(wlan):
+    """Apply supported reconnect/performance controls before association."""
+    reconnects = "unsupported"
+    try:
+        wlan.config(reconnects=3)
+        reconnects = "3"
+    except Exception:
+        pass
+    return _set_pm(wlan, idle=False), reconnects
+
+
+def set_request_power_mode(idle=False):
+    """Best-effort power mode change for an active HTTP request/session."""
+    try:
+        wlan = _wlan()
+        if not _association_healthy(wlan):
+            return "unavailable"
+        mode = _set_pm(wlan, idle=idle)
+        try:
+            import diag_log
+
+            diag_log.log("wifi pm=%s phase=%s" % (mode, "idle" if idle else "request"))
+        except Exception:
+            pass
+        return mode
+    except Exception:
+        return "unsupported"
+
+
 def _reset_sta_for_retry(wlan):
-    """Fully reset STA between a failed auth/connection and its sole retry."""
+    """Fully reset STA between a failed association and its sole retry."""
     try:
         wlan.disconnect()
     except Exception:
@@ -222,9 +361,19 @@ def _reset_sta_for_retry(wlan):
         wlan.active(False)
     except Exception:
         pass
+    if hasattr(wlan, "deinit"):
+        try:
+            wlan.deinit()
+        except Exception:
+            pass
     _sleep_with_watchdog(0.5)
+    try:
+        wlan = _wlan()
+    except Exception:
+        pass
     wlan.active(True)
     _feed_watchdog_if_due()
+    return wlan
 
 
 def _recv_response(sock, timeout_s):
@@ -323,7 +472,29 @@ def connect(timeout_s=15):
         pass
 
     wlan = _wlan()
-    wlan.active(True)
+    if _association_healthy(wlan):
+        ssid = _associated_ssid(wlan, networks)
+        rssi = _rssi(wlan)
+        pm = _set_pm(wlan, idle=False)
+        _set_connection_report(
+            "outcome=reused connected=%s rssi=%s pm=%s"
+            % (_ssid_text(ssid), rssi if rssi is not None else "unknown", pm)
+        )
+        print("wifi_uplink: reusing", ssid, wlan.ifconfig())
+        return ssid
+
+    # isconnected() can remain true after DHCP/driver state has gone stale.
+    stale = False
+    try:
+        stale = bool(wlan.isconnected())
+    except Exception:
+        pass
+    if stale:
+        print("wifi_uplink: stale association; resetting STA")
+        wlan = _reset_sta_for_retry(wlan)
+    else:
+        wlan.active(True)
+    pm_mode, reconnects = _configure_association(wlan)
 
     scan_details = []
     scan_selection = []
@@ -382,9 +553,10 @@ def connect(timeout_s=15):
                     diag_log.log("wifi connect() error %s: %s" % (ssid, exc))
                 except Exception:
                     pass
-                break
+                outcome, status = "connect_error", None
+            else:
+                outcome, status = _wait_for_connection(wlan, timeout_s)
 
-            outcome, status = _wait_for_connection(wlan, timeout_s)
             if outcome == "connected":
                 report_ssid = _ssid_text(ssid)
                 rssi = visible_rssi.get(_ssid_value(ssid))
@@ -395,15 +567,22 @@ def connect(timeout_s=15):
                         pass
                 status_detail = ""
                 if retry_used:
-                    status_detail = " first_status=%s retry_status=connected outcome=wifi" % first_status
+                    status_detail = (
+                        " first_status=%s retry_status=connected outcome=wifi path=retry"
+                        % first_status
+                    )
                 elif retry_detail:
-                    status_detail = " " + retry_detail + " outcome=wifi"
+                    status_detail = " " + retry_detail + " outcome=wifi path=fresh"
+                else:
+                    status_detail = " outcome=wifi path=fresh"
                 _set_connection_report(
-                    "connected=%s rssi=%s%s"
+                    "connected=%s rssi=%s%s pm=%s reconnects=%s"
                     % (
                         report_ssid,
                         rssi if rssi is not None else "unknown",
                         status_detail,
+                        pm_mode,
+                        reconnects,
                     ),
                     scan_text,
                 )
@@ -416,26 +595,44 @@ def connect(timeout_s=15):
                     pass
                 return ssid
 
+            if not retry_used:
+                first_status = status if status is not None else outcome
+                print(
+                    "wifi_uplink: %s failed (%s); resetting STA for retry"
+                    % (ssid, first_status)
+                )
+                try:
+                    import diag_log
+
+                    diag_log.log(
+                        "wifi fail %s status=%s retrying once"
+                        % (ssid, first_status)
+                    )
+                except Exception:
+                    pass
+                wlan = _reset_sta_for_retry(wlan)
+                pm_mode, reconnects = _configure_association(wlan)
+                retry_used = True
+                continue
+
             if outcome == "negative":
                 if _negative_status_retry(status, retry_used):
-                    first_status = status
-                    print("wifi_uplink: %s failed early (status %s); resetting STA for retry" % (ssid, status))
                     try:
                         import diag_log
 
-                        diag_log.log("wifi early fail %s status=%s retrying once" % (ssid, status))
+                        diag_log.log("wifi early fail %s status=%s" % (ssid, status))
                     except Exception:
                         pass
-                    _reset_sta_for_retry(wlan)
-                    retry_used = True
-                    continue
                 if retry_used:
                     retry_detail = "retry_ssid=%s first_status=%s retry_status=%s" % (
                         _ssid_text(ssid),
                         first_status,
                         status,
                     )
-                    last_failure = "reason=status failure %s outcome=fallback" % retry_detail
+                    last_failure = (
+                        "reason=status failure %s outcome=fallback pm=%s"
+                        % (retry_detail, pm_mode)
+                    )
                 else:
                     last_failure = "reason=early status failure ssid=%s status=%s" % (
                         _ssid_text(ssid),
@@ -450,8 +647,16 @@ def connect(timeout_s=15):
                     pass
                 break
 
-            last_failure = "reason=timeout ssid=%s" % _ssid_text(ssid)
-            print("wifi_uplink: timed out connecting to", ssid)
+            retry_detail = "retry_ssid=%s first_status=%s retry_status=%s" % (
+                _ssid_text(ssid),
+                first_status,
+                outcome,
+            )
+            last_failure = (
+                "reason=%s %s outcome=fallback pm=%s"
+                % (outcome, retry_detail, pm_mode)
+            )
+            print("wifi_uplink: failed connecting to", ssid, outcome)
             try:
                 import diag_log
 
@@ -460,7 +665,16 @@ def connect(timeout_s=15):
                 pass
             break
 
-    wlan.active(False)
+    try:
+        if hasattr(wlan, "deinit"):
+            wlan.deinit()
+        else:
+            wlan.active(False)
+    except Exception:
+        try:
+            wlan.active(False)
+        except Exception:
+            pass
     if scan_text != "scan=failed" and not any_configured_visible and not retry_detail:
         last_failure = "reason=no configured network visible"
     _set_connection_report(last_failure, scan_text)
@@ -480,7 +694,13 @@ def disconnect():
             wlan.disconnect()
     except OSError:
         pass
-    wlan.active(False)
+    try:
+        if hasattr(wlan, "deinit"):
+            wlan.deinit()
+        else:
+            wlan.active(False)
+    except Exception:
+        wlan.active(False)
 
 
 def is_connected():
@@ -585,6 +805,7 @@ class WifiHttp:
     ):
         import socket
 
+        set_request_power_mode(idle=False)
         host, port, path, is_https = split_url(url)
 
         headers = dict(headers or {})
@@ -633,6 +854,9 @@ class WifiHttp:
             sock.close()
 
         status, resp_headers, response_body = self._parse_response(response)
+        # HTTP sockets are per-request. Leave the association up in an idle
+        # power mode so dock standby can reuse it without a cold association.
+        set_request_power_mode(idle=True)
 
         if status in REDIRECT_STATUSES:
             if _redirect_count >= MAX_REDIRECTS:

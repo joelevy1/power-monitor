@@ -48,7 +48,12 @@ def log_power_and_gps(
             pass
 
         def _run(prefer):
-            logger = sheets_log.SheetsLogger(prefer_wifi=prefer)
+            logger = sheets_log.SheetsLogger(
+                prefer_wifi=prefer,
+                # BLE handoffs always return the CYW43439 to BLE, regardless
+                # of dock persistence policy.
+                keep_wifi_connected=False if ble_monitor is not None else None,
+            )
             actions = []
             log_mode = None
             try:
