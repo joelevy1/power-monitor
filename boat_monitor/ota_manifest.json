@@ -3,6 +3,18 @@
   "notes": "Retry Wi-Fi auth once and report exact OTA gate reasons.",
   "files": [
     {
+      "path": "telemetry_dedupe.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/telemetry_dedupe.py"
+    },
+    {
+      "path": "sheets_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+    },
+    {
+      "path": "ota_capability.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_capability.py"
+    },
+    {
       "path": "wifi_uplink.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
     },
