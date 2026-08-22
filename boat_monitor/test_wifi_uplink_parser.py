@@ -16,7 +16,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import wifi_uplink  # noqa: E402
-from wifi_uplink import WifiError, WifiHttp, _decode_chunked, _recv_response, split_url  # noqa: E402
+from wifi_uplink import (  # noqa: E402
+    WifiError,
+    WifiHttp,
+    _configured_scan_selection,
+    _decode_chunked,
+    _recv_response,
+    format_configured_scan,
+    split_url,
+)
 
 
 def run():
@@ -164,6 +172,38 @@ def run():
             check("recv_response raises after overall timeout", True)
     finally:
         wifi_uplink.time = original_time
+
+    networks = [("Dock WiFi", "secret"), (b"BoatNet", "other-secret"), ("Hidden", "pw")]
+    scans = [
+        (b"Neighbor", b"\x01\x02\x03\x04\x05\x06", 1, -20, 3, 0),
+        (b"Dock WiFi", b"\x10\x11\x12\x13\x14\x15", 6, -71, 3),
+        (b"BoatNet", b"\x20\x21\x22\x23\x24\x25", 11, -80),
+        (b"Dock WiFi", b"\x30\x31\x32\x33\x34\x35", 6, -43, 3, 0),
+        (b"BoatNet", b"\x40\x41\x42\x43\x44\x45", 11, -62, 3, 0),
+        (b"malformed",),
+    ]
+    selection = _configured_scan_selection(networks, scans)
+    check(
+        "configured scan chooses strongest duplicate BSSID",
+        selection == [("Dock WiFi", -43), ("BoatNet", -62), ("Hidden", None)],
+    )
+    scan_text = format_configured_scan(networks, scans)
+    check(
+        "configured scan formats bytes and missing SSIDs",
+        scan_text == "scan=Dock WiFi:-43,BoatNet:-62,Hidden:missing",
+    )
+    check("configured scan excludes unrelated neighboring SSIDs", "Neighbor" not in scan_text)
+    check("configured scan excludes passwords and BSSIDs", "secret" not in scan_text and "\\x" not in scan_text)
+    collision_text = format_configured_scan(
+        [("Dock,Main", "pw")],
+        [(b"Dock;Main", b"other", 1, -20), (b"Dock,Main", b"configured", 1, -70)],
+    )
+    check("SSID telemetry sanitizing does not alter exact matching", collision_text == "scan=Dock_Main:-70")
+    many_networks = [("configured-%02d" % i, "pw") for i in range(30)]
+    check(
+        "configured scan report stays bounded",
+        len(format_configured_scan(many_networks, [])) <= wifi_uplink.SCAN_TEXT_MAX_CHARS,
+    )
 
     print()
     if failures:
