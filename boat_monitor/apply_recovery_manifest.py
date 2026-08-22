@@ -102,6 +102,12 @@ WIFI_RESPONSE_FIX_PATHS = (
     "version.py",
 )
 
+WIFI_SCAN_TELEMETRY_PATHS = (
+    "wifi_uplink.py",
+    "sheets_log.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -194,7 +200,19 @@ def main(argv=None):
         action="store_true",
         help="2-file Wi-Fi response polling fix",
     )
+    p.add_argument(
+        "--wifi-scan-telemetry",
+        action="store_true",
+        help="3-file configured-SSID scan telemetry release",
+    )
     args = p.parse_args(argv)
+    if args.wifi_scan_telemetry:
+        return _write_manifest(
+            WIFI_SCAN_TELEMETRY_PATHS,
+            "Wi-Fi fallback: report configured SSID visibility and RSSI.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.wifi_response_fix:
         return _write_manifest(
             WIFI_RESPONSE_FIX_PATHS,
@@ -268,7 +286,8 @@ def main(argv=None):
         )
     print(
         "Specify --recovery, --feature-pack, --ram-fix, --winter-hardening, "
-        "--standby-wifi-fix, --ota-stream-fix, or --wifi-response-fix",
+        "--standby-wifi-fix, --ota-stream-fix, --wifi-response-fix, "
+        "or --wifi-scan-telemetry",
         file=sys.stderr,
     )
     return 1
