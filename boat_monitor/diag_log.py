@@ -36,6 +36,24 @@ def mem_kb():
         return -1
 
 
+def trim_if_oversize():
+    """Bound the log without ever reading the whole file into heap."""
+    try:
+        import os
+
+        size = os.stat(LOG_PATH)[6]
+        if size <= MAX_BYTES:
+            return 0
+        with open(LOG_PATH, "w") as f:
+            f.write("[diag log truncated at %d bytes]\n" % size)
+        return size
+    except OSError:
+        return 0
+    except Exception as exc:
+        print("diag_log trim failed:", exc)
+        return 0
+
+
 def log(msg):
     try:
         import resilience
@@ -43,6 +61,7 @@ def log(msg):
         resilience.feed_watchdog()
     except Exception:
         pass
+    trim_if_oversize()
     line = "[%s] (heap %dK) %s" % (_stamp(), mem_kb(), str(msg))
     print("DIAG:", line)
     try:
@@ -51,16 +70,7 @@ def log(msg):
     except Exception as exc:
         print("diag_log write failed:", exc)
         return
-    try:
-        import os
-
-        if os.stat(LOG_PATH)[6] > MAX_BYTES:
-            with open(LOG_PATH, "r") as f:
-                data = f.read()
-            with open(LOG_PATH, "w") as f:
-                f.write(data[-(MAX_BYTES // 2) :])
-    except Exception:
-        pass
+    trim_if_oversize()
 
 
 def tail(n=60):
