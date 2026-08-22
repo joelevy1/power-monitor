@@ -19,7 +19,7 @@ Usage from the Pico:
     logger.log_row("Power_Log", {"device": "boat-p2", "engine_v": 12.6})
     logger.log_gps("boat-p2", 12.34, -98.76)                # known fix -- adds a maps_link column
     logger.log_gps_now("boat-p2")                           # acquires a fresh fix first (cellular only)
-    logger.close_data()                                     # Wi-Fi disconnect or cellular teardown
+    logger.close_data()                                     # policy-aware Wi-Fi/cellular teardown
 
 Always call close_data() when done (Phase 2.4/2.11) -- mirrors
 modem_shutdown()/CPWROFF discipline used elsewhere in this codebase.
@@ -120,7 +120,9 @@ def _config_value(name):
 
 
 class SheetsLogger:
-    def __init__(self, url=None, token=None, prefer_wifi=True):
+    def __init__(
+        self, url=None, token=None, prefer_wifi=True, keep_wifi_connected=None
+    ):
         self.url = url if url is not None else _config_value("GOOGLE_APPS_SCRIPT_URL")
         self.token = token if token is not None else _config_value("SHEETS_POST_TOKEN")
         if not self.url:
@@ -130,6 +132,9 @@ class SheetsLogger:
             )
 
         self.prefer_wifi = prefer_wifi
+        # None follows remote dock/standby policy. True/False is an explicit
+        # caller request, useful for controlled non-standby sessions.
+        self.keep_wifi_connected = keep_wifi_connected
         self._cellular = None  # created lazily, only if the cellular path is used
         self._data_open = False
         self._wifi_ssid = None
@@ -154,6 +159,15 @@ class SheetsLogger:
         if self._data_open:
             return
         self._wifi_fallback_report = ""
+        if not self.prefer_wifi:
+            # A previous dock session may intentionally have left STA up.
+            # Cellular policy owns the shared-radio transition and tears it down.
+            try:
+                import wifi_uplink
+
+                wifi_uplink.disconnect()
+            except Exception:
+                pass
 
         try:
             import diag_log
@@ -323,12 +337,34 @@ class SheetsLogger:
         except Exception:
             pass
         if self._wifi_ssid:
+            keep_wifi = False
+            if self.keep_wifi_connected is not None:
+                keep_wifi = bool(self.keep_wifi_connected)
+            else:
+                try:
+                    import remote_boot_config
+
+                    keep_wifi = (
+                        self.prefer_wifi
+                        and remote_boot_config.effective_keep_wifi_connected_docked(
+                            mode
+                        )
+                    )
+                except Exception:
+                    keep_wifi = False
             try:
                 import wifi_uplink
 
-                wifi_uplink.disconnect()
+                if keep_wifi:
+                    idle_pm = wifi_uplink.set_request_power_mode(idle=True)
+                    print(
+                        "SheetsLogger: keeping dock Wi-Fi associated pm=%s"
+                        % idle_pm
+                    )
+                else:
+                    wifi_uplink.disconnect()
             except Exception as exc:
-                print("SheetsLogger: wifi_uplink.disconnect() warning:", exc)
+                print("SheetsLogger: Wi-Fi close warning:", exc)
             self._wifi_ssid = None
             self._data_open = False
             actions = getattr(self, "_last_remote_actions", None) or []

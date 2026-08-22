@@ -6,6 +6,7 @@ Config tab keys (via Apps Script commands on each log POST):
   boot_ota_max_seconds — cap for boot-time OTA (default from ota_config)
   boot_ota_prefer_wifi — 1|0: force Wi-Fi for boot OTA; omit = policy below
   standby_prefer_wifi  — 1|0: force Wi-Fi-first or cellular standby logging
+  keep_wifi_connected_docked — 1|0: preserve dock STA between standby logs
   dock_mode — home: Wi-Fi-first standby logging; boot OTA defaults to cellular
   ota_manifest_profile — micro | ram-fix | feature-pack (sheet override)
   cmd_ota_force — one-shot: allow boot OTA / reboot when ota_degraded (cleared on success)
@@ -69,6 +70,16 @@ def apply_settings(settings):
     if "standby_prefer_wifi" in settings and str(settings.get("standby_prefer_wifi")).strip() != "":
         data["standby_prefer_wifi"] = _truthy(settings["standby_prefer_wifi"])
         applied.append("standby_prefer_wifi=%s" % (1 if data["standby_prefer_wifi"] else 0))
+    if "keep_wifi_connected_docked" in settings and str(
+        settings.get("keep_wifi_connected_docked")
+    ).strip() != "":
+        data["keep_wifi_connected_docked"] = _truthy(
+            settings["keep_wifi_connected_docked"]
+        )
+        applied.append(
+            "keep_wifi_connected_docked=%s"
+            % (1 if data["keep_wifi_connected_docked"] else 0)
+        )
     if "dock_mode" in settings and str(settings.get("dock_mode")).strip() != "":
         mode = str(settings.get("dock_mode")).strip().lower()
         data["dock_mode"] = mode
@@ -198,6 +209,29 @@ def effective_standby_log_prefer_wifi():
         return ble_policy.ota_prefer_wifi()
     except Exception:
         return False
+
+
+def effective_keep_wifi_connected_docked(mode=None):
+    """Whether a dock standby logger may leave STA associated after closing.
+
+    An explicit setting wins.  Otherwise persistence follows the same explicit
+    dock Wi-Fi intent used for standby logging; generic/manual Wi-Fi sessions
+    never become persistent merely because Wi-Fi is available.
+    """
+    if mode not in ("docked_off", "bilge_active", "float_alert"):
+        return False
+    data = load()
+    if "keep_wifi_connected_docked" in data:
+        return bool(data["keep_wifi_connected_docked"])
+    if "standby_prefer_wifi" in data and str(
+        data.get("standby_prefer_wifi")
+    ).strip() != "":
+        return bool(data["standby_prefer_wifi"])
+    return str(data.get("dock_mode") or "").strip().lower() in (
+        "home",
+        "dock",
+        "wifi",
+    )
 
 
 def effective_boot_ota_prefer_wifi():
