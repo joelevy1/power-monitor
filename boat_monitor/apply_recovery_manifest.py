@@ -115,6 +115,14 @@ OPTIONAL_TELEMETRY_DEDUPE_PATHS = (
     "version.py",
 )
 
+WIFI_AUTH_OTA_GATE_PATHS = (
+    "wifi_uplink.py",
+    "remote_boot_config.py",
+    "ota_reboot.py",
+    "remote_control.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -217,7 +225,19 @@ def main(argv=None):
         action="store_true",
         help="4-file optional Event deduplication release",
     )
+    p.add_argument(
+        "--wifi-auth-ota-gate",
+        action="store_true",
+        help="5-file Wi-Fi auth retry and OTA gate diagnostics release",
+    )
     args = p.parse_args(argv)
+    if args.wifi_auth_ota_gate:
+        return _write_manifest(
+            WIFI_AUTH_OTA_GATE_PATHS,
+            "Retry Wi-Fi auth once and report exact OTA gate reasons.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.optional_telemetry_dedupe:
         return _write_manifest(
             OPTIONAL_TELEMETRY_DEDUPE_PATHS,
