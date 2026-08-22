@@ -38,7 +38,9 @@ run at the same time.
    - Who has access: **Anyone** (the token in step 4 is what actually
      protects it — anyone without the token gets `{"ok": false, "error": "bad token"}`)
 6. Click **Deploy**, authorize when prompted, then copy the **Web app URL**
-   (ends in `/exec`).
+   (ends in `/exec`). The production URL is committed in `sheets_log.py` and
+   `boat_monitor_app/app.config.js`; update both if a replacement deployment
+   changes it.
 
 ### Important: publishing updates later
 
@@ -53,6 +55,25 @@ file in the Apps Script editor is not enough**. The Pico still hits the
 4. **Version:** choose **New version** (not "Head").
 5. **Deploy**.
 
+### Manage the project with clasp
+
+The repository commits the non-secret project mapping in
+`apps_script/.clasp.json`. After authenticating clasp, agents can work directly
+from the repository:
+
+```bash
+cd boat_monitor/apps_script
+npx @google/clasp status
+npx @google/clasp pull
+npx @google/clasp push
+npx @google/clasp version "description"
+npx @google/clasp deployments
+```
+
+`clasp push` updates the project source but does not update the live `/exec`
+deployment by itself. Create a version and redeploy the existing deployment
+when the live receiver should change.
+
 Verify from a PC:
 
 ```bash
@@ -63,15 +84,18 @@ You want `"receiver_version": 3` (or higher) for remote Config commands on each 
 the live deployment is still old and new log rows will keep ISO text
 timestamps until you redeploy.
 
-## 2. Store the URL + token
+## 2. Store the token
 
-Add both to `boat_monitor/secrets.py` (gitignored — same file as the
+The production deployment URL is committed because it is not a credential.
+Add only the token to `boat_monitor/secrets.py` (gitignored — same file as the
 service-account settings from `SHEETS_SETUP.md`):
 
 ```python
-GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/XXXXXXXX/exec"
 SHEETS_POST_TOKEN = "the-same-random-string-from-step-1.4"
 ```
+
+`GOOGLE_APPS_SCRIPT_URL` remains an optional override for testing a different
+deployment.
 
 Copy this **same `secrets.py`** to the Pico's filesystem too (Thonny → Save
 As → Raspberry Pi Pico) — `gps.py`/`sheets_log.py` read it the same way the

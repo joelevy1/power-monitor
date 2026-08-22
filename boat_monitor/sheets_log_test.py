@@ -13,8 +13,8 @@ cellular path (cellular.py's Sim7600Modem: modem-alive check, SIM check,
 network registration wait, then NETOPEN), so it shouldn't silently skip
 straight to Wi-Fi even if a known network happens to be in range.
 
-Requires boat_monitor/secrets.py with GOOGLE_APPS_SCRIPT_URL and
-SHEETS_POST_TOKEN (see APPS_SCRIPT_SETUP.md).
+Requires boat_monitor/secrets.py with SHEETS_POST_TOKEN. The production Apps
+Script URL is committed in sheets_log.py (see APPS_SCRIPT_SETUP.md).
 """
 
 from sheets_log import SheetsLogger

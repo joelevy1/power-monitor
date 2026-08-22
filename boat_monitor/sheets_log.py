@@ -36,6 +36,12 @@ except (ImportError, SyntaxError):
     secrets = None
 
 
+DEFAULT_APPS_SCRIPT_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbyySDCjEf0qJcfwdlZkhOU21v10qgYGnOWi0mk3AgBxZy6n_sRf59KZFc8xn6lwNWctlg/exec"
+)
+
+
 class SheetsLogError(Exception):
     pass
 
@@ -65,13 +71,12 @@ def _config_value(name):
 
 class SheetsLogger:
     def __init__(self, url=None, token=None, prefer_wifi=True):
-        self.url = url if url is not None else _config_value("GOOGLE_APPS_SCRIPT_URL")
+        self.url = (
+            url
+            if url is not None
+            else (_config_value("GOOGLE_APPS_SCRIPT_URL") or DEFAULT_APPS_SCRIPT_URL)
+        )
         self.token = token if token is not None else _config_value("SHEETS_POST_TOKEN")
-        if not self.url:
-            raise SheetsLogError(
-                "Missing GOOGLE_APPS_SCRIPT_URL -- set it in boat_monitor/secrets.py "
-                "(see APPS_SCRIPT_SETUP.md)"
-            )
 
         self.prefer_wifi = prefer_wifi
         self._cellular = None  # created lazily, only if the cellular path is used

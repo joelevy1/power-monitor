@@ -53,7 +53,7 @@ export async function fetchSheetDashboard() {
       ok: false,
       error: 'missing_config',
       message:
-        'Add GOOGLE_APPS_SCRIPT_URL and SHEETS_POST_TOKEN to EAS production (same values as Pico secrets.py), then rebuild. Optional EXPO_PUBLIC_* names also work.',
+        'Add SHEETS_POST_TOKEN to EAS production (the same token used by the Pico), then rebuild.',
     };
   }
 

@@ -8,10 +8,11 @@ the Google Sheets API client).
 Requires: pip install requests (or anything with urllib -- see fallback below)
 
 Environment:
-  GOOGLE_APPS_SCRIPT_URL   the deployed /exec URL (see APPS_SCRIPT_SETUP.md)
+  GOOGLE_APPS_SCRIPT_URL   optional deployed /exec URL override
   SHEETS_POST_TOKEN        the same token set as a Script property in Code.gs
 
-Or boat_monitor/secrets.py with the same two names.
+Or boat_monitor/secrets.py with the same names. The production URL is committed
+in sheets_log.py; only the token is required for the default deployment.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ from pathlib import Path
 
 
 def _load_config():
+    from sheets_log import DEFAULT_APPS_SCRIPT_URL
+
     url = os.environ.get("GOOGLE_APPS_SCRIPT_URL", "").strip()
     token = os.environ.get("SHEETS_POST_TOKEN", "").strip()
 
@@ -38,11 +41,7 @@ def _load_config():
         url = url or getattr(mod, "GOOGLE_APPS_SCRIPT_URL", "")
         token = token or getattr(mod, "SHEETS_POST_TOKEN", "")
 
-    if not url:
-        raise SystemExit(
-            "Missing GOOGLE_APPS_SCRIPT_URL (env or secrets.py) -- deploy "
-            "boat_monitor/apps_script/Code.gs first, see APPS_SCRIPT_SETUP.md"
-        )
+    url = url or DEFAULT_APPS_SCRIPT_URL
     return url, token
 
 
@@ -70,10 +69,7 @@ def verify_timestamp_cell(sheet_id, tab, row_num):
         print("(skip timestamp cell check -- pip install -r boat_monitor/requirements-sheets.txt)")
         return True
 
-    raw = (
-        os.environ.get("BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
-        or os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
-    )
+    raw = os.environ.get("BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
     if not raw and not creds_path:
         secrets = Path(__file__).resolve().parent / "secrets.py"

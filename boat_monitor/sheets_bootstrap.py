@@ -1,10 +1,9 @@
 """
 Create boat-monitor sheet tabs and header rows (SHEETS_SETUP §3.3–3.4).
 
-Uses BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON (or GOOGLE_SERVICE_ACCOUNT_JSON)
-and BOAT_MONITOR_SHEET_ID (or GOOGLE_SHEETS_ID).
-If BOAT_MONITOR_SHEET_ID is missing, tries Drive API to find a spreadsheet named
-"Boat Monitor" (SHEET_TITLE below) shared with the service account.
+Uses BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON.
+The production spreadsheet ID is committed below; BOAT_MONITOR_SHEET_ID can
+override it for development or recovery work.
 """
 
 from __future__ import annotations
@@ -17,14 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-SCOPES = (
-    "https://www.googleapis.com/auth/spreadsheets",
-    # Read-only Drive access, used only by _find_sheet_id_via_drive()'s
-    # fallback below when BOAT_MONITOR_SHEET_ID isn't set.
-    "https://www.googleapis.com/auth/drive.readonly",
-)
+SCOPES = ("https://www.googleapis.com/auth/spreadsheets",)
 
 SHEET_TITLE = "Boat Monitor"
+DEFAULT_SHEET_ID = "1vVwQ5Ja6GCHmT8AAJAJPvYOGMYMpUqUL-vbshq4VQz0"  # pragma: allowlist secret -- public Google resource identifier
 SHEET_TIME_ZONE = "America/Los_Angeles"
 TIMESTAMP_NUMBER_FORMAT = "mmm d, yyyy h:mm AM/PM"
 GOOGLE_SHEETS_EPOCH = datetime(1899, 12, 30)
@@ -64,13 +59,9 @@ TABS = {
 
 
 def _service_account_raw():
-    for key in (
-        "BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON",
-        "GOOGLE_SERVICE_ACCOUNT_JSON",
-    ):
-        raw = os.environ.get(key, "").strip()
-        if raw:
-            return raw
+    raw = os.environ.get("BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    if raw:
+        return raw
     secrets = Path(__file__).resolve().parent / "secrets.py"
     if secrets.is_file():
         import importlib.util
@@ -80,7 +71,6 @@ def _service_account_raw():
         spec.loader.exec_module(mod)
         for attr in (
             "BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON",
-            "GOOGLE_SERVICE_ACCOUNT_JSON",
             "GOOGLE_SERVICE_ACCOUNT_FILE",
         ):
             val = getattr(mod, attr, "") or ""
@@ -108,20 +98,15 @@ def _credentials_path():
         return creds
 
     raise SystemExit(
-        "Missing BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SERVICE_ACCOUNT_JSON, "
-        "or GOOGLE_APPLICATION_CREDENTIALS"
+        "Missing BOAT_MONITOR_GOOGLE_SERVICE_ACCOUNT_JSON or "
+        "GOOGLE_APPLICATION_CREDENTIALS"
     )
 
 
 def _sheet_id_from_env_or_secrets():
-    for key in (
-        "BOAT_MONITOR_SHEET_ID",
-        "GOOGLE_SHEETS_ID",
-        "YOUR_SPREADSHEET_ID",
-    ):
-        val = os.environ.get(key, "").strip()
-        if val:
-            return val
+    val = os.environ.get("BOAT_MONITOR_SHEET_ID", "").strip()
+    if val:
+        return val
     secrets = Path(__file__).resolve().parent / "secrets.py"
     if secrets.is_file():
         import importlib.util
@@ -129,71 +114,14 @@ def _sheet_id_from_env_or_secrets():
         spec = importlib.util.spec_from_file_location("boat_secrets", secrets)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        for attr in ("BOAT_MONITOR_SHEET_ID", "GOOGLE_SHEETS_ID"):
-            val = getattr(mod, attr, "") or ""
-            if str(val).strip():
-                return str(val).strip()
-    return ""
+        val = getattr(mod, "BOAT_MONITOR_SHEET_ID", "") or ""
+        if str(val).strip():
+            return str(val).strip()
+    return DEFAULT_SHEET_ID
 
 
-def _find_sheet_id_via_drive(creds):
-    """Fallback when BOAT_MONITOR_SHEET_ID isn't set: search Drive for a
-    spreadsheet named SHEET_TITLE ("Boat Monitor") shared with this
-    service account. This module's docstring has promised this fallback
-    from the start ("If BOAT_MONITOR_SHEET_ID is missing, tries Drive API to
-    find a spreadsheet named 'Boat Monitor Logs' shared with the service
-    account") but _sheet_id() never actually implemented it -- it just
-    raised SystemExit unconditionally if the env var was missing. (That
-    quoted title has since been corrected to "Boat Monitor" -- the
-    actual real-world spreadsheet's name, not "Boat Monitor Logs".)
-    """
-    from googleapiclient.discovery import build
-
-    drive = build("drive", "v3", credentials=creds, cache_discovery=False)
-    query = (
-        "name = '%s' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
-        % SHEET_TITLE
-    )
-    response = drive.files().list(q=query, fields="files(id, name)", pageSize=10).execute()
-    files = response.get("files", [])
-
-    if not files:
-        raise SystemExit(
-            "No spreadsheet named '%s' found shared with this service account via Drive API. "
-            "Set environment or GitHub secret BOAT_MONITOR_SHEET_ID to the spreadsheet ID (from the "
-            "URL between /d/ and /edit), or share a spreadsheet named '%s' with this service "
-            "account's email (the client_email field in its JSON key) so it can be found "
-            "automatically." % (SHEET_TITLE, SHEET_TITLE)
-        )
-    if len(files) > 1:
-        raise SystemExit(
-            "Found %d spreadsheets named '%s' shared with this service account -- set "
-            "BOAT_MONITOR_SHEET_ID explicitly to disambiguate. IDs: %s"
-            % (len(files), SHEET_TITLE, ", ".join(f["id"] for f in files))
-        )
-
-    print("Found spreadsheet '%s' via Drive API (no BOAT_MONITOR_SHEET_ID set): %s" % (SHEET_TITLE, files[0]["id"]))
-    return files[0]["id"]
-
-
-def _sheet_id(creds=None):
-    sheet_id = _sheet_id_from_env_or_secrets()
-    if sheet_id:
-        return sheet_id
-
-    if creds is not None:
-        try:
-            return _find_sheet_id_via_drive(creds)
-        except SystemExit:
-            raise
-        except Exception as exc:
-            print("Drive API lookup failed (falling back to the explicit-ID error below):", exc)
-
-    raise SystemExit(
-        "Set environment or GitHub secret BOAT_MONITOR_SHEET_ID to the spreadsheet ID "
-        "(from the URL between /d/ and /edit). Legacy names GOOGLE_SHEETS_ID / "
-        "YOUR_SPREADSHEET_ID are also accepted."
-    )
+def _sheet_id(_creds=None):
+    return _sheet_id_from_env_or_secrets()
 
 
 def _format_timestamp_columns(sheets, spreadsheet_id, existing):
@@ -430,7 +358,7 @@ def main():
     print("OK: header rows written on:", ", ".join(TABS.keys()))
     _format_timestamp_columns(sheets, spreadsheet_id, existing)
     _convert_existing_timestamps_and_repair_gps(sheets, spreadsheet_id, existing)
-    print("Set GitHub secret BOAT_MONITOR_SHEET_ID to:", spreadsheet_id)
+    print("Using committed Boat Monitor spreadsheet:", spreadsheet_id)
     return 0
 
 
