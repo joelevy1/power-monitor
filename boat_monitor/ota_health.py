@@ -32,6 +32,35 @@ def enomem_error(exc):
     )
 
 
+def reclaim_stale_ota_flash():
+    """Remove safe transient artifacts before refusing an OTA for low flash."""
+    removed = []
+    try:
+        import diag_log
+
+        if diag_log.trim_if_oversize():
+            removed.append("boat_diag.log:trimmed")
+    except Exception:
+        pass
+    try:
+        import os
+
+        for name in os.listdir():
+            if (
+                name.endswith(".bak")
+                or name.endswith(".new")
+                or name in ("ota_release.bmota", "ota_release.bmota.new")
+            ):
+                try:
+                    os.remove(name)
+                    removed.append(name)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+    return removed
+
+
 def _snapshot():
     try:
         import ota_diag
@@ -202,6 +231,23 @@ def preflight_boot_ota():
         _emit("preflight_fail", reason="low_mem", mem_free=mem)
         return False, "low_mem_%s" % mem
     if fs is not None and int(fs) < MIN_FS_FREE_BOOT_OTA:
+        removed = reclaim_stale_ota_flash()
+        if removed:
+            snap = _snapshot()
+            fs = snap.get("fs_free_b")
+            _emit(
+                "preflight_cleanup",
+                removed=len(removed),
+                fs_free_b=fs,
+            )
+        if fs is not None and int(fs) >= MIN_FS_FREE_BOOT_OTA:
+            _emit(
+                "preflight_ok_after_cleanup",
+                mem_free=mem,
+                fs_free_b=fs,
+                profile=effective_manifest_profile(),
+            )
+            return True, ""
         _emit("preflight_fail", reason="low_flash", fs_free_b=fs)
         return False, "low_flash_%s" % fs
     _emit(

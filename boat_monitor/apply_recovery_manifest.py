@@ -139,6 +139,12 @@ BLE_TRANSITION_FIX_PATHS = (
     "version.py",
 )
 
+FLASH_HOUSEKEEPING_PATHS = (
+    "diag_log.py",
+    "ota_health.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -256,7 +262,19 @@ def main(argv=None):
         action="store_true",
         help="2-file dock-to-BLE Wi-Fi teardown release",
     )
+    p.add_argument(
+        "--flash-housekeeping",
+        action="store_true",
+        help="3-file bounded diagnostic/OTA cleanup release",
+    )
     args = p.parse_args(argv)
+    if args.flash_housekeeping:
+        return _write_manifest(
+            FLASH_HOUSEKEEPING_PATHS,
+            "Bound diagnostics and reclaim stale OTA artifacts before preflight.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.ble_transition_fix:
         return _write_manifest(
             BLE_TRANSITION_FIX_PATHS,
