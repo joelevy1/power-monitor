@@ -36,8 +36,46 @@ except (ImportError, SyntaxError):
     secrets = None
 
 
+REMOTE_CONFIG_STATE_PATH = "remote_config_event_state.json"
+MAX_EVENT_DETAIL_CHARS = 1500
+
+
 class SheetsLogError(Exception):
     pass
+
+
+def _normalized_event_detail(detail):
+    """Canonicalize generated semicolon details without changing their meaning."""
+    parts = []
+    for part in str(detail or "").split(";"):
+        part = " ".join(part.strip().split())
+        if part:
+            parts.append(part)
+    return "; ".join(parts)
+
+
+def _bounded_detail_identity(detail):
+    """Bound persistent state while still noticing changes in long details."""
+    detail = _normalized_event_detail(detail)
+    if len(detail) <= 1400:
+        return detail
+    checksum = 2166136261
+    for char in detail:
+        checksum = ((checksum ^ ord(char)) * 16777619) & 0xFFFFFFFF
+    return "%d:%08x:%s:%s" % (
+        len(detail),
+        checksum,
+        detail[:600],
+        detail[-600:],
+    )
+
+
+def _event_post_succeeded(result):
+    if result is False:
+        return False
+    if isinstance(result, dict) and result.get("ok") is False:
+        return False
+    return True
 
 
 def maps_link_url(lat, lon):
@@ -519,10 +557,32 @@ class SheetsLogger:
 
             actions, detail = apply_from_log_response(response, device_id=device_id)
             if detail and log_event:
+                normalized = _normalized_event_detail(detail)
+                identity = _bounded_detail_identity(normalized)
                 try:
-                    self.log_event(device_id, "remote_config", detail)
-                except Exception as exc:
-                    print("SheetsLogger: remote_config event:", exc)
+                    import telemetry_dedupe
+
+                    post_remote = telemetry_dedupe.should_post(
+                        REMOTE_CONFIG_STATE_PATH, identity
+                    )
+                except Exception:
+                    post_remote = True
+                if post_remote:
+                    try:
+                        result = self.log_event(
+                            device_id,
+                            "remote_config",
+                            normalized[:MAX_EVENT_DETAIL_CHARS],
+                        )
+                        if _event_post_succeeded(result):
+                            try:
+                                telemetry_dedupe.mark_posted(
+                                    REMOTE_CONFIG_STATE_PATH, identity
+                                )
+                            except Exception:
+                                pass
+                    except Exception as exc:
+                        print("SheetsLogger: remote_config event:", exc)
                 try:
                     self._emit_ota_lifecycle_from_detail(device_id, detail, response=response)
                 except Exception as exc:
