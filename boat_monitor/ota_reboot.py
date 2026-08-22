@@ -39,14 +39,14 @@ def _skip_boot_ota_telemetry(reason, source=""):
         pass
 
 
-def _boot_ota_will_run():
-    """True only when main.py boot OTA path should run on next reset."""
+def _boot_ota_block_reason():
+    """Return the shared remote boot gate result; fail closed if unavailable."""
     try:
         import remote_boot_config
 
-        return bool(remote_boot_config.should_run_boot_ota())
+        return remote_boot_config.boot_ota_block_reason()
     except Exception:
-        return False
+        return "boot_ota_gate_error"
 
 
 def maybe_reboot_for_ota(actions, source="", prefer_wifi=False):
@@ -55,23 +55,8 @@ def maybe_reboot_for_ota(actions, source="", prefer_wifi=False):
         return False
     if "ota" not in actions and "reboot" not in actions:
         return False
-    if "ota" in actions and not _boot_ota_will_run():
-        reason = "will_not_run_boot_ota"
-        try:
-            import remote_boot_config
-
-            if remote_boot_config.boot_ota_backoff_active():
-                reason = "backoff_active"
-            elif remote_boot_config.needs_firmware_upgrade():
-                try:
-                    import ota_health
-
-                    if ota_health.ota_degraded():
-                        reason = "ota_degraded"
-                except Exception:
-                    reason = "ota_degraded"
-        except Exception:
-            pass
+    reason = _boot_ota_block_reason() if "ota" in actions else None
+    if reason:
         _skip_boot_ota_telemetry(reason, source=source)
         return False
     try:
@@ -144,18 +129,8 @@ def reboot_if_upgrade_pending(source=""):
             except Exception:
                 pass
             return False
-        if not remote_boot_config.should_run_boot_ota():
-            reason = "boot_ota_not_scheduled"
-            if remote_boot_config.boot_ota_backoff_active():
-                reason = "backoff_active"
-            else:
-                try:
-                    import ota_health
-
-                    if ota_health.ota_degraded():
-                        reason = "ota_degraded"
-                except Exception:
-                    pass
+        reason = remote_boot_config.boot_ota_block_reason()
+        if reason:
             _skip_boot_ota_telemetry(reason, source=source)
             return False
         remote_boot_config.set_pending_ota(True)

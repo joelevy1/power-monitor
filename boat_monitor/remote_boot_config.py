@@ -354,30 +354,43 @@ def clear_pending_ota_if_current():
         clear_pending_ota()
 
 
-def should_run_boot_ota():
-    if boot_ota_backoff_active():
-        return False
+def boot_ota_block_reason():
+    """Return the exact boot OTA gate reason, or None when OTA may run."""
+    data = load()
+    force = bool(data.get("cmd_ota_force"))
+    # A force command is an explicit recovery override. Do not consume a
+    # backoff boot while forced, and bypass every normal scheduling gate.
+    if not force and boot_ota_backoff_active():
+        return "backoff_active"
     data = load()
     try:
         import ota_health
 
-        if ota_health.ota_degraded() and not data.get("cmd_ota_force"):
+        if ota_health.ota_degraded() and not force:
             if data.get("pending_ota"):
                 clear_pending_ota()
-            return False
+            return "ota_degraded"
     except ImportError:
         pass
     except Exception:
         pass
+    if force:
+        return None
     if data.get("pending_ota") and current_meets_min_fw():
         clear_pending_ota()
         data = load()
     if data.get("pending_ota"):
-        return True
+        return None
     # Already at sheet min_fw: skip boot OTA unless pending/cmd_ota_force (avoids OOM loops).
     if current_meets_min_fw():
-        return False
-    return effective_auto_ota_on_boot()
+        return "current_meets_min_fw"
+    if not effective_auto_ota_on_boot():
+        return "auto_ota_disabled"
+    return None
+
+
+def should_run_boot_ota():
+    return boot_ota_block_reason() is None
 
 
 def boot_ota_status_line():

@@ -12,6 +12,8 @@ try:
 except ImportError:
     import json
 
+APPLIED_DETAIL_MAX_CHARS = 512
+
 
 def _truthy(value):
     if value is True or value == 1:
@@ -32,6 +34,17 @@ def _parse_version(text):
 
 def _version_lt(current, minimum):
     return _parse_version(current) < _parse_version(minimum)
+
+
+def _safe_command_name(value):
+    out = ""
+    for char in str(value or ""):
+        if char in ";\r\n\t" or ord(char) < 32:
+            char = "_"
+        out += char
+        if len(out) >= 32:
+            break
+    return out or "<empty>"
 
 
 def apply_commands_payload(payload, device_id=""):
@@ -85,9 +98,21 @@ def apply_commands_payload(payload, device_id=""):
                 remote_boot_config.set_pending_ota(True)
             except Exception as exc:
                 print("remote_control: set_pending_ota:", exc)
+        elif key in ("ota_force", "force"):
+            actions.append("ota")
+            applied.append("one_shot=ota_force")
+            applied.append("ota_action=1")
+            try:
+                import remote_boot_config
+
+                remote_boot_config.set_pending_ota(True, force=True)
+            except Exception as exc:
+                print("remote_control: set_pending_ota force:", exc)
         elif key in ("reboot", "reset"):
             actions.append("reboot")
             applied.append("one_shot=reboot")
+        else:
+            applied.append("one_shot_unknown=%s" % _safe_command_name(name))
 
     min_fw = settings.get("min_fw_version") or settings.get("target_fw_version")
     if min_fw:
@@ -182,7 +207,7 @@ def apply_commands_payload(payload, device_id=""):
         out.append("ota")
     if "reboot" in actions and "ota" not in out:
         out.append("reboot")
-    return out, "; ".join(applied)
+    return out, "; ".join(applied)[:APPLIED_DETAIL_MAX_CHARS]
 
 
 def apply_from_log_response(response, device_id=""):
