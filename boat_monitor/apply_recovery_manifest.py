@@ -145,6 +145,12 @@ FLASH_HOUSEKEEPING_PATHS = (
     "version.py",
 )
 
+WINTER_FINAL_FIX_PATHS = (
+    "wifi_uplink.py",
+    "boat_status.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -267,7 +273,19 @@ def main(argv=None):
         action="store_true",
         help="3-file bounded diagnostic/OTA cleanup release",
     )
+    p.add_argument(
+        "--winter-final-fixes",
+        action="store_true",
+        help="3-file Wi-Fi redirect and V50 SoftI2C release",
+    )
     args = p.parse_args(argv)
+    if args.winter_final_fixes:
+        return _write_manifest(
+            WINTER_FINAL_FIX_PATHS,
+            "Iterative Wi-Fi redirects and V50 SoftI2C measurement.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.flash_housekeeping:
         return _write_manifest(
             FLASH_HOUSEKEEPING_PATHS,

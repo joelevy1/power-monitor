@@ -1,14 +1,14 @@
 {
-  "version": "1.1.130",
-  "notes": "Bound diagnostics and reclaim stale OTA artifacts before preflight.",
+  "version": "1.1.131",
+  "notes": "Iterative Wi-Fi redirects and V50 SoftI2C measurement.",
   "files": [
     {
-      "path": "diag_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/diag_log.py"
+      "path": "wifi_uplink.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
     },
     {
-      "path": "ota_health.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_health.py"
+      "path": "boat_status.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/boat_status.py"
     },
     {
       "path": "version.py",

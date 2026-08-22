@@ -805,85 +805,107 @@ class WifiHttp:
     ):
         import socket
 
-        set_request_power_mode(idle=False)
-        host, port, path, is_https = split_url(url)
+        redirect_count = _redirect_count
+        cookie = _cookie
+        current_headers = dict(headers or {})
 
-        headers = dict(headers or {})
-        headers.setdefault("Host", host)
-        headers.setdefault("Connection", "close")
-        headers.setdefault("User-Agent", "boat-monitor-pico")
-        if _cookie:
-            headers.setdefault("Cookie", _cookie)
+        while True:
+            set_request_power_mode(idle=False)
+            host, port, path, is_https = split_url(url)
 
-        body_bytes = b""
-        if body is not None:
-            body_bytes = body if isinstance(body, bytes) else body.encode()
-            headers.setdefault("Content-Length", str(len(body_bytes)))
+            request_headers = dict(current_headers)
+            request_headers["Host"] = host
+            request_headers.setdefault("Connection", "close")
+            request_headers.setdefault("User-Agent", "boat-monitor-pico")
+            if cookie:
+                request_headers["Cookie"] = cookie
 
-        request_lines = ["%s %s HTTP/1.1" % (method, path)]
-        for key, value in headers.items():
-            request_lines.append("%s: %s" % (key, value))
-        request_text = "\r\n".join(request_lines) + "\r\n\r\n"
+            body_bytes = b""
+            if body is not None:
+                body_bytes = body if isinstance(body, bytes) else body.encode()
+                request_headers["Content-Length"] = str(len(body_bytes))
 
-        addr = socket.getaddrinfo(host, port)[0][-1]
-        sock = socket.socket()
-        sock.settimeout(min(timeout_s, WIFI_IO_SLICE_TIMEOUT_S))
-        try:
-            _feed_watchdog_if_due()
-            sock.connect(addr)
-            _feed_watchdog_if_due()
-            if is_https:
-                try:
-                    import ussl as ssl
-                except ImportError:
-                    import ssl
-                try:
-                    sock = ssl.wrap_socket(sock, server_hostname=host)
-                except TypeError:
-                    sock = ssl.wrap_socket(sock)
+            request_lines = ["%s %s HTTP/1.1" % (method, path)]
+            for key, value in request_headers.items():
+                request_lines.append("%s: %s" % (key, value))
+            request_text = "\r\n".join(request_lines) + "\r\n\r\n"
+
+            addr = socket.getaddrinfo(host, port)[0][-1]
+            sock = socket.socket()
+            sock.settimeout(min(timeout_s, WIFI_IO_SLICE_TIMEOUT_S))
+            try:
                 _feed_watchdog_if_due()
-
-            sock.write(request_text.encode())
-            _feed_watchdog_if_due()
-            if body_bytes:
-                sock.write(body_bytes)
+                sock.connect(addr)
                 _feed_watchdog_if_due()
+                if is_https:
+                    try:
+                        import ussl as ssl
+                    except ImportError:
+                        import ssl
+                    try:
+                        sock = ssl.wrap_socket(sock, server_hostname=host)
+                    except TypeError:
+                        sock = ssl.wrap_socket(sock)
+                    _feed_watchdog_if_due()
 
-            response = _recv_response(sock, timeout_s)
-        finally:
-            sock.close()
+                sock.write(request_text.encode())
+                _feed_watchdog_if_due()
+                if body_bytes:
+                    sock.write(body_bytes)
+                    _feed_watchdog_if_due()
 
-        status, resp_headers, response_body = self._parse_response(response)
-        # HTTP sockets are per-request. Leave the association up in an idle
-        # power mode so dock standby can reuse it without a cold association.
-        set_request_power_mode(idle=True)
+                response = _recv_response(sock, timeout_s)
+            finally:
+                sock.close()
 
-        if status in REDIRECT_STATUSES:
-            if _redirect_count >= MAX_REDIRECTS:
+            status, resp_headers, response_body = self._parse_response(response)
+            # HTTP sockets are per-request. Leave the association up in an idle
+            # power mode so dock standby can reuse it without a cold association.
+            set_request_power_mode(idle=True)
+
+            if status not in REDIRECT_STATUSES:
+                return status, response_body, url
+            if redirect_count >= MAX_REDIRECTS:
                 raise WifiError("too many redirects starting from %s" % url)
             location = resp_headers.get("location")
             if not location:
-                raise WifiError("redirect (status %s) with no Location header from %s" % (status, url))
+                raise WifiError(
+                    "redirect (status %s) with no Location header from %s"
+                    % (status, url)
+                )
             print("wifi_uplink: following redirect ->", location)
-            next_cookie = _cookie
+
             set_cookie = resp_headers.get("set-cookie")
             if set_cookie:
-                next_cookie = _cookie_from_set_cookie(set_cookie)
+                cookie = _cookie_from_set_cookie(set_cookie)
             if status in (307, 308):
-                next_method, next_body, next_headers = method, body, headers
+                current_headers = dict(current_headers)
             else:
-                next_method, next_body, next_headers = "GET", None, {}
-            return self._request(
-                next_method,
-                location,
-                body=next_body,
-                headers=next_headers,
-                timeout_s=timeout_s,
-                _redirect_count=_redirect_count + 1,
-                _cookie=next_cookie,
-            )
+                method, body, current_headers = "GET", None, {}
 
-        return status, response_body, url
+            url = location
+            redirect_count += 1
+
+            # A redirect can leave a complete response, parsed header strings,
+            # request bytes, and a closed TLS wrapper live at once. Release all
+            # per-hop references and reclaim them before opening the next TLS
+            # connection on the constrained Pico heap.
+            sock = None
+            response = None
+            response_body = None
+            resp_headers = None
+            request_text = None
+            request_lines = None
+            request_headers = None
+            body_bytes = None
+            addr = None
+            try:
+                import gc
+
+                gc.collect()
+            except Exception:
+                pass
+            _feed_watchdog_if_due()
 
     def _parse_response(self, response):
         header_end = response.find(b"\r\n\r\n")

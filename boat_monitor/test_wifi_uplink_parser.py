@@ -11,6 +11,8 @@ logging) -- plus edge cases (explicit port, no path, bad scheme).
 """
 
 import sys
+import inspect
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -173,6 +175,141 @@ def run():
             check("recv_response raises after overall timeout", True)
     finally:
         wifi_uplink.time = original_time
+
+    # Redirects must run in one _request frame and release each closed response
+    # before the next TLS socket is allocated.
+    redirect_responses = [
+        (
+            b"HTTP/1.1 307 Temporary Redirect\r\n"
+            b"Location: https://hop-two.example/keep\r\n"
+            b"Set-Cookie: sid=one; Path=/\r\nContent-Length: 0\r\n\r\n"
+        ),
+        (
+            b"HTTP/1.1 308 Permanent Redirect\r\n"
+            b"Location: https://hop-three.example/keep\r\n"
+            b"Set-Cookie: sid=two; Path=/\r\nContent-Length: 0\r\n\r\n"
+        ),
+        (
+            b"HTTP/1.1 301 Moved Permanently\r\n"
+            b"Location: https://hop-four.example/get\r\n"
+            b"Set-Cookie: sid=three; Path=/\r\nContent-Length: 0\r\n\r\n"
+        ),
+        (
+            b"HTTP/1.1 302 Found\r\n"
+            b"Location: https://hop-five.example/get\r\n"
+            b"Set-Cookie: sid=four; Path=/\r\nContent-Length: 0\r\n\r\n"
+        ),
+        (
+            b"HTTP/1.1 303 See Other\r\n"
+            b"Location: https://hop-six.example/done\r\n"
+            b"Set-Cookie: sid=five; Path=/\r\nContent-Length: 0\r\n\r\n"
+        ),
+        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK",
+    ]
+    redirect_sockets = []
+    redirect_events = []
+    request_depths = []
+
+    class RedirectSocket:
+        def __init__(self, response):
+            self.response = response
+            self.sent = []
+            self.recv_count = 0
+
+        def settimeout(self, value):
+            self.timeout = value
+
+        def connect(self, addr):
+            self.addr = addr
+            request_depths.append(
+                sum(1 for frame in inspect.stack() if frame.function == "_request")
+            )
+
+        def write(self, data):
+            self.sent.append(data)
+
+        def recv(self, _size):
+            self.recv_count += 1
+            return self.response if self.recv_count == 1 else b""
+
+        def close(self):
+            redirect_events.append("close")
+
+    def redirect_socket_factory():
+        redirect_events.append("socket")
+        sock = RedirectSocket(redirect_responses[len(redirect_sockets)])
+        redirect_sockets.append(sock)
+        return sock
+
+    fake_socket_module = types.SimpleNamespace(
+        getaddrinfo=lambda host, port: [(None, None, None, None, (host, port))],
+        socket=redirect_socket_factory,
+    )
+    fake_ssl_module = types.SimpleNamespace(wrap_socket=lambda sock, **_kwargs: sock)
+    fake_gc_module = types.SimpleNamespace(
+        collect=lambda: redirect_events.append("gc")
+    )
+    original_socket_module = sys.modules.get("socket")
+    original_ussl_module = sys.modules.get("ussl")
+    original_gc_module = sys.modules.get("gc")
+    original_power_mode = wifi_uplink.set_request_power_mode
+    original_feed = wifi_uplink._feed_watchdog_if_due
+    try:
+        sys.modules["socket"] = fake_socket_module
+        sys.modules["ussl"] = fake_ssl_module
+        sys.modules["gc"] = fake_gc_module
+        wifi_uplink.set_request_power_mode = lambda idle=False: None
+        wifi_uplink._feed_watchdog_if_due = lambda: None
+        status, body, final_url = WifiHttp()._request(
+            "POST",
+            "https://hop-one.example/start",
+            body="payload",
+            headers={"Content-Type": "text/plain"},
+        )
+        requests = [b"".join(sock.sent) for sock in redirect_sockets]
+        check("multi-hop redirect reaches final response", (status, body) == (200, "OK"))
+        check("multi-hop redirect reports final URL", final_url == "https://hop-six.example/done")
+        check("307 preserves POST method and body", requests[1].startswith(b"POST /keep ") and requests[1].endswith(b"payload"))
+        check("308 preserves POST method and body", requests[2].startswith(b"POST /keep ") and requests[2].endswith(b"payload"))
+        check("301 changes method to GET and drops body", requests[3].startswith(b"GET /get ") and not requests[3].endswith(b"payload"))
+        check("302 keeps redirected request as GET", requests[4].startswith(b"GET /get ") and not requests[4].endswith(b"payload"))
+        check("303 keeps redirected request as GET", requests[5].startswith(b"GET /done ") and not requests[5].endswith(b"payload"))
+        check(
+            "redirect cookies update across hops",
+            b"Cookie: sid=one" in requests[1]
+            and b"Cookie: sid=two" in requests[2]
+            and b"Cookie: sid=three" in requests[3]
+            and b"Cookie: sid=four" in requests[4]
+            and b"Cookie: sid=five" in requests[5],
+        )
+        check("redirect Host follows destination", b"Host: hop-two.example" in requests[1] and b"Host: hop-six.example" in requests[5])
+        check("redirect handling is non-recursive", request_depths == [1, 1, 1, 1, 1, 1])
+        check(
+            "redirect collects before each next socket",
+            redirect_events == [
+                "socket", "close", "gc",
+                "socket", "close", "gc",
+                "socket", "close", "gc",
+                "socket", "close", "gc",
+                "socket", "close", "gc",
+                "socket", "close",
+            ],
+        )
+    finally:
+        wifi_uplink.set_request_power_mode = original_power_mode
+        wifi_uplink._feed_watchdog_if_due = original_feed
+        if original_socket_module is None:
+            sys.modules.pop("socket", None)
+        else:
+            sys.modules["socket"] = original_socket_module
+        if original_ussl_module is None:
+            sys.modules.pop("ussl", None)
+        else:
+            sys.modules["ussl"] = original_ussl_module
+        if original_gc_module is None:
+            sys.modules.pop("gc", None)
+        else:
+            sys.modules["gc"] = original_gc_module
 
     networks = [("Dock WiFi", "secret"), (b"BoatNet", "other-secret"), ("Hidden", "pw")]
     scans = [

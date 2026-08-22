@@ -2,6 +2,11 @@
 
 from machine import I2C, Pin
 
+try:
+    from machine import SoftI2C
+except ImportError:
+    SoftI2C = None
+
 import config as cfg
 
 try:
@@ -52,18 +57,26 @@ class INA219:
     def _read(self, reg):
         return int.from_bytes(self.i2c.readfrom_mem(self.addr, reg, 2), "big")
 
+    def _read_signed(self, reg):
+        raw = self._read(reg)
+        return raw - 65536 if raw > 32767 else raw
+
     def voltage_v(self):
         return (self._read(0x02) >> 3) * 0.004
 
     def current_a(self):
-        raw = self._read(0x04)
-        if raw > 32767:
-            raw -= 65536
-        return abs(raw * 0.1) / 1000
+        return abs(self._read_signed(0x04) * 0.1) / 1000
 
 
 def i2c_bus(sda, scl, bus_id):
     return I2C(bus_id, sda=Pin(sda), scl=Pin(scl), freq=100000)
+
+
+def v50_i2c_bus(sda, scl):
+    """Keep GP4/5 independent of the engine hardware I2C0 controller."""
+    if SoftI2C is not None:
+        return SoftI2C(sda=Pin(sda), scl=Pin(scl), freq=100000)
+    return i2c_bus(sda, scl, 0)
 
 
 def read_ina260(sda, scl, bus_id, addr):
@@ -81,18 +94,28 @@ def read_ina260(sda, scl, bus_id, addr):
 
 def read_v50():
     try:
-        sensor = INA219(i2c_bus(cfg.I2C_V50_SDA, cfg.I2C_V50_SCL, 0), cfg.INA219_V50_ADDR)
-        a = round(sensor.current_a(), 4)
+        sensor = INA219(
+            v50_i2c_bus(cfg.I2C_V50_SDA, cfg.I2C_V50_SCL),
+            cfg.INA219_V50_ADDR,
+        )
+        raw_shunt = sensor._read_signed(0x01)
+        raw_current = sensor._read_signed(0x04)
+        raw_calibration = sensor._read(0x05)
+        a = round(abs(raw_current * 0.1) / 1000, 4)
         v = round(sensor.voltage_v(), 3)
-        # With no USB bank on the harness, TPS IN1 can still show ~5 V at near-zero
-        # amps (ghost on the unused leg). Treat as "not on bank" for logging/SOC.
-        if abs(a) < 0.02:
-            return {"v": v, "a": a, "ok": True, "bank_idle": True}
-        return {
+        result = {
             "v": v,
             "a": a,
             "ok": True,
+            "raw_shunt": raw_shunt,
+            "raw_current": raw_current,
+            "raw_calibration": raw_calibration,
         }
+        # With no USB bank on the harness, TPS IN1 can still show ~5 V at near-zero
+        # amps (ghost on the unused leg). Treat as "not on bank" for logging/SOC.
+        if abs(a) < 0.02:
+            result["bank_idle"] = True
+        return result
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
