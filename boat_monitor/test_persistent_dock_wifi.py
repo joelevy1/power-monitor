@@ -242,12 +242,22 @@ def test_ble_shutdown_deinitializes_sta_and_ap():
             sys.modules["network"] = original
 
 
+def test_standby_tears_down_wifi_before_ble_reset():
+    source = (ROOT / "standby_monitor.py").read_text(encoding="utf-8")
+    branch = source.split("if ble_policy.ble_wanted():", 1)[1].split(
+        "status = read_status()", 1
+    )[0]
+    assert "wifi_uplink.ensure_wifi_off()" in branch
+    assert branch.index("wifi_uplink.ensure_wifi_off()") < branch.index("machine.reset()")
+
+
 def main():
     test_remote_policy()
     test_reuse_and_stale_reset()
     test_sheets_close_persistence()
     test_cellular_policy_disconnects_persistent_wifi()
     test_ble_shutdown_deinitializes_sta_and_ap()
+    test_standby_tears_down_wifi_before_ble_reset()
     print("persistent dock Wi-Fi tests OK")
 
 

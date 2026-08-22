@@ -1,22 +1,10 @@
 {
-  "version": "1.1.128",
-  "notes": "Keep healthy dock Wi-Fi association between logs.",
+  "version": "1.1.129",
+  "notes": "Deinitialize shared Wi-Fi radio before dock-to-BLE reboot.",
   "files": [
     {
-      "path": "wifi_uplink.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
-    },
-    {
-      "path": "sheets_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
-    },
-    {
-      "path": "log_session.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/log_session.py"
-    },
-    {
-      "path": "remote_boot_config.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+      "path": "standby_monitor.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
     },
     {
       "path": "version.py",

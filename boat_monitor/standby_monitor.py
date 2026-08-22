@@ -148,11 +148,25 @@ def main():
 
     while True:
         if ble_policy.ble_wanted():
-            diag_log.log("switch/key on -> reboot for BLE service")
-            print("standby_monitor: switch/key on — rebooting for BLE service")
+            diag_log.log("switch/key on -> teardown Wi-Fi then reboot for BLE service")
+            print("standby_monitor: switch/key on — stopping Wi-Fi before BLE reboot")
+            try:
+                import wifi_uplink
+
+                wifi_uplink.ensure_wifi_off()
+            except Exception as exc:
+                diag_log.log("BLE transition Wi-Fi teardown warning: %s" % exc)
+            try:
+                import gc
+
+                gc.collect()
+            except Exception:
+                pass
+            # CYW43439 is a separate chip and survives an RP2040 software
+            # reset. Give deinit time to complete before main.py starts BLE.
+            time.sleep(1.0)
             import machine
 
-            time.sleep(0.3)
             machine.reset()
 
         status = read_status()
