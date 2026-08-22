@@ -1,10 +1,10 @@
 {
-  "version": "1.1.119",
-  "notes": "OTA bootstrap: stream each source file directly to flash.",
+  "version": "1.1.120",
+  "notes": "Wi-Fi logging: tolerate cold-start response timeout slices.",
   "files": [
     {
-      "path": "ota.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+      "path": "wifi_uplink.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
     },
     {
       "path": "version.py",
