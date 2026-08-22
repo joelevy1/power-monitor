@@ -81,6 +81,17 @@ WINTER_HARDENING_PATHS = (
     "version.py",
 )
 
+STANDBY_WIFI_FIX_PATHS = (
+    "boat_status.py",
+    "log_session.py",
+    "wifi_uplink.py",
+    "ble_service.py",
+    "standby_monitor.py",
+    "main.py",
+    "field_console.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -158,7 +169,19 @@ def main(argv=None):
         action="store_true",
         help="6-file Wi-Fi-only WDT/network hardening release",
     )
+    p.add_argument(
+        "--standby-wifi-fix",
+        action="store_true",
+        help="8-file standby Wi-Fi memory refactor (no bundle)",
+    )
     args = p.parse_args(argv)
+    if args.standby_wifi_fix:
+        return _write_manifest(
+            STANDBY_WIFI_FIX_PATHS,
+            "Standby Wi-Fi memory refactor: logging and status without BLE imports.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.winter_hardening:
         return _write_manifest(
             WINTER_HARDENING_PATHS,
@@ -210,7 +233,8 @@ def main(argv=None):
             "Slim remote recovery OTA (reboot-loop fix; stream bundle extract).",
         )
     print(
-        "Specify --recovery, --feature-pack, --ram-fix, or --winter-hardening",
+        "Specify --recovery, --feature-pack, --ram-fix, --winter-hardening, "
+        "or --standby-wifi-fix",
         file=sys.stderr,
     )
     return 1

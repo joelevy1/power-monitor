@@ -41,6 +41,8 @@ RECOVERY_FILES = (
     "ble_policy.py",
     "modem_policy.py",
     "wifi_uplink.py",
+    "boat_status.py",
+    "log_session.py",
     "ble_service.py",
     "status_led.py",
     "ota_health.py",

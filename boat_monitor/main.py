@@ -403,7 +403,7 @@ else:
                 pass
             try:
                 import time
-                from ble_service import ensure_wifi_off
+                from wifi_uplink import ensure_wifi_off
 
                 ensure_wifi_off()
                 time.sleep_ms(400)

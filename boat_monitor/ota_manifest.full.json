@@ -27,6 +27,14 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
     },
     {
+      "path": "boat_status.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/boat_status.py"
+    },
+    {
+      "path": "log_session.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/log_session.py"
+    },
+    {
       "path": "sheets_log.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
     },
