@@ -116,6 +116,9 @@ OPTIONAL_TELEMETRY_DEDUPE_PATHS = (
 )
 
 WIFI_AUTH_OTA_GATE_PATHS = (
+    "telemetry_dedupe.py",
+    "sheets_log.py",
+    "ota_capability.py",
     "wifi_uplink.py",
     "remote_boot_config.py",
     "ota_reboot.py",
