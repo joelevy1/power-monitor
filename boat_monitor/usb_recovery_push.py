@@ -37,6 +37,7 @@ RECOVERY_FILES = (
     "diag_log.py",
     "resilience.py",
     "remote_telemetry.py",
+    "telemetry_dedupe.py",
     "auto_log.py",
     "ble_policy.py",
     "modem_policy.py",
