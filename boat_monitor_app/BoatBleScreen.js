@@ -588,6 +588,7 @@ export default function BoatBleScreen({ onBack }) {
     setCommandResultAt(null);
     setPendingCommand(cmd);
     setPendingSince(Date.now());
+    setMessage(`Sending ${label} command to Pico...`);
     if (RESET_COMMANDS.has(cmd)) resetWifiConsoleStatus();
 
     try {
@@ -670,7 +671,10 @@ export default function BoatBleScreen({ onBack }) {
               disabled={!connected || !!pendingCommand}
             >
               {pendingCommand === 'refresh' ? (
-                <ActivityIndicator color="#fff" />
+                <View style={styles.pendingButtonContent}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.buttonText}>Refreshing…</Text>
+                </View>
               ) : (
                 <Text style={styles.buttonText}>Refresh</Text>
               )}
@@ -895,17 +899,28 @@ function StatusRow({ label, value, danger, onPress }) {
   );
 }
 
-// Shows a spinner in-place of its own label the moment IT specifically is
-// the pending command (immediate feedback right where you tapped), and
+// Shows a spinner beside its label the moment it becomes pending (clear
+// feedback right where you tapped), and
 // disables every service button while ANY command is pending -- avoids
 // stacking overlapping BLE writes while a long cellular round-trip is
 // still in progress on the Pico.
 function ServiceButton({ cmd, label, style, connected, pendingCommand, onPress }) {
   const isPending = pendingCommand === cmd;
-  const disabled = !connected || (!!pendingCommand && !isPending);
+  const disabled = !connected || !!pendingCommand;
   return (
-    <TouchableOpacity style={[style, disabled && styles.buttonDisabled]} onPress={() => onPress(cmd)} disabled={disabled}>
-      {isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{label}</Text>}
+    <TouchableOpacity
+      style={[style, disabled && !isPending && styles.buttonDisabled]}
+      onPress={() => onPress(cmd)}
+      disabled={disabled}
+    >
+      {isPending ? (
+        <View style={styles.pendingButtonContent}>
+          <ActivityIndicator color="#fff" size="small" />
+          <Text style={styles.buttonText}>{label}…</Text>
+        </View>
+      ) : (
+        <Text style={styles.buttonText}>{label}</Text>
+      )}
     </TouchableOpacity>
   );
 }
@@ -1081,6 +1096,11 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     ...FW500,
+  },
+  pendingButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   card: {
     backgroundColor: '#1e293b',
