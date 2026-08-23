@@ -31,6 +31,16 @@ def main():
         "BoatMonitorBle().run()"
     )
 
+    advertise = source.split("def advertise(self, refresh=False):", 1)[1].split(
+        "def update_status", 1
+    )[0]
+    assert "self.ble.gap_advertise(None)" in advertise
+    assert "BLE_ADV_FAILURE_RESET_COUNT" in advertise
+    assert "machine.reset()" in advertise
+    run_loop = source.split("def run(self):", 1)[1].split("def main():", 1)[0]
+    assert "BLE_ADV_REFRESH_MS" in run_loop
+    assert "self.advertise(refresh=True)" in run_loop
+
     print("BLE service regression guards OK")
     return 0
 
