@@ -368,6 +368,22 @@ def clear_pending_ota():
         save(data)
 
 
+def pause_after_ota_memory_failure(error=None):
+    """Fail open into normal service; require an explicit force before retry."""
+    data = load()
+    data.pop("pending_ota", None)
+    data.pop("cmd_ota_force", None)
+    data["auto_ota_on_boot"] = False
+    data["ota_degraded"] = True
+    data["boot_ota_fail_count"] = max(2, int(data.get("boot_ota_fail_count") or 0))
+    data["ota_manifest_profile"] = "micro"
+    data["last_boot_ota_outcome"] = "memory_pause"
+    if error is not None:
+        data["last_boot_ota_error"] = str(error)[:200]
+    save(data)
+    return data
+
+
 def set_boot_ota_backoff(seconds=600, skip_boots=None):
     """Skip boot-time OTA until backoff expires or skip_boots exhausted.
 

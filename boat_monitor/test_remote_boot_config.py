@@ -80,6 +80,24 @@ def main():
             assert "ota_degraded" not in state
             assert state.get("boot_ota_fail_count") == 0
             _check("current_meets_min_fw")
+
+            _state(
+                min_fw_version="999.0",
+                auto_ota_on_boot=True,
+                pending_ota=True,
+                cmd_ota_force=True,
+                boot_ota_fail_count=1,
+            )
+            state = remote_boot_config.pause_after_ota_memory_failure(
+                "[Errno 12] ENOMEM"
+            )
+            assert "pending_ota" not in state
+            assert "cmd_ota_force" not in state
+            assert state["auto_ota_on_boot"] is False
+            assert state["ota_degraded"] is True
+            assert state["boot_ota_fail_count"] >= 2
+            assert state["last_boot_ota_outcome"] == "memory_pause"
+            _check("ota_degraded")
         finally:
             remote_boot_config.PATH = original_path
             os.chdir(original_cwd)
