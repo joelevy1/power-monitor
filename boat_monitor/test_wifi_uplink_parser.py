@@ -176,6 +176,20 @@ def run():
     finally:
         wifi_uplink.time = original_time
 
+    download_source = inspect.getsource(WifiHttp.download_to_file)
+    check(
+        "download prepares heap before TLS",
+        download_source.index("_prepare_tls_heap()")
+        < download_source.index("ssl.wrap_socket"),
+    )
+    check("download bounds body recv to 512 bytes", "sock.recv(min(512," in download_source)
+    check(
+        "download reclaims TLS socket in finally",
+        "sock = None" in download_source
+        and download_source.rindex("_prepare_tls_heap()")
+        > download_source.index("finally:"),
+    )
+
     # Redirects must run in one _request frame and release each closed response
     # before the next TLS socket is allocated.
     redirect_responses = [

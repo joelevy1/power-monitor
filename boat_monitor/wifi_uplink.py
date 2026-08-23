@@ -204,6 +204,18 @@ def _feed_watchdog_if_due():
         pass
 
 
+def _prepare_tls_heap():
+    """Reclaim short-lived response/socket objects before a TLS handshake."""
+    try:
+        import gc
+
+        gc.collect()
+        gc.collect()
+    except Exception:
+        pass
+    _feed_watchdog_if_due()
+
+
 def _sleep_with_watchdog(seconds):
     try:
         import resilience
@@ -835,6 +847,7 @@ class WifiHttp:
         original_method = method
 
         while True:
+            _prepare_tls_heap()
             set_request_power_mode(idle=False)
             host, port, path, is_https = split_url(url)
 
@@ -997,6 +1010,7 @@ class WifiHttp:
         """Stream HTTP GET body to a file (lower peak RAM than http_get)."""
         import socket
 
+        _prepare_tls_heap()
         host, port, req_path, is_https = split_url(url)
         request_text = (
             "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: boat-monitor-pico\r\n\r\n"
@@ -1068,7 +1082,7 @@ class WifiHttp:
                     out.write(body)
                 while got < need:
                     _feed_watchdog_if_due()
-                    chunk = sock.recv(min(1024, need - got))
+                    chunk = sock.recv(min(512, need - got))
                     if not chunk:
                         raise WifiError("short read %d/%d" % (got, need))
                     got += len(chunk)
@@ -1091,6 +1105,8 @@ class WifiHttp:
                 sock.close()
             except Exception:
                 pass
+            sock = None
+            _prepare_tls_heap()
 
     def http_post_json(
         self, url, body_text, timeout_s=20, accept_apps_script_redirect=False

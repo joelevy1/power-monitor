@@ -299,6 +299,24 @@ def run():
             max(ranged.uart.read_sizes) <= Sim7600Modem.HTTP_FILE_UART_READ_SIZE,
         )
 
+        unknown = object.__new__(Sim7600Modem)
+        unknown.uart = FakeUart(payload)
+        unknown_output = io.BytesIO()
+        unknown_written = Sim7600Modem._read_http_body_to_file(
+            unknown, None, 30000, unknown_output
+        )
+        check(
+            "unknown-length HTTPREAD streams complete file",
+            unknown_written == len(payload)
+            and unknown_output.getvalue() == payload,
+        )
+        check(
+            "unknown-length HTTPREAD probes bounded ranges through terminator",
+            unknown.uart.commands[-1] == "AT+HTTPREAD=3072,1024"
+            and max(unknown.uart.read_sizes)
+            <= Sim7600Modem.HTTP_FILE_UART_READ_SIZE,
+        )
+
         sleeping = FakeModem(["", "", "OK"])
         newly_started = Sim7600Modem.ensure_awake(sleeping, boot_timeout_s=5)
         check("pwrkey wakes an off modem", newly_started is True)
