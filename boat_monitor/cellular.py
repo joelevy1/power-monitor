@@ -528,129 +528,92 @@ class Sim7600Modem:
     def _read_http_body_to_file(self, expected_length, timeout_ms, out_file):
         """Stream AT+HTTPREAD chunk payloads to out_file (low RAM for OTA bundles)."""
         known_length = expected_length is not None and expected_length > 0
-        if known_length:
-            start = time.ticks_ms()
-            total = 0
-            marker = b"+HTTPREAD: DATA,"
-            while total < expected_length:
-                if time.ticks_diff(time.ticks_ms(), start) >= timeout_ms:
-                    raise CellularError(
-                        "HTTPREAD ranged stream timeout at %d/%d"
-                        % (total, expected_length)
-                    )
-                want = min(self.HTTP_FILE_RANGE_SIZE, expected_length - total)
-                cmd = "AT+HTTPREAD=%d,%d" % (total, want)
-                print(">>>", cmd, "(bounded stream to file)")
-                self.flush()
-                self.uart.write((cmd + "\r\n").encode())
-                buf = b""
-                window_written = 0
-
-                while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
-                    _feed_watchdog_if_due()
-                    available = self.uart.any()
-                    if available:
-                        piece = self.uart.read(
-                            min(int(available), self.HTTP_FILE_UART_READ_SIZE)
-                        )
-                        if piece:
-                            buf += piece
-
-                        idx = buf.find(marker)
-                        if idx >= 0:
-                            header_start = idx + len(marker)
-                            newline_idx = buf.find(b"\n", header_start)
-                            if newline_idx >= 0:
-                                try:
-                                    chunk_len = int(
-                                        buf[header_start:newline_idx].strip()
-                                    )
-                                except ValueError:
-                                    raise CellularError(
-                                        "bad ranged HTTPREAD chunk header"
-                                    )
-                                if chunk_len > want:
-                                    raise CellularError(
-                                        "ranged HTTPREAD returned %d bytes (requested %d)"
-                                        % (chunk_len, want)
-                                    )
-                                data_start = newline_idx + 1
-                                if len(buf) >= data_start + chunk_len:
-                                    out_file.write(
-                                        buf[data_start : data_start + chunk_len]
-                                    )
-                                    window_written = chunk_len
-                                    break
-                    time.sleep(0.01)
-
-                if window_written != want:
-                    raise CellularError(
-                        "HTTPREAD range %d wrote %d/%d bytes"
-                        % (total, window_written, want)
-                    )
-                total += window_written
-            return total
-
-        read_cap = expected_length if known_length else self.UNKNOWN_LENGTH_READ_CAP
-        cmd = "AT+HTTPREAD=0,%d" % read_cap
-        print(">>>", cmd, "(stream to file)")
-        self.flush()
-        self.uart.write((cmd + "\r\n").encode())
-
+        max_total = expected_length if known_length else 262144
         marker = b"+HTTPREAD: DATA,"
         terminator = b"+HTTPREAD: 0"
         start = time.ticks_ms()
-        buf = b""
-        accounted_for = 0
-        scan_pos = 0
+        total = 0
+        while total < max_total:
+            if time.ticks_diff(time.ticks_ms(), start) >= timeout_ms:
+                raise CellularError(
+                    "HTTPREAD ranged stream timeout at %d/%s"
+                    % (total, expected_length if known_length else "?")
+                )
+            want = min(self.HTTP_FILE_RANGE_SIZE, max_total - total)
+            cmd = "AT+HTTPREAD=%d,%d" % (total, want)
+            print(">>>", cmd, "(bounded stream to file)")
+            self.flush()
+            self.uart.write((cmd + "\r\n").encode())
+            buf = b""
+            window_written = None
 
-        while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
-            _feed_watchdog_if_due()
-            if self.uart.any():
-                buf += self.uart.read()
+            while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+                _feed_watchdog_if_due()
+                available = self.uart.any()
+                if available:
+                    piece = self.uart.read(
+                        min(int(available), self.HTTP_FILE_UART_READ_SIZE)
+                    )
+                    if piece:
+                        buf += piece
 
-                while True:
-                    idx = buf.find(marker, scan_pos)
-                    if idx < 0:
+                    idx = buf.find(marker)
+                    if idx >= 0:
+                        header_start = idx + len(marker)
+                        newline_idx = buf.find(b"\n", header_start)
+                        if newline_idx >= 0:
+                            try:
+                                chunk_len = int(
+                                    buf[header_start:newline_idx].strip()
+                                )
+                            except ValueError:
+                                raise CellularError(
+                                    "bad ranged HTTPREAD chunk header"
+                                )
+                            if chunk_len > want:
+                                raise CellularError(
+                                    "ranged HTTPREAD returned %d bytes (requested %d)"
+                                    % (chunk_len, want)
+                                )
+                            data_start = newline_idx + 1
+                            if len(buf) >= data_start + chunk_len:
+                                out_file.write(
+                                    buf[data_start : data_start + chunk_len]
+                                )
+                                window_written = chunk_len
+                                break
+                    if terminator in buf:
+                        window_written = 0
                         break
-                    header_start = idx + len(marker)
-                    newline_idx = buf.find(b"\n", header_start)
-                    if newline_idx < 0:
-                        break
-                    try:
-                        chunk_len = int(buf[header_start:newline_idx].strip())
-                    except ValueError:
-                        break
-                    data_start = newline_idx + 1
-                    if len(buf) < data_start + chunk_len:
-                        break
-                    out_file.write(buf[data_start : data_start + chunk_len])
-                    accounted_for += chunk_len
-                    buf = buf[data_start + chunk_len :]
-                    scan_pos = 0
+                    if b"\r\nERROR\r\n" in buf:
+                        raise CellularError(
+                            "HTTPREAD range %d returned ERROR" % total
+                        )
+                time.sleep(0.01)
 
-                if known_length:
-                    done = accounted_for >= expected_length
-                else:
-                    done = terminator in buf[scan_pos:]
+            if window_written is None:
+                raise CellularError(
+                    "HTTPREAD range %d produced no complete body" % total
+                )
+            if known_length and window_written != want:
+                raise CellularError(
+                    "HTTPREAD range %d wrote %d/%d bytes"
+                    % (total, window_written, want)
+                )
+            if not known_length and window_written == 0:
+                return total
+            total += window_written
+            if not known_length and window_written < want:
+                return total
 
-                if done:
-                    time.sleep(0.2)
-                    if self.uart.any():
-                        buf += self.uart.read()
-                    break
-
-                if b"\r\nERROR\r\n" in buf:
-                    break
-
-            time.sleep(0.01)
-
-        if known_length and accounted_for != expected_length:
+        if known_length and total != expected_length:
             raise CellularError(
                 "HTTPREAD streamed %d bytes but AT+HTTPACTION declared %d"
-                % (accounted_for, expected_length)
+                % (total, expected_length)
             )
-        return accounted_for
+        if not known_length:
+            raise CellularError("HTTPREAD unknown-length body exceeded 262144 bytes")
+        return total
 
     def _http_get_open(self, url):
         """Start HTTP GET; return (status, length, redirect_count). Caller must HTTPTERM."""
@@ -993,10 +956,7 @@ class Sim7600Modem:
             if length and length > 0:
                 nbytes = self._read_http_body_to_file(length, max(timeout_ms, length * 4), out)
             else:
-                raw = self.read_http_data(None, HTTP_CMD_TIMEOUT_MS)
-                body = parse_http_read_bytes(raw, expected_length=None)
-                out.write(body)
-                nbytes = len(body)
+                nbytes = self._read_http_body_to_file(None, timeout_ms, out)
         self.at("AT+HTTPTERM", 15000)
         import os
 

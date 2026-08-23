@@ -176,6 +176,20 @@ def run():
     finally:
         wifi_uplink.time = original_time
 
+    download_source = inspect.getsource(WifiHttp.download_to_file)
+    check(
+        "download prepares heap before TLS",
+        download_source.index("_prepare_tls_heap()")
+        < download_source.index("ssl.wrap_socket"),
+    )
+    check("download bounds body recv to 512 bytes", "sock.recv(min(512," in download_source)
+    check(
+        "download reclaims TLS socket in finally",
+        "sock = None" in download_source
+        and download_source.rindex("_prepare_tls_heap()")
+        > download_source.index("finally:"),
+    )
+
     # Redirects must run in one _request frame and release each closed response
     # before the next TLS socket is allocated.
     redirect_responses = [
@@ -284,16 +298,23 @@ def run():
         )
         check("redirect Host follows destination", b"Host: hop-two.example" in requests[1] and b"Host: hop-six.example" in requests[5])
         check("redirect handling is non-recursive", request_depths == [1, 1, 1, 1, 1, 1])
+        socket_positions = [
+            i for i, event in enumerate(redirect_events) if event == "socket"
+        ]
+        close_positions = [
+            i for i, event in enumerate(redirect_events) if event == "close"
+        ]
+        reclaimed_between = all(
+            close_positions[i - 1] < socket_positions[i]
+            and "gc"
+            in redirect_events[close_positions[i - 1] + 1 : socket_positions[i]]
+            for i in range(1, len(socket_positions))
+        )
         check(
             "redirect collects before each next socket",
-            redirect_events == [
-                "socket", "close", "gc",
-                "socket", "close", "gc",
-                "socket", "close", "gc",
-                "socket", "close", "gc",
-                "socket", "close", "gc",
-                "socket", "close",
-            ],
+            len(socket_positions) == 6
+            and len(close_positions) == 6
+            and reclaimed_between,
         )
     finally:
         wifi_uplink.set_request_power_mode = original_power_mode

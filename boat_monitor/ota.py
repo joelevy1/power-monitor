@@ -112,6 +112,16 @@ def _http_get_retry(client, url, attempts=3):
     raise OtaError(str(last_exc))
 
 
+def _prepare_transfer_heap():
+    try:
+        import gc
+
+        gc.collect()
+        gc.collect()
+    except Exception:
+        pass
+
+
 def write_file(path, data):
     tmp_path = path + ".new"
     bak_path = path + ".bak"
@@ -157,6 +167,7 @@ def download_file_streaming(client, url, path, min_size=1, attempts=2):
     last_exc = None
     for attempt in range(1, attempts + 1):
         try:
+            _prepare_transfer_heap()
             try:
                 import ota_trace
 
