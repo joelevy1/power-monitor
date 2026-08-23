@@ -27,5 +27,11 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
     }
   ],
-  "manifest_kind": "wifi-feature"
+  "manifest_kind": "wifi-feature",
+  "bundle": {
+    "path": "ota_release.bmota",
+    "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_release.bmota",
+    "size": 109280,
+    "sha256": "9a0d436f19fa695e1de37cdd663ca8b1a89378c1ab8bb943f51bbd61e3121e20"
+  }
 }

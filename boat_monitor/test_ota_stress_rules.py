@@ -87,6 +87,20 @@ def test_master_policy_wifi_feature():
     errs = master_manifest_policy_errors(wrong_order)
     assert errs and "version.py last" in errs[0]
 
+    bundled = {
+        "manifest_kind": "wifi-feature",
+        "files": [
+            {"path": "wifi_uplink.py"},
+            {"path": "version.py"},
+        ],
+        "bundle": {
+            "url": "https://example.invalid/ota_release.bmota",
+            "size": 1234,
+            "sha256": "ab" * 32,
+        },
+    }
+    assert master_manifest_policy_errors(bundled) == []
+
 
 def test_master_policy_bootstrap_wrong_kind():
     data = {"files": [{"path": "version.py"}, {"path": "remote_boot_config.py"}]}

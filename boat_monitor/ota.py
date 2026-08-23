@@ -296,6 +296,30 @@ def apply_bundle(client, manifest):
     except Exception:
         pass
     bpath = _download_bundle_to_path(client, bundle)
+    expected_sha = str(bundle.get("sha256") or "").strip().lower()
+    if expected_sha:
+        try:
+            try:
+                import ubinascii as binascii
+            except ImportError:
+                import binascii
+            try:
+                import uhashlib as hashlib
+            except ImportError:
+                import hashlib
+
+            digest = hashlib.sha256()
+            with open(bpath, "rb") as bundle_file:
+                while True:
+                    chunk = bundle_file.read(1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+            actual_sha = binascii.hexlify(digest.digest()).decode().lower()
+        except Exception as exc:
+            raise OtaError("bundle sha256 check failed: %s" % exc)
+        if actual_sha != expected_sha:
+            raise OtaError("bundle sha256 mismatch")
     try:
         import ota_bundle
     except Exception as exc:
