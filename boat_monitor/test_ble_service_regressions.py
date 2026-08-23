@@ -47,6 +47,13 @@ def main():
     )[0]
     assert "BLE_AUTO_LOG_RECYCLE_HEAP_BYTES" in auto_log
     assert auto_log.index("gc.collect()") < auto_log.index("machine.reset()")
+    assert "BLE_LOG_COMMAND_DEADLINE_MS" in log_command
+    assert "_arm_command_deadline(BLE_LOG_COMMAND_DEADLINE_MS)" in log_command
+    assert "_cancel_command_deadline()" in log_command
+    deadline = source.split("def _command_deadline_expired", 1)[1].split(
+        "def _arm_command_deadline", 1
+    )[0]
+    assert "machine.reset()" in deadline
 
     print("BLE service regression guards OK")
     return 0
