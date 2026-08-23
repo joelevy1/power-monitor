@@ -431,12 +431,6 @@ class BoatMonitorBle:
         elif cmd == "reboot":
             self.command_result = "rebooting"
             self.update_status()
-            try:
-                import remote_boot_config
-
-                remote_boot_config.set_pending_ota(True)
-            except Exception:
-                pass
             time.sleep(0.5)
             machine.reset()
         elif cmd in ("wifi", "start_wifi"):
