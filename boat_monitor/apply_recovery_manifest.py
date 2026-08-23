@@ -160,6 +160,11 @@ ONE_TLS_WIFI_PATHS = (
     "version.py",
 )
 
+BLE_COMMAND_TRANSITION_PATHS = (
+    "ble_service.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -292,7 +297,19 @@ def main(argv=None):
         action="store_true",
         help="6-file one-TLS dock logging/control-sync release",
     )
+    p.add_argument(
+        "--ble-command-transition",
+        action="store_true",
+        help="2-file BLE command completion/key-off release",
+    )
     args = p.parse_args(argv)
+    if args.ble_command_transition:
+        return _write_manifest(
+            BLE_COMMAND_TRANSITION_PATHS,
+            "BLE repeated-command completion and key-off transition fix.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.one_tls_wifi:
         return _write_manifest(
             ONE_TLS_WIFI_PATHS,

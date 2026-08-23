@@ -69,6 +69,7 @@ const COMMAND_INFO = {
 // know when a pending command has actually resolved instead of just
 // showing "Sent command: X" forever with no further feedback.
 const IN_PROGRESS_RESULTS = new Set([
+  'refreshing',
   'logging',
   'logging_modem',
   'logging_power',
@@ -104,6 +105,8 @@ function remoteFirmwareHint() {
 
 function inProgressStageText(result) {
   switch (result) {
+    case 'refreshing':
+      return 'Refreshing Pico status...';
     case 'logging':
       return 'Starting log to Google Sheets...';
     case 'logging_modem':
@@ -261,6 +264,7 @@ export default function BoatBleScreen({ onBack }) {
   const lastFirmwareCheckRef = useRef(null);
   const wifiCheckIdRef = useRef(0);
   const commandBaselineRef = useRef(null);
+  const commandProgressSeenRef = useRef(false);
 
   function resetWifiConsoleStatus() {
     wifiCheckIdRef.current += 1;
@@ -293,8 +297,11 @@ export default function BoatBleScreen({ onBack }) {
 
     if (pendingCommand) {
       const baseline = commandBaselineRef.current;
-      if (result === baseline) return;
-      if (IN_PROGRESS_RESULTS.has(result)) return;
+      if (IN_PROGRESS_RESULTS.has(result)) {
+        if (result !== baseline) commandProgressSeenRef.current = true;
+        return;
+      }
+      if (result === baseline && !commandProgressSeenRef.current) return;
 
       const label = COMMAND_INFO[pendingCommand]?.label || pendingCommand;
       const friendly = friendlyCommandResult(result);
@@ -563,6 +570,7 @@ export default function BoatBleScreen({ onBack }) {
 
     const label = COMMAND_INFO[cmd]?.label || cmd;
     commandBaselineRef.current = status?.command_result ?? null;
+    commandProgressSeenRef.current = false;
     setCommandResultAt(null);
     setPendingCommand(cmd);
     setPendingSince(Date.now());
