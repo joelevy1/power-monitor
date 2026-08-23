@@ -331,6 +331,8 @@ class BoatMonitorBle:
             cmd = raw
 
         if cmd == "refresh":
+            self.command_result = "refreshing"
+            self.update_status(sensors=False)
             self.command_result = "refreshed"
             self.update_status(sensors=True)
         elif cmd == "reboot":
@@ -572,7 +574,7 @@ class BoatMonitorBle:
         while True:
             tick_s = 5 if self.connections else 2
             hold_s = ble_policy.gpio_off_hold_s()
-            if self.connections or ble_policy.ble_latched():
+            if ble_policy.ble_latched():
                 self._gpio_low_accum_s = 0
             elif not ble_policy.ble_inputs_on():
                 self._gpio_low_accum_s += tick_s

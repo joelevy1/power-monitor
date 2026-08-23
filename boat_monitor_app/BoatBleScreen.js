@@ -69,6 +69,7 @@ const COMMAND_INFO = {
 // know when a pending command has actually resolved instead of just
 // showing "Sent command: X" forever with no further feedback.
 const IN_PROGRESS_RESULTS = new Set([
+  'refreshing',
   'logging',
   'logging_modem',
   'logging_power',
@@ -104,6 +105,8 @@ function remoteFirmwareHint() {
 
 function inProgressStageText(result) {
   switch (result) {
+    case 'refreshing':
+      return 'Refreshing Pico status...';
     case 'logging':
       return 'Starting log to Google Sheets...';
     case 'logging_modem':
@@ -134,6 +137,15 @@ function inProgressStageText(result) {
 // These intentionally reboot the Pico -- BLE disconnecting shortly after
 // sending them is EXPECTED (a successful outcome), not a failure/hang.
 const RESET_COMMANDS = new Set(['reboot', 'wifi', 'ota']);
+const COMMAND_TIMEOUT_S = {
+  refresh: 15,
+  log: 120,
+  signal: 45,
+  gps: 60,
+  ota: 30,
+  wifi: 30,
+  reboot: 30,
+};
 
 // Expands the compact command_result strings ble_service.py sends into a
 // clearer sentence + icon. Covers every shape handle_command()/
@@ -261,6 +273,7 @@ export default function BoatBleScreen({ onBack }) {
   const lastFirmwareCheckRef = useRef(null);
   const wifiCheckIdRef = useRef(0);
   const commandBaselineRef = useRef(null);
+  const commandProgressSeenRef = useRef(false);
 
   function resetWifiConsoleStatus() {
     wifiCheckIdRef.current += 1;
@@ -278,23 +291,31 @@ export default function BoatBleScreen({ onBack }) {
       return undefined;
     }
     const id = setInterval(() => {
-      setPendingElapsedS(Math.round((Date.now() - pendingSince) / 1000));
+      const elapsedS = Math.round((Date.now() - pendingSince) / 1000);
+      setPendingElapsedS(elapsedS);
+      if (elapsedS >= (COMMAND_TIMEOUT_S[pendingCommand] || 60)) {
+        const label = COMMAND_INFO[pendingCommand]?.label || pendingCommand;
+        setMessage(`${label} timed out waiting for final BLE status. You can try it again.`);
+        setPendingCommand(null);
+        setPendingSince(null);
+      }
     }, 1000);
     return () => clearInterval(id);
   }, [pendingCommand, pendingSince]);
 
-  // Clears the pending state once a REAL (non-placeholder) command_result
-  // arrives over BLE -- see IN_PROGRESS_RESULTS. This is what actually
-  // resolves "Running Log Now... (14s)" back to a normal result, driven
-  // by the Pico's own status notifications rather than a fixed timeout.
+  // Clears pending state when a real command_result arrives. The timer above
+  // is only a safety net so a dropped final notification cannot lock the UI.
   useEffect(() => {
     const result = status?.command_result;
     if (!result) return;
 
     if (pendingCommand) {
       const baseline = commandBaselineRef.current;
-      if (result === baseline) return;
-      if (IN_PROGRESS_RESULTS.has(result)) return;
+      if (IN_PROGRESS_RESULTS.has(result)) {
+        if (result !== baseline) commandProgressSeenRef.current = true;
+        return;
+      }
+      if (result === baseline && !commandProgressSeenRef.current) return;
 
       const label = COMMAND_INFO[pendingCommand]?.label || pendingCommand;
       const friendly = friendlyCommandResult(result);
@@ -563,9 +584,11 @@ export default function BoatBleScreen({ onBack }) {
 
     const label = COMMAND_INFO[cmd]?.label || cmd;
     commandBaselineRef.current = status?.command_result ?? null;
+    commandProgressSeenRef.current = false;
     setCommandResultAt(null);
     setPendingCommand(cmd);
     setPendingSince(Date.now());
+    setMessage(`Sending ${label} command to Pico...`);
     if (RESET_COMMANDS.has(cmd)) resetWifiConsoleStatus();
 
     try {
@@ -648,7 +671,10 @@ export default function BoatBleScreen({ onBack }) {
               disabled={!connected || !!pendingCommand}
             >
               {pendingCommand === 'refresh' ? (
-                <ActivityIndicator color="#fff" />
+                <View style={styles.pendingButtonContent}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.buttonText}>Refreshing…</Text>
+                </View>
               ) : (
                 <Text style={styles.buttonText}>Refresh</Text>
               )}
@@ -873,17 +899,28 @@ function StatusRow({ label, value, danger, onPress }) {
   );
 }
 
-// Shows a spinner in-place of its own label the moment IT specifically is
-// the pending command (immediate feedback right where you tapped), and
+// Shows a spinner beside its label the moment it becomes pending (clear
+// feedback right where you tapped), and
 // disables every service button while ANY command is pending -- avoids
 // stacking overlapping BLE writes while a long cellular round-trip is
 // still in progress on the Pico.
 function ServiceButton({ cmd, label, style, connected, pendingCommand, onPress }) {
   const isPending = pendingCommand === cmd;
-  const disabled = !connected || (!!pendingCommand && !isPending);
+  const disabled = !connected || !!pendingCommand;
   return (
-    <TouchableOpacity style={[style, disabled && styles.buttonDisabled]} onPress={() => onPress(cmd)} disabled={disabled}>
-      {isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{label}</Text>}
+    <TouchableOpacity
+      style={[style, disabled && !isPending && styles.buttonDisabled]}
+      onPress={() => onPress(cmd)}
+      disabled={disabled}
+    >
+      {isPending ? (
+        <View style={styles.pendingButtonContent}>
+          <ActivityIndicator color="#fff" size="small" />
+          <Text style={styles.buttonText}>{label}…</Text>
+        </View>
+      ) : (
+        <Text style={styles.buttonText}>{label}</Text>
+      )}
     </TouchableOpacity>
   );
 }
@@ -1059,6 +1096,11 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     ...FW500,
+  },
+  pendingButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   card: {
     backgroundColor: '#1e293b',
