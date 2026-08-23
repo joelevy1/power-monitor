@@ -134,9 +134,13 @@ def apply_settings(settings):
 
             ota_health.clear_degraded()
         except Exception:
-            data.pop("ota_degraded", None)
-            data["boot_ota_fail_count"] = 0
-            data.pop("cmd_ota_force", None)
+            pass
+        # ota_health.clear_degraded() writes through this module, but `data`
+        # was loaded before that call. Clear the local copy too so save(data)
+        # below cannot resurrect the state that was just removed.
+        data.pop("ota_degraded", None)
+        data["boot_ota_fail_count"] = 0
+        data.pop("cmd_ota_force", None)
         data.pop("boot_ota_backoff_until", None)
         data.pop("boot_ota_skip_remaining", None)
         applied.append("clear_ota_degraded=1")
@@ -171,7 +175,10 @@ def apply_settings(settings):
             except ValueError:
                 pass
     if _truthy(settings.get("clear_pending_ota")) or _truthy(settings.get("cmd_clear_pending_ota")):
-        clear_pending_ota()
+        # Do not call clear_pending_ota() and then save this stale local copy:
+        # that reintroduced pending_ota at the end of apply_settings().
+        data.pop("pending_ota", None)
+        data.pop("cmd_ota_force", None)
         applied.append("clear_pending_ota=1")
     if applied:
         save(data)

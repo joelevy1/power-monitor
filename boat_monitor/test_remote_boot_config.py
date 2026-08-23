@@ -62,6 +62,24 @@ def main():
             state = remote_boot_config.load()
             assert state.get("boot_ota_skip_remaining") == 3
             assert state.get("pending_ota") is True
+
+            _state(
+                min_fw_version="0",
+                auto_ota_on_boot=True,
+                pending_ota=True,
+                cmd_ota_force=True,
+                ota_degraded=True,
+                boot_ota_fail_count=3,
+            )
+            remote_boot_config.apply_settings(
+                {"clear_ota_degraded": "1", "clear_pending_ota": "1"}
+            )
+            state = remote_boot_config.load()
+            assert "pending_ota" not in state
+            assert "cmd_ota_force" not in state
+            assert "ota_degraded" not in state
+            assert state.get("boot_ota_fail_count") == 0
+            _check("current_meets_min_fw")
         finally:
             remote_boot_config.PATH = original_path
             os.chdir(original_cwd)
