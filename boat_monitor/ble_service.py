@@ -31,6 +31,8 @@ from wifi_uplink import ensure_wifi_off
 BLE_ADV_INTERVAL_US = 128000
 BLE_ADV_REFRESH_MS = 15000
 BLE_ADV_FAILURE_RESET_COUNT = 3
+BLE_NOTIFY_FAILURE_LIMIT = 3
+BLE_AUTO_LOG_RECYCLE_HEAP_BYTES = 40000
 # Supervision timeout for connection parameter update (units of 10 ms).
 BLE_SUPERVISION_TIMEOUT = 2000
 
@@ -170,6 +172,7 @@ class BoatMonitorBle:
         self._cellular_busy = False
         self._last_advertise_ms = time.ticks_ms()
         self._advertise_failures = 0
+        self._notify_failures = {}
 
         service = (
             SERVICE_UUID,
@@ -236,6 +239,7 @@ class BoatMonitorBle:
             conn_handle, addr_type, addr = data
             print("BLE disconnected", conn_handle)
             self.connections.discard(conn_handle)
+            self._notify_failures.pop(conn_handle, None)
             try:
                 import status_led
 
@@ -343,16 +347,23 @@ class BoatMonitorBle:
         status = read_status(self.command_result, sensors=sensors)
         data = json.dumps(status).encode()
         self.ble.gatts_write(self.status_handle, data)
-        stale_connections = []
+        dropped_stale = False
         for conn in tuple(self.connections):
             try:
                 self.ble.gatts_notify(conn, self.status_handle, data)
+                self._notify_failures.pop(conn, None)
             except Exception as exc:
                 print("Notify failed (%d bytes):" % len(data), exc)
-                stale_connections.append(conn)
-        for conn in stale_connections:
-            self.connections.discard(conn)
-        if stale_connections and not self.connections:
+                failures = self._notify_failures.get(conn, 0) + 1
+                self._notify_failures[conn] = failures
+                if failures >= BLE_NOTIFY_FAILURE_LIMIT:
+                    print("BLE notify failed repeatedly; dropping stale handle", conn)
+                    self.connections.discard(conn)
+                    self._notify_failures.pop(conn, None)
+                    dropped_stale = True
+        if not self.connections and self._notify_failures:
+            self._notify_failures = {}
+        if dropped_stale and not self.connections:
             self.advertise()
         return status
 
@@ -617,6 +628,26 @@ class BoatMonitorBle:
             except Exception:
                 pass
         self.update_status()
+        if not self.connections:
+            try:
+                import gc
+
+                gc.collect()
+                heap_free = gc.mem_free()
+            except Exception:
+                heap_free = BLE_AUTO_LOG_RECYCLE_HEAP_BYTES
+            if heap_free < BLE_AUTO_LOG_RECYCLE_HEAP_BYTES:
+                try:
+                    import diag_log
+
+                    diag_log.log(
+                        "BLE auto-log heap %s < %s; rebooting to reclaim modules"
+                        % (heap_free, BLE_AUTO_LOG_RECYCLE_HEAP_BYTES)
+                    )
+                except Exception:
+                    pass
+                time.sleep(0.3)
+                machine.reset()
 
     def run(self):
         while True:
