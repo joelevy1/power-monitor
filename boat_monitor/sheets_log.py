@@ -121,7 +121,12 @@ def _config_value(name):
 
 class SheetsLogger:
     def __init__(
-        self, url=None, token=None, prefer_wifi=True, keep_wifi_connected=None
+        self,
+        url=None,
+        token=None,
+        prefer_wifi=True,
+        keep_wifi_connected=None,
+        cellular_control_sync=False,
     ):
         self.url = url if url is not None else _config_value("GOOGLE_APPS_SCRIPT_URL")
         self.token = token if token is not None else _config_value("SHEETS_POST_TOKEN")
@@ -140,12 +145,16 @@ class SheetsLogger:
         self._wifi_ssid = None
         self._used_cellular = False
         self._wifi_fallback_report = ""
+        self.cellular_control_sync = bool(cellular_control_sync)
+        self._last_power_success = False
 
     def uplink_label(self):
         """SSID string when on Wi-Fi, or 'cellular' after ensure_data()."""
         if self._wifi_ssid:
             return self._wifi_ssid
         if self._used_cellular:
+            if self.cellular_control_sync:
+                return "cellular_control_sync"
             return "cellular"
         return ""
 
@@ -475,7 +484,11 @@ class SheetsLogger:
                 if self._wifi_ssid:
                     import wifi_uplink
 
-                    response_text = wifi_uplink.WifiHttp().http_post_json(self.url, body_text)
+                    response_text = wifi_uplink.WifiHttp().http_post_json(
+                        self.url,
+                        body_text,
+                        accept_apps_script_redirect=True,
+                    )
                 else:
                     from cellular import CellularError
 
@@ -520,6 +533,10 @@ class SheetsLogger:
         except Exception:
             pass
 
+        if isinstance(response_text, dict):
+            # Wi-Fi's accepted Apps Script redirect is intentionally bodyless.
+            # Return the transport result without ever considering it commands.
+            return response_text
         try:
             return json.loads(response_text)
         except Exception:
@@ -588,6 +605,10 @@ class SheetsLogger:
                 print("SheetsLogger: ota_lifecycle aware:", exc)
 
     def _apply_remote_from_response(self, response, device_id, log_event=True):
+        if isinstance(response, dict) and response.get(
+            "_apps_script_redirect_accepted"
+        ):
+            return []
         try:
             from remote_control import apply_from_log_response
 
@@ -732,6 +753,7 @@ class SheetsLogger:
         if on_progress:
             on_progress("logging_modem")
         self._last_remote_actions = []
+        self._last_power_success = False
         self._last_device = device
         self.ensure_data()
         try:
@@ -779,6 +801,7 @@ class SheetsLogger:
                 fw=fw,
                 uplink=self.uplink_label(),
             )
+            self._last_power_success = True
             remote_actions = self._apply_remote_from_response(last_response, device)
             power_remote_actions = list(remote_actions or [])
             if "ota" in (remote_actions or []):

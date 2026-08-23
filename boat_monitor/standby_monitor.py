@@ -128,7 +128,10 @@ def main():
             diag_log.log("boot_log START mode=%s" % mode)
             print("standby_monitor: boot_log (online heartbeat)")
             summary = log_power_and_gps(
-                note="boot_log", prefer_wifi=_standby_prefer_wifi(), ble_monitor=None
+                note="boot_log",
+                prefer_wifi=_standby_prefer_wifi(),
+                ble_monitor=None,
+                periodic_cellular_sync=True,
             )
             diag_log.log("boot_log DONE %s" % summary)
             print("standby_monitor: boot_log result:", summary)
@@ -272,7 +275,10 @@ def main():
             print("standby_monitor: auto-log mode=%s since_success=%.0fs" % (mode, since_success_s))
             try:
                 summary = log_power_and_gps(
-                    note="auto_log", prefer_wifi=_standby_prefer_wifi(), ble_monitor=None
+                    note="auto_log",
+                    prefer_wifi=_standby_prefer_wifi(),
+                    ble_monitor=None,
+                    periodic_cellular_sync=True,
                 )
                 auto_log_started_ms = None
                 diag_log.log("auto-log DONE %s" % summary)
