@@ -29,6 +29,8 @@ from wifi_uplink import ensure_wifi_off
 
 # Faster connectable advertising (µs). 128 ms is aggressive but helps iOS find/connect.
 BLE_ADV_INTERVAL_US = 128000
+BLE_ADV_REFRESH_MS = 15000
+BLE_ADV_FAILURE_RESET_COUNT = 3
 # Supervision timeout for connection parameter update (units of 10 ms).
 BLE_SUPERVISION_TIMEOUT = 2000
 
@@ -166,6 +168,8 @@ class BoatMonitorBle:
         self.connections = set()
         self.command_result = None
         self._cellular_busy = False
+        self._last_advertise_ms = time.ticks_ms()
+        self._advertise_failures = 0
 
         service = (
             SERVICE_UUID,
@@ -296,19 +300,42 @@ class BoatMonitorBle:
     def _scheduled_handle_command(self, raw):
         self.handle_command(raw)
 
-    def advertise(self):
+    def advertise(self, refresh=False):
+        self._last_advertise_ms = time.ticks_ms()
         try:
+            if refresh:
+                self.ble.gap_advertise(None)
+                try:
+                    time.sleep_ms(20)
+                except AttributeError:
+                    time.sleep(0.02)
             self.ble.gap_advertise(
                 BLE_ADV_INTERVAL_US,
                 adv_data=self.payload,
                 resp_data=self.scan_resp_payload,
             )
         except OSError as exc:
+            self._advertise_failures += 1
             # Don't let a transient radio error crash the whole service — main.py's
             # blanket except would fall back to WiFi mode with no clear diagnostic.
-            print("ERROR: gap_advertise failed:", exc)
-            return
+            print(
+                "ERROR: gap_advertise failed (%d/%d):"
+                % (self._advertise_failures, BLE_ADV_FAILURE_RESET_COUNT),
+                exc,
+            )
+            if self._advertise_failures >= BLE_ADV_FAILURE_RESET_COUNT:
+                try:
+                    import diag_log
+
+                    diag_log.log("BLE advertising failed repeatedly; resetting")
+                except Exception:
+                    pass
+                time.sleep(0.2)
+                machine.reset()
+            return False
+        self._advertise_failures = 0
         print("BLE advertising as BoatMonitor")
+        return True
 
     def update_status(self, sensors=None):
         if sensors is None:
@@ -594,6 +621,14 @@ class BoatMonitorBle:
     def run(self):
         while True:
             tick_s = 5 if self.connections else 2
+            if (
+                not self.connections
+                and time.ticks_diff(
+                    time.ticks_ms(), self._last_advertise_ms
+                )
+                >= BLE_ADV_REFRESH_MS
+            ):
+                self.advertise(refresh=True)
             hold_s = ble_policy.gpio_off_hold_s()
             if ble_policy.ble_latched():
                 self._gpio_low_accum_s = 0
