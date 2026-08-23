@@ -165,6 +165,11 @@ BLE_COMMAND_TRANSITION_PATHS = (
     "version.py",
 )
 
+WIFI_TRANSPORT_BOOTSTRAP_PATHS = (
+    "wifi_uplink.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -302,7 +307,19 @@ def main(argv=None):
         action="store_true",
         help="2-file BLE command completion/key-off release",
     )
+    p.add_argument(
+        "--wifi-transport-bootstrap",
+        action="store_true",
+        help="2-file Wi-Fi OTA transport bootstrap",
+    )
     args = p.parse_args(argv)
+    if args.wifi_transport_bootstrap:
+        return _write_manifest(
+            WIFI_TRANSPORT_BOOTSTRAP_PATHS,
+            "Bootstrap TLS heap reclamation for subsequent Wi-Fi feature OTA.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.ble_command_transition:
         return _write_manifest(
             BLE_COMMAND_TRANSITION_PATHS,
