@@ -33,6 +33,7 @@ BLE_ADV_REFRESH_MS = 15000
 BLE_ADV_FAILURE_RESET_COUNT = 3
 BLE_NOTIFY_FAILURE_LIMIT = 3
 BLE_AUTO_LOG_RECYCLE_HEAP_BYTES = 40000
+BLE_LOG_COMMAND_DEADLINE_MS = 180000
 # Supervision timeout for connection parameter update (units of 10 ms).
 BLE_SUPERVISION_TIMEOUT = 2000
 
@@ -173,6 +174,7 @@ class BoatMonitorBle:
         self._last_advertise_ms = time.ticks_ms()
         self._advertise_failures = 0
         self._notify_failures = {}
+        self._command_deadline_timer = None
 
         service = (
             SERVICE_UUID,
@@ -304,6 +306,36 @@ class BoatMonitorBle:
     def _scheduled_handle_command(self, raw):
         self.handle_command(raw)
 
+    def _command_deadline_expired(self, _timer):
+        # Timer callback runs outside the blocked network call. Keep it
+        # allocation-free: the next boot reports/recoveries provide evidence.
+        machine.reset()
+
+    def _arm_command_deadline(self, timeout_ms):
+        self._cancel_command_deadline()
+        try:
+            try:
+                timer = machine.Timer(-1)
+            except TypeError:
+                timer = machine.Timer()
+            timer.init(
+                mode=machine.Timer.ONE_SHOT,
+                period=int(timeout_ms),
+                callback=self._command_deadline_expired,
+            )
+            self._command_deadline_timer = timer
+        except Exception as exc:
+            print("BLE command deadline unavailable:", exc)
+
+    def _cancel_command_deadline(self):
+        timer = self._command_deadline_timer
+        self._command_deadline_timer = None
+        if timer is not None:
+            try:
+                timer.deinit()
+            except Exception:
+                pass
+
     def advertise(self, refresh=False):
         self._last_advertise_ms = time.ticks_ms()
         try:
@@ -427,6 +459,7 @@ class BoatMonitorBle:
             mode = read_status().get("mode", "key_on")
             outcome = None
             try:
+                self._arm_command_deadline(BLE_LOG_COMMAND_DEADLINE_MS)
                 try:
                     import resilience
 
@@ -456,6 +489,7 @@ class BoatMonitorBle:
                 except Exception:
                     pass
             finally:
+                self._cancel_command_deadline()
                 try:
                     import resilience
 
