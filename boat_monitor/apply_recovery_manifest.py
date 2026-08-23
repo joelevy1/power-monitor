@@ -170,6 +170,12 @@ WIFI_TRANSPORT_BOOTSTRAP_PATHS = (
     "version.py",
 )
 
+BLE_LOG_HANDOFF_PATHS = (
+    "main.py",
+    "ble_service.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -312,7 +318,19 @@ def main(argv=None):
         action="store_true",
         help="2-file Wi-Fi OTA transport bootstrap",
     )
+    p.add_argument(
+        "--ble-log-handoff",
+        action="store_true",
+        help="3-file bounded BLE-to-cellular Log Now handoff",
+    )
     args = p.parse_args(argv)
+    if args.ble_log_handoff:
+        return _write_manifest(
+            BLE_LOG_HANDOFF_PATHS,
+            "Bounded headless cellular handoff for BLE Log Now.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.wifi_transport_bootstrap:
         return _write_manifest(
             WIFI_TRANSPORT_BOOTSTRAP_PATHS,
