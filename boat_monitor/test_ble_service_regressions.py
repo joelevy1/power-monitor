@@ -24,6 +24,13 @@ def main():
     assert "lambda: self.update_status(sensors=False)" in log_command
     assert "resilience.set_service_hook(None)" in log_command
 
+    main = source.split("def main():", 1)[1].split(
+        'if __name__ == "__main__":', 1
+    )[0]
+    assert main.index("resilience.enable_watchdog()") < main.index(
+        "BoatMonitorBle().run()"
+    )
+
     print("BLE service regression guards OK")
     return 0
 
