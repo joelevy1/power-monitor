@@ -243,10 +243,22 @@ def master_manifest_policy_errors(data, file_count: int | None = None) -> list[s
     """
     files = (data or {}).get("files") or []
     n = file_count if file_count is not None else len(files)
-    if data.get("bundle"):
-        return ["manifest has bundle — not allowed on master stress CDN"]
     kind = manifest_kind(data)
     paths = [str(e.get("path") or "") for e in files]
+    bundle = data.get("bundle")
+    if bundle:
+        if kind != MASTER_MANIFEST_KIND_WIFI_FEATURE:
+            return ["bundle allowed only for explicit wifi-feature manifests"]
+        if n < 2 or n > MAX_WIFI_FEATURE_MANIFEST_FILES:
+            return [
+                "bundled wifi-feature has %d files (expected 2..%d)"
+                % (n, MAX_WIFI_FEATURE_MANIFEST_FILES)
+            ]
+        if not paths or paths[-1] != "version.py":
+            return ["bundled wifi-feature must install version.py last"]
+        if not bundle.get("url") or not bundle.get("size") or not bundle.get("sha256"):
+            return ["bundled wifi-feature requires url, size, and sha256"]
+        return []
     if kind == MASTER_MANIFEST_KIND_WIFI_FEATURE:
         if n < 2 or n > MAX_WIFI_FEATURE_MANIFEST_FILES:
             return [

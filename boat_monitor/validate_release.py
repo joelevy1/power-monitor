@@ -164,7 +164,7 @@ def main(argv=None):
             file=sys.stderr,
         )
         return 1
-    if args.max_files is not None and data.get("bundle"):
+    if args.max_files is not None and data.get("bundle") and not args.enforce_master_policy:
         print("FAIL: manifest has bundle (not allowed with --max-files)", file=sys.stderr)
         return 1
 
