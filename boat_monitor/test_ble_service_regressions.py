@@ -54,6 +54,14 @@ def main():
         "def _arm_command_deadline", 1
     )[0]
     assert "machine.reset()" in deadline
+    on_connect = source.split("def _scheduled_on_connect", 1)[1].split(
+        "def _scheduled_conn_params", 1
+    )[0]
+    assert "BLE_CONNECT_MIN_HEAP_BYTES" in on_connect
+    assert "rebooting_low_heap:" in on_connect
+    assert on_connect.index("self.update_status(sensors=False)") < on_connect.index(
+        "machine.reset()"
+    )
 
     print("BLE service regression guards OK")
     return 0
