@@ -151,6 +151,15 @@ WINTER_FINAL_FIX_PATHS = (
     "version.py",
 )
 
+ONE_TLS_WIFI_PATHS = (
+    "wifi_uplink.py",
+    "sheets_log.py",
+    "log_session.py",
+    "remote_boot_config.py",
+    "standby_monitor.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -278,7 +287,19 @@ def main(argv=None):
         action="store_true",
         help="3-file Wi-Fi redirect and V50 SoftI2C release",
     )
+    p.add_argument(
+        "--one-tls-wifi",
+        action="store_true",
+        help="6-file one-TLS dock logging/control-sync release",
+    )
     args = p.parse_args(argv)
+    if args.one_tls_wifi:
+        return _write_manifest(
+            ONE_TLS_WIFI_PATHS,
+            "One-TLS dock logging with periodic cellular control sync.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.winter_final_fixes:
         return _write_manifest(
             WINTER_FINAL_FIX_PATHS,

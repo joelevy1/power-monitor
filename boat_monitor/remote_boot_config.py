@@ -11,6 +11,7 @@ Config tab keys (via Apps Script commands on each log POST):
   ota_manifest_profile — micro | ram-fix | feature-pack (sheet override)
   cmd_ota_force — one-shot: allow boot OTA / reboot when ota_degraded (cleared on success)
   keep_modem_awake_underway — 1|0: skip AT+CPOF after cellular log while underway
+  cellular_control_sync_every_logs — periodic dock cellular command sync (0 disables)
 
 When the sheet requests OTA (min_fw_version, cmd_ota, …), remote_control sets
 pending_ota so the next boot runs ota.update() even if ota_config.py still
@@ -23,6 +24,9 @@ except ImportError:
     import json
 
 PATH = "remote_boot_config.json"
+CELLULAR_CONTROL_SYNC_DEFAULT = 12
+CELLULAR_CONTROL_SYNC_MAX = 255
+CELLULAR_CONTROL_SYNC_COUNT_KEY = "_cellular_control_sync_success_count"
 
 
 def _truthy(value):
@@ -33,18 +37,46 @@ def _truthy(value):
 
 
 def load():
-    try:
-        with open(PATH, "r") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    for path in (PATH, PATH + ".bak"):
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+    return {}
 
 
 def save(data):
     try:
-        with open(PATH, "w") as f:
+        tmp_path = PATH + ".new"
+        with open(tmp_path, "w") as f:
             json.dump(data, f)
+        try:
+            import os
+
+            try:
+                os.remove(PATH + ".bak")
+            except OSError:
+                pass
+            try:
+                os.rename(PATH, PATH + ".bak")
+            except OSError:
+                pass
+            try:
+                os.rename(tmp_path, PATH)
+            except Exception:
+                # Keep the last complete config readable if replacement fails.
+                try:
+                    os.rename(PATH + ".bak", PATH)
+                except Exception:
+                    pass
+                raise
+        except Exception:
+            # Host and supported MicroPython ports can atomically replace by
+            # rename. Avoid a direct truncate if that final rename failed.
+            raise
     except Exception as exc:
         print("remote_boot_config save failed:", exc)
 
@@ -115,6 +147,17 @@ def apply_settings(settings):
         applied.append(
             "keep_modem_awake_underway=%s" % (1 if data["keep_modem_awake_underway"] else 0)
         )
+    if "cellular_control_sync_every_logs" in settings and str(
+        settings.get("cellular_control_sync_every_logs")
+    ).strip() != "":
+        try:
+            every = int(settings["cellular_control_sync_every_logs"])
+            if 0 <= every <= CELLULAR_CONTROL_SYNC_MAX:
+                data["cellular_control_sync_every_logs"] = every
+                data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
+                applied.append("cellular_control_sync_every_logs=%s" % every)
+        except (TypeError, ValueError):
+            pass
     min_fw = settings.get("min_fw_version") or settings.get("target_fw_version")
     if min_fw is not None and str(min_fw).strip() != "":
         data["min_fw_version"] = str(min_fw).strip()
@@ -232,6 +275,53 @@ def effective_keep_wifi_connected_docked(mode=None):
         "dock",
         "wifi",
     )
+
+
+def effective_cellular_control_sync_every_logs():
+    """Return the bounded dock command-sync interval; zero disables it."""
+    value = load().get(
+        "cellular_control_sync_every_logs", CELLULAR_CONTROL_SYNC_DEFAULT
+    )
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return CELLULAR_CONTROL_SYNC_DEFAULT
+    if value < 0 or value > CELLULAR_CONTROL_SYNC_MAX:
+        return CELLULAR_CONTROL_SYNC_DEFAULT
+    return value
+
+
+def cellular_control_sync_due():
+    """Select cellular for the Nth successful scheduled dock log session."""
+    every = effective_cellular_control_sync_every_logs()
+    if every == 0:
+        return False
+    try:
+        count = int(load().get(CELLULAR_CONTROL_SYNC_COUNT_KEY, 0))
+    except (TypeError, ValueError):
+        count = 0
+    return max(0, count) >= every - 1
+
+
+def note_cellular_control_sync_power_success(used_cellular):
+    """Persist one successful Power_Log outcome without relying on an RTC."""
+    data = load()
+    every = effective_cellular_control_sync_every_logs()
+    if every == 0:
+        if data.get(CELLULAR_CONTROL_SYNC_COUNT_KEY):
+            data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
+            save(data)
+        return
+    if used_cellular:
+        count = 0
+    else:
+        try:
+            count = int(data.get(CELLULAR_CONTROL_SYNC_COUNT_KEY, 0)) + 1
+        except (TypeError, ValueError):
+            count = 1
+        count = max(0, min(every - 1, count))
+    data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = count
+    save(data)
 
 
 def effective_boot_ota_prefer_wifi():

@@ -756,6 +756,28 @@ def split_url(url):
 # rather than waiting to rediscover it later.
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 MAX_REDIRECTS = 5
+APPS_SCRIPT_ACCEPTED_REDIRECT_KEY = "_apps_script_redirect_accepted"
+SYNTHETIC_LOCATION_MAX_CHARS = 256
+
+
+def _trusted_apps_script_redirect(method, original_url, status, location):
+    """True only for the one TLS hop known to have committed a Sheets POST."""
+    if method != "POST" or status not in (301, 302, 303) or not location:
+        return False
+    try:
+        original_host, original_port, _path, original_https = split_url(original_url)
+        target_host, target_port, _path, target_https = split_url(location)
+    except (TypeError, ValueError):
+        return False
+    target_host = target_host.lower()
+    return (
+        original_https
+        and original_port == 443
+        and original_host.lower() == "script.google.com"
+        and target_https
+        and target_port == 443
+        and target_host == "script.googleusercontent.com"
+    )
 
 
 def _cookie_from_set_cookie(set_cookie):
@@ -802,12 +824,15 @@ class WifiHttp:
         timeout_s=20,
         _redirect_count=0,
         _cookie="",
+        accept_apps_script_post_redirect=False,
     ):
         import socket
 
         redirect_count = _redirect_count
         cookie = _cookie
         current_headers = dict(headers or {})
+        original_url = url
+        original_method = method
 
         while True:
             set_request_power_mode(idle=False)
@@ -865,14 +890,26 @@ class WifiHttp:
 
             if status not in REDIRECT_STATUSES:
                 return status, response_body, url
-            if redirect_count >= MAX_REDIRECTS:
-                raise WifiError("too many redirects starting from %s" % url)
             location = resp_headers.get("location")
             if not location:
                 raise WifiError(
                     "redirect (status %s) with no Location header from %s"
                     % (status, url)
                 )
+            if (
+                accept_apps_script_post_redirect
+                and redirect_count == 0
+                and _trusted_apps_script_redirect(
+                    original_method, original_url, status, location
+                )
+            ):
+                return status, {
+                    APPS_SCRIPT_ACCEPTED_REDIRECT_KEY: True,
+                    "status": status,
+                    "location": location[:SYNTHETIC_LOCATION_MAX_CHARS],
+                }, url
+            if redirect_count >= MAX_REDIRECTS:
+                raise WifiError("too many redirects starting from %s" % url)
             print("wifi_uplink: following redirect ->", location)
 
             set_cookie = resp_headers.get("set-cookie")
@@ -1055,11 +1092,25 @@ class WifiHttp:
             except Exception:
                 pass
 
-    def http_post_json(self, url, body_text, timeout_s=20):
+    def http_post_json(
+        self, url, body_text, timeout_s=20, accept_apps_script_redirect=False
+    ):
+        """POST JSON, optionally accepting Apps Script's trusted commit redirect.
+
+        The option deliberately returns a synthetic dict with no response body;
+        callers must not treat it as a source of commands.
+        """
         headers = {"Content-Type": "application/json"}
         status, body, final_url = self._request(
-            "POST", url, body=body_text, headers=headers, timeout_s=timeout_s
+            "POST",
+            url,
+            body=body_text,
+            headers=headers,
+            timeout_s=timeout_s,
+            accept_apps_script_post_redirect=accept_apps_script_redirect,
         )
+        if isinstance(body, dict) and body.get(APPS_SCRIPT_ACCEPTED_REDIRECT_KEY):
+            return body
         if status != 200:
             raise WifiError(
                 "HTTP status %s after POST (final URL %s) body=%s"
