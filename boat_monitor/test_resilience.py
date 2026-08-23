@@ -33,6 +33,8 @@ def main():
     original_time = resilience.time
     original_wdt = resilience._wdt
     original_last_feed = resilience._last_watchdog_feed_ms
+    original_hook = resilience._service_hook
+    original_last_hook = resilience._last_service_hook_ms
     fake_time = FakeTime()
     fake_wdt = FakeWdt()
     try:
@@ -56,13 +58,22 @@ def main():
 
         resilience._wdt = None
         resilience.feed_watchdog()
+        hook_calls = []
+        resilience.set_service_hook(lambda: hook_calls.append(fake_time.now_ms))
         resilience.feed_watchdog_if_due()
+        assert hook_calls == []
+        fake_time.now_ms += resilience.SERVICE_HOOK_INTERVAL_MS
+        resilience.feed_watchdog_if_due()
+        assert hook_calls == [fake_time.now_ms]
+        resilience.set_service_hook(None)
         print("resilience watchdog tests OK")
         return 0
     finally:
         resilience.time = original_time
         resilience._wdt = original_wdt
         resilience._last_watchdog_feed_ms = original_last_feed
+        resilience._service_hook = original_hook
+        resilience._last_service_hook_ms = original_last_hook
 
 
 if __name__ == "__main__":
