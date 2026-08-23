@@ -33,6 +33,7 @@ BLE_ADV_REFRESH_MS = 15000
 BLE_ADV_FAILURE_RESET_COUNT = 3
 BLE_NOTIFY_FAILURE_LIMIT = 3
 BLE_AUTO_LOG_RECYCLE_HEAP_BYTES = 40000
+BLE_CONNECT_MIN_HEAP_BYTES = 40000
 BLE_LOG_COMMAND_DEADLINE_MS = 180000
 # Supervision timeout for connection parameter update (units of 10 ms).
 BLE_SUPERVISION_TIMEOUT = 2000
@@ -279,6 +280,22 @@ class BoatMonitorBle:
             time.sleep(0.6)
         # Small notify before MTU/param settle can drop iOS/LightBlue in ~1–2 s.
         self.update_status(sensors=False)
+        try:
+            import gc
+
+            gc.collect()
+            heap_free = gc.mem_free()
+        except Exception:
+            heap_free = BLE_CONNECT_MIN_HEAP_BYTES
+        if heap_free < BLE_CONNECT_MIN_HEAP_BYTES:
+            self.command_result = "rebooting_low_heap:%s" % heap_free
+            self.update_status(sensors=False)
+            try:
+                time.sleep_ms(500)
+            except AttributeError:
+                time.sleep(0.5)
+            machine.reset()
+            return
         try:
             time.sleep_ms(400)
         except AttributeError:
