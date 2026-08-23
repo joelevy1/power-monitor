@@ -244,7 +244,8 @@ def test_ble_shutdown_deinitializes_sta_and_ap():
 
 def test_standby_tears_down_wifi_before_ble_reset():
     source = (ROOT / "standby_monitor.py").read_text(encoding="utf-8")
-    branch = source.split("if ble_policy.ble_wanted():", 1)[1].split(
+    loop = source.split("while True:", 1)[1]
+    branch = loop.split("if ble_policy.ble_wanted():", 1)[1].split(
         "status = read_status()", 1
     )[0]
     assert "wifi_uplink.ensure_wifi_off()" in branch
