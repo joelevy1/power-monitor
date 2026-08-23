@@ -23,7 +23,7 @@ def main():
         'elif cmd in ("diag", "upload_diag"):', 1
     )[0]
     assert "resilience.set_service_hook(" in log_command
-    assert "lambda: self.update_status(sensors=False)" in log_command
+    assert "service_ble_during_log" in log_command
     assert "resilience.set_service_hook(None)" in log_command
 
     main = source.split("def main():", 1)[1].split(
