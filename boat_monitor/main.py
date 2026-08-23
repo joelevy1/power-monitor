@@ -328,6 +328,75 @@ try:
 except Exception as exc:
     print("pending stall flush:", exc)
 
+BLE_LOG_REQUEST_PATH = "ble_log_request.txt"
+BLE_LOG_RESULT_PATH = "ble_log_result.txt"
+BLE_LOG_DEADLINE_MS = 180000
+
+try:
+    import os as _os
+
+    _os.stat(BLE_LOG_REQUEST_PATH)
+    _deferred_ble_log = True
+except OSError:
+    _deferred_ble_log = False
+except Exception:
+    _deferred_ble_log = False
+
+if _deferred_ble_log:
+    try:
+        _os.remove(BLE_LOG_REQUEST_PATH)
+    except OSError:
+        pass
+    try:
+        import time as _ble_log_time
+        import resilience as _ble_log_resilience
+
+        _ble_log_resilience.enable_watchdog()
+        _ble_log_started = _ble_log_time.ticks_ms()
+
+        def _ble_log_deadline():
+            if (
+                _ble_log_time.ticks_diff(
+                    _ble_log_time.ticks_ms(), _ble_log_started
+                )
+                >= BLE_LOG_DEADLINE_MS
+            ):
+                import machine as _deadline_machine
+
+                _deadline_machine.reset()
+
+        _ble_log_resilience.set_service_hook(_ble_log_deadline)
+        try:
+            from log_session import log_power_and_gps as _deferred_log
+
+            _summary = _deferred_log(
+                "ble_log_now",
+                gps_timeout_s=10,
+                prefer_wifi=False,
+                ble_monitor=None,
+            )
+            if "failed" in str(_summary).lower():
+                _result = "log_failed: %s" % _summary
+            else:
+                _result = "logged (%s)" % _summary
+        except Exception as _log_exc:
+            _result = "log_failed: %s" % _log_exc
+        finally:
+            _ble_log_resilience.set_service_hook(None)
+        try:
+            with open(BLE_LOG_RESULT_PATH, "w") as _result_file:
+                _result_file.write(str(_result)[:240])
+        except Exception:
+            pass
+    finally:
+        # Always reboot into a clean BLE heap. The request marker was removed
+        # before networking, so a reset/timeout cannot create a retry loop.
+        import machine as _ble_log_machine
+        import time as _ble_log_time
+
+        _ble_log_time.sleep(0.5)
+        _ble_log_machine.reset()
+
 # Decide which mode was requested BEFORE trying to start either one -- a
 # single try/except wrapping both the os.stat() check AND the import that
 # starts a whole radio mode was a real bug: os.stat() raising OSError

@@ -22,9 +22,11 @@ def main():
     log_command = source.split('elif cmd in ("log", "log_now"):', 1)[1].split(
         'elif cmd in ("diag", "upload_diag"):', 1
     )[0]
-    assert "resilience.set_service_hook(" in log_command
-    assert "service_ble_during_log" in log_command
-    assert "resilience.set_service_hook(None)" in log_command
+    assert "BLE_LOG_REQUEST_PATH" in log_command
+    assert 'self.command_result = "logging_handoff"' in log_command
+    assert log_command.index("self.update_status()") < log_command.index(
+        "machine.reset()"
+    )
 
     main = source.split("def main():", 1)[1].split(
         'if __name__ == "__main__":', 1
@@ -47,14 +49,6 @@ def main():
     )[0]
     assert "BLE_AUTO_LOG_RECYCLE_HEAP_BYTES" in auto_log
     assert auto_log.index("gc.collect()") < auto_log.index("machine.reset()")
-    assert "BLE_LOG_COMMAND_DEADLINE_MS" in log_command
-    assert "def service_ble_during_log():" in log_command
-    assert "resilience.set_service_hook(service_ble_during_log)" in log_command
-    service_hook = log_command.split("def service_ble_during_log():", 1)[1].split(
-        "try:", 1
-    )[0]
-    assert "time.ticks_diff" in service_hook
-    assert "machine.reset()" in service_hook
     on_connect = source.split("def _scheduled_on_connect", 1)[1].split(
         "def _scheduled_conn_params", 1
     )[0]
