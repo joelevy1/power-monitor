@@ -308,7 +308,7 @@ def main(argv=None):
             BLE_COMMAND_TRANSITION_PATHS,
             "BLE repeated-command completion and key-off transition fix.",
             include_bundle=False,
-            manifest_kind="wifi-feature",
+            manifest_kind="bootstrap",
         )
     if args.one_tls_wifi:
         return _write_manifest(
