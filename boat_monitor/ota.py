@@ -711,6 +711,19 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         )
 
         if reboot:
+            # update() resets internally, so main.py never regains control to
+            # clear pending/force state. Persist success before machine.reset()
+            # without opening another telemetry session on the fragmented heap.
+            try:
+                import ota_health
+                import remote_boot_config
+
+                ota_health.record_boot_ota_result(
+                    True, outcome="success", emit=False
+                )
+                remote_boot_config.clear_pending_ota()
+            except Exception:
+                pass
             try:
                 import ota_telemetry
                 import ota_trace
