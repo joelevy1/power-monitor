@@ -35,6 +35,8 @@ BLE_NOTIFY_FAILURE_LIMIT = 3
 BLE_AUTO_LOG_RECYCLE_HEAP_BYTES = 60000
 BLE_CONNECT_MIN_HEAP_BYTES = 60000
 BLE_LOG_COMMAND_DEADLINE_MS = 180000
+BLE_LOG_REQUEST_PATH = "ble_log_request.txt"
+BLE_LOG_RESULT_PATH = "ble_log_result.txt"
 # Supervision timeout for connection parameter update (units of 10 ms).
 BLE_SUPERVISION_TIMEOUT = 2000
 
@@ -45,6 +47,21 @@ _IRQ_GATTS_WRITE = const(3)
 _FLAG_READ = const(0x0002)
 _FLAG_WRITE = const(0x0008)
 _FLAG_NOTIFY = const(0x0010)
+
+
+def _consume_deferred_log_result():
+    try:
+        with open(BLE_LOG_RESULT_PATH, "r") as result_file:
+            result = result_file.read().strip()
+        try:
+            import os
+
+            os.remove(BLE_LOG_RESULT_PATH)
+        except OSError:
+            pass
+        return result or None
+    except Exception:
+        return None
 
 SERVICE_UUID = bluetooth.UUID("7e400001-b5a3-f393-e0a9-e50e24dcca9e")
 STATUS_UUID = bluetooth.UUID("7e400002-b5a3-f393-e0a9-e50e24dcca9e")
@@ -170,7 +187,7 @@ class BoatMonitorBle:
 
         self.ble.irq(self.irq)
         self.connections = set()
-        self.command_result = None
+        self.command_result = _consume_deferred_log_result()
         self._cellular_busy = False
         self._last_advertise_ms = time.ticks_ms()
         self._advertise_failures = 0
@@ -429,61 +446,17 @@ class BoatMonitorBle:
                 self.command_result = "busy_logging"
                 self.update_status()
                 return
-            self.command_result = "logging"
-            self.update_status()
-
-            def log_progress(stage):
-                self.command_result = stage
-                self.update_status()
-
-            mode = read_status().get("mode", "key_on")
-            outcome = None
-            command_started_ms = time.ticks_ms()
-
-            def service_ble_during_log():
-                if (
-                    time.ticks_diff(time.ticks_ms(), command_started_ms)
-                    >= BLE_LOG_COMMAND_DEADLINE_MS
-                ):
-                    machine.reset()
-                self.update_status(sensors=False)
-
             try:
-                try:
-                    import resilience
-
-                    resilience.set_service_hook(service_ble_during_log)
-                except Exception:
-                    pass
-                summary = self._log_power_and_gps(
-                    note="ble_log_now",
-                    on_progress=log_progress,
-                    gps_timeout_s=10,
-                    prefer_wifi=False,
-                )
-                outcome = summary
-                if "failed" in str(summary).lower():
-                    self.command_result = "log_failed: %s" % summary
-                else:
-                    self.command_result = "logged (%s)" % summary
+                with open(BLE_LOG_REQUEST_PATH, "w") as request_file:
+                    request_file.write("1")
             except Exception as exc:
-                outcome = exc
-                self.command_result = "log_failed: %s" % exc
-                try:
-                    import diag_log
-
-                    diag_log.log("ble_log_now exception %s" % exc)
-                except Exception:
-                    pass
-            finally:
-                try:
-                    import resilience
-
-                    resilience.set_service_hook(None)
-                except Exception:
-                    pass
-            self._remote_after_log(mode, outcome)
+                self.command_result = "log_failed: queue %s" % exc
+                self.update_status()
+                return
+            self.command_result = "logging_handoff"
             self.update_status()
+            time.sleep(0.5)
+            machine.reset()
         elif cmd in ("diag", "upload_diag"):
             if self._cellular_busy:
                 self.command_result = "diag_busy: logging in progress"

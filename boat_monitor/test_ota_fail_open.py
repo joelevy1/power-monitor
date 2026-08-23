@@ -25,6 +25,18 @@ def main():
     assert reboot_success.index("clear_pending_ota()") < reboot_success.index(
         "\n            machine.reset()"
     )
+    deferred = source.split("if _deferred_ble_log:", 1)[1].split(
+        "# Decide which mode was requested", 1
+    )[0]
+    assert deferred.index("_os.remove(BLE_LOG_REQUEST_PATH)") < deferred.index(
+        "_deferred_log("
+    )
+    assert "BLE_LOG_DEADLINE_MS" in deferred
+    assert "_ble_log_resilience.set_service_hook(_ble_log_deadline)" in deferred
+    assert "with open(BLE_LOG_RESULT_PATH" in deferred
+    assert deferred.rindex("_ble_log_machine.reset()") > deferred.index(
+        "_deferred_log("
+    )
     print("OTA fail-open recovery guards OK")
     return 0
 
