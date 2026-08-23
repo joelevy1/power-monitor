@@ -23,7 +23,7 @@ def main():
     assert "record_boot_ota_result(" in reboot_success
     assert 'emit=False' in reboot_success
     assert reboot_success.index("clear_pending_ota()") < reboot_success.index(
-        "machine.reset()"
+        "\n            machine.reset()"
     )
     print("OTA fail-open recovery guards OK")
     return 0
