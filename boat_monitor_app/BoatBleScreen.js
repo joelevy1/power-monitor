@@ -137,6 +137,15 @@ function inProgressStageText(result) {
 // These intentionally reboot the Pico -- BLE disconnecting shortly after
 // sending them is EXPECTED (a successful outcome), not a failure/hang.
 const RESET_COMMANDS = new Set(['reboot', 'wifi', 'ota']);
+const COMMAND_TIMEOUT_S = {
+  refresh: 15,
+  log: 120,
+  signal: 45,
+  gps: 60,
+  ota: 30,
+  wifi: 30,
+  reboot: 30,
+};
 
 // Expands the compact command_result strings ble_service.py sends into a
 // clearer sentence + icon. Covers every shape handle_command()/
@@ -282,15 +291,20 @@ export default function BoatBleScreen({ onBack }) {
       return undefined;
     }
     const id = setInterval(() => {
-      setPendingElapsedS(Math.round((Date.now() - pendingSince) / 1000));
+      const elapsedS = Math.round((Date.now() - pendingSince) / 1000);
+      setPendingElapsedS(elapsedS);
+      if (elapsedS >= (COMMAND_TIMEOUT_S[pendingCommand] || 60)) {
+        const label = COMMAND_INFO[pendingCommand]?.label || pendingCommand;
+        setMessage(`${label} timed out waiting for final BLE status. You can try it again.`);
+        setPendingCommand(null);
+        setPendingSince(null);
+      }
     }, 1000);
     return () => clearInterval(id);
   }, [pendingCommand, pendingSince]);
 
-  // Clears the pending state once a REAL (non-placeholder) command_result
-  // arrives over BLE -- see IN_PROGRESS_RESULTS. This is what actually
-  // resolves "Running Log Now... (14s)" back to a normal result, driven
-  // by the Pico's own status notifications rather than a fixed timeout.
+  // Clears pending state when a real command_result arrives. The timer above
+  // is only a safety net so a dropped final notification cannot lock the UI.
   useEffect(() => {
     const result = status?.command_result;
     if (!result) return;
