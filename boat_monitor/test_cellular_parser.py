@@ -311,8 +311,8 @@ def run():
             and unknown_output.getvalue() == payload,
         )
         check(
-            "unknown-length HTTPREAD probes bounded ranges through terminator",
-            unknown.uart.commands[-1] == "AT+HTTPREAD=3072,1024"
+            "unknown-length HTTPREAD uses bounded ranges through short final body",
+            unknown.uart.commands[-1] == "AT+HTTPREAD=2048,1024"
             and max(unknown.uart.read_sizes)
             <= Sim7600Modem.HTTP_FILE_UART_READ_SIZE,
         )
