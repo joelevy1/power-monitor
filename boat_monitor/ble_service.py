@@ -316,11 +316,17 @@ class BoatMonitorBle:
         status = read_status(self.command_result, sensors=sensors)
         data = json.dumps(status).encode()
         self.ble.gatts_write(self.status_handle, data)
-        for conn in self.connections:
+        stale_connections = []
+        for conn in tuple(self.connections):
             try:
                 self.ble.gatts_notify(conn, self.status_handle, data)
             except Exception as exc:
                 print("Notify failed (%d bytes):" % len(data), exc)
+                stale_connections.append(conn)
+        for conn in stale_connections:
+            self.connections.discard(conn)
+        if stale_connections and not self.connections:
+            self.advertise()
         return status
 
     def handle_command(self, raw):
@@ -383,6 +389,14 @@ class BoatMonitorBle:
             mode = read_status().get("mode", "key_on")
             outcome = None
             try:
+                try:
+                    import resilience
+
+                    resilience.set_service_hook(
+                        lambda: self.update_status(sensors=False)
+                    )
+                except Exception:
+                    pass
                 summary = self._log_power_and_gps(
                     note="ble_log_now",
                     on_progress=log_progress,
@@ -401,6 +415,13 @@ class BoatMonitorBle:
                     import diag_log
 
                     diag_log.log("ble_log_now exception %s" % exc)
+                except Exception:
+                    pass
+            finally:
+                try:
+                    import resilience
+
+                    resilience.set_service_hook(None)
                 except Exception:
                     pass
             self._remote_after_log(mode, outcome)

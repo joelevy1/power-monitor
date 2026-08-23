@@ -18,10 +18,13 @@ STALL_UPLOAD_MAX_S = 12
 # RP2040 max ~8388 ms; fed from diag_log.log() and standby loop.
 WDT_TIMEOUT_MS = 8000
 WDT_FEED_INTERVAL_MS = 2500
+SERVICE_HOOK_INTERVAL_MS = 5000
 HARDWARE_WDT = True
 
 _wdt = None
 _last_watchdog_feed_ms = None
+_service_hook = None
+_last_service_hook_ms = None
 
 
 def _ticks_ms():
@@ -75,12 +78,37 @@ def feed_watchdog_if_due(interval_ms=None):
     maximum watchdog timeout. Feeding every few seconds keeps slow I/O alive
     without hiding a deadlock that stops the loop entirely.
     """
+    _service_hook_if_due()
     if _wdt is None:
         return
     gap = int(interval_ms or WDT_FEED_INTERVAL_MS)
     now = _ticks_ms()
     if _last_watchdog_feed_ms is None or _ticks_diff(now, _last_watchdog_feed_ms) >= gap:
         feed_watchdog()
+
+
+def set_service_hook(callback):
+    """Run a lightweight cooperative service callback from bounded I/O loops."""
+    global _service_hook, _last_service_hook_ms
+    _service_hook = callback
+    _last_service_hook_ms = _ticks_ms() if callback is not None else None
+
+
+def _service_hook_if_due():
+    global _last_service_hook_ms
+    if _service_hook is None:
+        return
+    now = _ticks_ms()
+    if (
+        _last_service_hook_ms is not None
+        and _ticks_diff(now, _last_service_hook_ms) < SERVICE_HOOK_INTERVAL_MS
+    ):
+        return
+    _last_service_hook_ms = now
+    try:
+        _service_hook()
+    except Exception:
+        pass
 
 
 def sleep_with_watchdog(seconds, slice_s=1, sleep_fn=None):
