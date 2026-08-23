@@ -12,6 +12,8 @@ def main():
         "def handle_command", 1
     )[0]
     assert "for conn in tuple(self.connections)" in update
+    assert "BLE_NOTIFY_FAILURE_LIMIT" in update
+    assert "failures >= BLE_NOTIFY_FAILURE_LIMIT" in update
     assert "self.connections.discard(conn)" in update
     assert update.index("self.connections.discard(conn)") < update.index(
         "self.advertise()"
@@ -40,6 +42,11 @@ def main():
     run_loop = source.split("def run(self):", 1)[1].split("def main():", 1)[0]
     assert "BLE_ADV_REFRESH_MS" in run_loop
     assert "self.advertise(refresh=True)" in run_loop
+    auto_log = source.split("def _maybe_auto_log", 1)[1].split(
+        "def run(self):", 1
+    )[0]
+    assert "BLE_AUTO_LOG_RECYCLE_HEAP_BYTES" in auto_log
+    assert auto_log.index("gc.collect()") < auto_log.index("machine.reset()")
 
     print("BLE service regression guards OK")
     return 0
