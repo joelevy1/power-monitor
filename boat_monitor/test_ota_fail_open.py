@@ -5,7 +5,8 @@ from pathlib import Path
 
 
 def main():
-    source = (Path(__file__).resolve().parent / "main.py").read_text(
+    root = Path(__file__).resolve().parent
+    source = (root / "main.py").read_text(
         encoding="utf-8"
     )
     assert "pause_after_ota_memory_failure" in source
@@ -15,6 +16,15 @@ def main():
         "except Exception as exc:", 1
     )[0]
     assert "flush_ota_events_uplink" in flush
+    ota_source = (root / "ota.py").read_text(encoding="utf-8")
+    reboot_success = ota_source.split("if reboot:", 1)[1].split(
+        "return True", 1
+    )[0]
+    assert "record_boot_ota_result(" in reboot_success
+    assert 'emit=False' in reboot_success
+    assert reboot_success.index("clear_pending_ota()") < reboot_success.index(
+        "machine.reset()"
+    )
     print("OTA fail-open recovery guards OK")
     return 0
 

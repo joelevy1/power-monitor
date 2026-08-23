@@ -79,7 +79,7 @@ def fail_count():
         return 0
 
 
-def record_boot_ota_result(success, error=None, outcome=None):
+def record_boot_ota_result(success, error=None, outcome=None, emit=True):
     try:
         import remote_boot_config
 
@@ -104,13 +104,14 @@ def record_boot_ota_result(success, error=None, outcome=None):
             if not preflight_only and n >= FAIL_LIMIT_REBOOT_BLOCK:
                 data["ota_degraded"] = True
         remote_boot_config.save(data)
-        _emit(
-            "boot_ota_recorded",
-            success=1 if success else 0,
-            fail_count=data.get("boot_ota_fail_count"),
-            outcome=outcome or "",
-            error=str(error)[:120] if error else "",
-        )
+        if emit:
+            _emit(
+                "boot_ota_recorded",
+                success=1 if success else 0,
+                fail_count=data.get("boot_ota_fail_count"),
+                outcome=outcome or "",
+                error=str(error)[:120] if error else "",
+            )
     except Exception:
         pass
 
