@@ -70,6 +70,7 @@ try:
                 prefer_wifi = False
             success = False
             ota_error = None
+            ota_memory_failure = False
             ota_target = None
             try:
                 import remote_boot_config as _rbc
@@ -150,42 +151,18 @@ try:
                 except Exception as exc:
                     ota_error = exc
                     success = False
-                # Dock Wi-Fi boot OTA can ENOMEM while cellular succeeds (underway stress).
-                if not success and prefer_wifi and ota_error:
+                # ENOMEM means the heap is fragmented. Opening another network
+                # transport in the same boot compounds the failure and can trap
+                # the device before BLE/normal service starts.
+                if ota_error:
                     try:
                         import ota_health
 
-                        if ota_health.enomem_error(ota_error):
-                            try:
-                                import diag_log
-
-                                diag_log.log(
-                                    "boot OTA Wi-Fi ENOMEM (%s) -> retry cellular"
-                                    % (str(ota_error)[:80],)
-                                )
-                            except Exception:
-                                pass
-                            try:
-                                import gc
-
-                                gc.collect()
-                            except Exception:
-                                pass
-                            try:
-                                success = ota.update(
-                                    reboot=reboot, prefer_wifi=False, max_total_s=max_s
-                                )
-                                if success:
-                                    ota_error = None
-                            except TypeError:
-                                success = ota.update(reboot=reboot, prefer_wifi=False)
-                                if success:
-                                    ota_error = None
-                            except Exception as exc2:
-                                ota_error = exc2
-                                success = False
-                    except ImportError:
-                        pass
+                        ota_memory_failure = ota_health.enomem_error(ota_error)
+                    except Exception:
+                        ota_memory_failure = "memory allocation" in str(
+                            ota_error
+                        ).lower() or str(ota_error).strip() in ("12", "[Errno 12]")
                 if ota_error:
                     try:
                         import ota_health
@@ -253,18 +230,13 @@ try:
                         "preflight" in err_text or err_text.startswith("low_")
                     ):
                         pass
-                    elif "memory allocation" in err_text.lower() or err_text.strip() in (
-                        "28",
-                        "[Errno 28]",
-                    ):
+                    elif ota_memory_failure:
                         try:
-                            data = remote_boot_config.load()
-                            data["ota_manifest_profile"] = "micro"
-                            remote_boot_config.save(data)
+                            remote_boot_config.pause_after_ota_memory_failure(
+                                ota_error
+                            )
                         except Exception:
                             pass
-                        remote_boot_config.set_boot_ota_backoff(300, skip_boots=2)
-                        remote_boot_config.set_pending_ota(True)
                     else:
                         remote_boot_config.set_pending_ota(True)
                     try:
@@ -304,12 +276,13 @@ try:
                     )
                 except Exception:
                     pass
-            try:
-                import ota_events_flush
+            if not ota_memory_failure:
+                try:
+                    import ota_events_flush
 
-                ota_events_flush.flush_ota_events_uplink(prefer_wifi=False)
-            except Exception:
-                pass
+                    ota_events_flush.flush_ota_events_uplink(prefer_wifi=False)
+                except Exception:
+                    pass
         except Exception as exc:
             print("Boot OTA skipped/failed:", exc)
             try:
