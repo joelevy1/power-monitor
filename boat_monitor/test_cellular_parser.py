@@ -7,6 +7,7 @@ here). Run directly with:
     python3 boat_monitor/test_cellular_parser.py
 """
 
+import io
 import sys
 from pathlib import Path
 
@@ -242,6 +243,62 @@ def run():
     fake_time = FakeTime()
     cellular_module.time = fake_time
     try:
+        payload = bytes((i % 251 for i in range(2500)))
+
+        class FakeUart:
+            def __init__(self, body):
+                self.body = body
+                self.response = b""
+                self.commands = []
+                self.read_sizes = []
+
+            def any(self):
+                return len(self.response)
+
+            def read(self, size=None):
+                size = len(self.response) if size is None else size
+                self.read_sizes.append(size)
+                part = self.response[:size]
+                self.response = self.response[size:]
+                return part
+
+            def write(self, raw):
+                command = raw.decode().strip()
+                self.commands.append(command)
+                if command.startswith("AT+HTTPREAD="):
+                    offset, length = (
+                        int(v)
+                        for v in command.split("=", 1)[1].split(",", 1)
+                    )
+                    body = self.body[offset : offset + length]
+                    self.response = (
+                        b"\r\n+HTTPREAD: DATA,%d\r\n" % len(body)
+                        + body
+                        + b"\r\n+HTTPREAD: 0\r\n\r\nOK\r\n"
+                    )
+
+        ranged = object.__new__(Sim7600Modem)
+        ranged.uart = FakeUart(payload)
+        output = io.BytesIO()
+        written = Sim7600Modem._read_http_body_to_file(
+            ranged, len(payload), 30000, output
+        )
+        check("ranged HTTPREAD writes complete file", written == len(payload))
+        check("ranged HTTPREAD preserves bytes", output.getvalue() == payload)
+        check(
+            "ranged HTTPREAD requests bounded modem windows",
+            ranged.uart.commands
+            == [
+                "AT+HTTPREAD=0,1024",
+                "AT+HTTPREAD=1024,1024",
+                "AT+HTTPREAD=2048,452",
+            ],
+        )
+        check(
+            "ranged HTTPREAD bounds UART allocations",
+            max(ranged.uart.read_sizes) <= Sim7600Modem.HTTP_FILE_UART_READ_SIZE,
+        )
+
         sleeping = FakeModem(["", "", "OK"])
         newly_started = Sim7600Modem.ensure_awake(sleeping, boot_timeout_s=5)
         check("pwrkey wakes an off modem", newly_started is True)
