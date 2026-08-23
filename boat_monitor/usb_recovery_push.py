@@ -148,6 +148,13 @@ def main(argv=None):
     patch_text = re.sub(
         r"AUTO_OTA_ON_BOOT = \w+", "AUTO_OTA_ON_BOOT = %s" % auto_ota, patch_text, count=1
     )
+    pending_ota = "True" if args.enable_boot_ota else "False"
+    patch_text = re.sub(
+        r"PENDING_OTA_ON_BOOT = \w+",
+        "PENDING_OTA_ON_BOOT = %s" % pending_ota,
+        patch_text,
+        count=1,
+    )
     if args.ota_self_sufficient or args.enable_boot_ota:
         patch_text = re.sub(r"OTA_SELF_SUFFICIENT = \w+", "OTA_SELF_SUFFICIENT = True", patch_text, count=1)
         patch_text = re.sub(r"DOCK_MODE = \"[^\"]*\"", "DOCK_MODE = \"away\"", patch_text, count=1)

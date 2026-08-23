@@ -8,6 +8,7 @@ except ImportError:
 PATH = "remote_boot_config.json"
 PREFER_WIFI = False
 AUTO_OTA_ON_BOOT = True
+PENDING_OTA_ON_BOOT = False
 DOCK_MODE = "away"
 OTA_MANIFEST_PROFILE = "stress"
 OTA_SELF_SUFFICIENT = True
@@ -46,7 +47,7 @@ def main():
     else:
         data.pop("ota_self_sufficient", None)
         data.pop("ota_self_sufficient_since", None)
-    if AUTO_OTA_ON_BOOT:
+    if PENDING_OTA_ON_BOOT:
         try:
             import version
 
@@ -54,6 +55,8 @@ def main():
             print("remote_boot_config: pending_ota=True for boot OTA after USB recovery")
         except Exception:
             data["pending_ota"] = True
+    else:
+        data.pop("pending_ota", None)
     if PREFER_WIFI:
         data["boot_ota_prefer_wifi"] = True
     else:

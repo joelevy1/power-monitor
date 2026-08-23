@@ -34,6 +34,13 @@ def main():
     assert version_last(("version.py", "cellular.py")) == ("cellular.py", "version.py")
     assert WINTER_HARDENING_PATHS[-1] == "version.py"
     assert "status_led.py" in RECOVERY_FILES
+    usb_batch = (ROOT / "run_usb_ota_self_sufficient.bat").read_text(
+        encoding="utf-8"
+    )
+    assert "--ota-self-sufficient" in usb_batch
+    assert "--enable-boot-ota" not in usb_batch
+    usb_patch = (ROOT / "usb_recovery_patch.py").read_text(encoding="utf-8")
+    assert "PENDING_OTA_ON_BOOT = False" in usb_patch
 
     version_before = (ROOT / "version.py").read_text(encoding="utf-8")
     manifest_before = (ROOT / "ota_manifest.json").read_text(encoding="utf-8")
