@@ -165,6 +165,11 @@ BLE_COMMAND_TRANSITION_PATHS = (
     "version.py",
 )
 
+STANDBY_BLE_INTERRUPT_PATHS = (
+    "standby_monitor.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -302,7 +307,19 @@ def main(argv=None):
         action="store_true",
         help="2-file BLE command completion/key-off release",
     )
+    p.add_argument(
+        "--standby-ble-interrupt",
+        action="store_true",
+        help="2-file interrupt-driven standby-to-BLE transition release",
+    )
     args = p.parse_args(argv)
+    if args.standby_ble_interrupt:
+        return _write_manifest(
+            STANDBY_BLE_INTERRUPT_PATHS,
+            "Interrupt blocking standby network work when switch or key turns on.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.ble_command_transition:
         return _write_manifest(
             BLE_COMMAND_TRANSITION_PATHS,

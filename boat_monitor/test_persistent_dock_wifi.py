@@ -251,6 +251,23 @@ def test_standby_tears_down_wifi_before_ble_reset():
     assert branch.index("wifi_uplink.ensure_wifi_off()") < branch.index("machine.reset()")
 
 
+def test_standby_arms_switch_irq_before_blocking_boot_log():
+    source = (ROOT / "standby_monitor.py").read_text(encoding="utf-8")
+    main = source.split("def main():", 1)[1]
+    assert main.index("_arm_ble_transition_irq()") < main.index("if _boot_log_wanted():")
+    irq = source.split("def _arm_ble_transition_irq():", 1)[1].split(
+        "def _standby_prefer_wifi():", 1
+    )[0]
+    assert "machine.Pin.IRQ_FALLING" in irq
+    assert "_micropython.schedule(_transition_to_ble, 0)" in source
+    transition = source.split("def _transition_to_ble", 1)[1].split(
+        "def _ble_input_irq", 1
+    )[0]
+    assert transition.index("wifi_uplink.ensure_wifi_off()") < transition.index(
+        "machine.reset()"
+    )
+
+
 def main():
     test_remote_policy()
     test_reuse_and_stale_reset()
@@ -258,6 +275,7 @@ def main():
     test_cellular_policy_disconnects_persistent_wifi()
     test_ble_shutdown_deinitializes_sta_and_ap()
     test_standby_tears_down_wifi_before_ble_reset()
+    test_standby_arms_switch_irq_before_blocking_boot_log()
     print("persistent dock Wi-Fi tests OK")
 
 

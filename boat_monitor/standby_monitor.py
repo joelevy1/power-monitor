@@ -26,6 +26,70 @@ MIN_ATTEMPT_GAP_ENOMEM_S = 30
 # Consecutive soft-fails before stall reboot (also triggers degraded Events).
 AUTO_LOG_FAIL_REBOOT_COUNT = 4
 
+_transition_pins = []
+_transition_scheduled = False
+_micropython = None
+
+
+def _transition_to_ble(_arg=0):
+    """Leave a blocking standby network operation when switch/key turns on."""
+    global _transition_scheduled
+    if not ble_policy.ble_wanted():
+        _transition_scheduled = False
+        return
+    try:
+        diag_log.log("switch/key IRQ -> teardown Wi-Fi then reboot for BLE service")
+    except Exception:
+        pass
+    try:
+        import wifi_uplink
+
+        wifi_uplink.ensure_wifi_off()
+    except Exception as exc:
+        try:
+            diag_log.log("BLE IRQ Wi-Fi teardown warning: %s" % exc)
+        except Exception:
+            pass
+    try:
+        time.sleep_ms(300)
+    except AttributeError:
+        time.sleep(0.3)
+    import machine
+
+    machine.reset()
+
+
+def _ble_input_irq(_pin):
+    global _transition_scheduled
+    if _transition_scheduled:
+        return
+    _transition_scheduled = True
+    try:
+        _micropython.schedule(_transition_to_ble, 0)
+    except Exception:
+        _transition_scheduled = False
+
+
+def _arm_ble_transition_irq():
+    """Watch active-low switch/key even while Wi-Fi or cellular calls block."""
+    global _micropython
+    try:
+        import config
+        import machine
+        import micropython
+
+        _micropython = micropython
+        for pin_num in (config.PIN_BATTERY_SWITCH, config.PIN_KEY):
+            pin = machine.Pin(pin_num, machine.Pin.IN, machine.Pin.PULL_UP)
+            pin.irq(trigger=machine.Pin.IRQ_FALLING, handler=_ble_input_irq)
+            _transition_pins.append(pin)
+        if ble_policy.ble_wanted():
+            _transition_to_ble()
+        return True
+    except Exception as exc:
+        diag_log.log("BLE transition IRQ unavailable: %s" % exc)
+        return False
+
 
 def _standby_prefer_wifi():
     """Wi-Fi-first standby logs at dock; independent of boot OTA transport."""
@@ -92,6 +156,7 @@ def _finish_log_session(device_id, mode, summary, source):
 def main():
     diag_log.log("standby_monitor start")
     resilience.enable_watchdog()
+    _arm_ble_transition_irq()
     print("standby_monitor: BLE off — auto-log (Wi-Fi or cellular per remote_boot_config)")
     auto_log.load_persisted_overrides()
     try:
