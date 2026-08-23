@@ -639,6 +639,12 @@ class BoatMonitorBle:
 
 
 def main():
+    try:
+        import resilience
+
+        resilience.enable_watchdog()
+    except Exception as exc:
+        print("BLE watchdog unavailable:", exc)
     BoatMonitorBle().run()
 
 
