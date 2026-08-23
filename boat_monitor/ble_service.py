@@ -175,7 +175,6 @@ class BoatMonitorBle:
         self._last_advertise_ms = time.ticks_ms()
         self._advertise_failures = 0
         self._notify_failures = {}
-        self._command_deadline_timer = None
 
         service = (
             SERVICE_UUID,
@@ -323,36 +322,6 @@ class BoatMonitorBle:
     def _scheduled_handle_command(self, raw):
         self.handle_command(raw)
 
-    def _command_deadline_expired(self, _timer):
-        # Timer callback runs outside the blocked network call. Keep it
-        # allocation-free: the next boot reports/recoveries provide evidence.
-        machine.reset()
-
-    def _arm_command_deadline(self, timeout_ms):
-        self._cancel_command_deadline()
-        try:
-            try:
-                timer = machine.Timer(-1)
-            except TypeError:
-                timer = machine.Timer()
-            timer.init(
-                mode=machine.Timer.ONE_SHOT,
-                period=int(timeout_ms),
-                callback=self._command_deadline_expired,
-            )
-            self._command_deadline_timer = timer
-        except Exception as exc:
-            print("BLE command deadline unavailable:", exc)
-
-    def _cancel_command_deadline(self):
-        timer = self._command_deadline_timer
-        self._command_deadline_timer = None
-        if timer is not None:
-            try:
-                timer.deinit()
-            except Exception:
-                pass
-
     def advertise(self, refresh=False):
         self._last_advertise_ms = time.ticks_ms()
         try:
@@ -469,14 +438,21 @@ class BoatMonitorBle:
 
             mode = read_status().get("mode", "key_on")
             outcome = None
+            command_started_ms = time.ticks_ms()
+
+            def service_ble_during_log():
+                if (
+                    time.ticks_diff(time.ticks_ms(), command_started_ms)
+                    >= BLE_LOG_COMMAND_DEADLINE_MS
+                ):
+                    machine.reset()
+                self.update_status(sensors=False)
+
             try:
-                self._arm_command_deadline(BLE_LOG_COMMAND_DEADLINE_MS)
                 try:
                     import resilience
 
-                    resilience.set_service_hook(
-                        lambda: self.update_status(sensors=False)
-                    )
+                    resilience.set_service_hook(service_ble_during_log)
                 except Exception:
                     pass
                 summary = self._log_power_and_gps(
@@ -500,7 +476,6 @@ class BoatMonitorBle:
                 except Exception:
                     pass
             finally:
-                self._cancel_command_deadline()
                 try:
                     import resilience
 
