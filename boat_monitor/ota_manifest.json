@@ -1,15 +1,15 @@
 {
   "version": "1.1.141",
-  "notes": "Bootstrap OTA: version.py + remote_boot_config.py (sheet backoff self-heal).",
+  "notes": "BLE repeated-command completion and key-off transition fix.",
   "files": [
     {
-      "path": "remote_boot_config.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+      "path": "ble_service.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
     },
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
     }
   ],
-  "manifest_kind": "bootstrap"
+  "manifest_kind": "wifi-feature"
 }
