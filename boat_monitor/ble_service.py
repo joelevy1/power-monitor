@@ -170,6 +170,7 @@ def advertising_payload(name=None, service_uuid=None):
 
 class BoatMonitorBle:
     def __init__(self):
+        auto_log.load_persisted_overrides()
         ensure_wifi_off()
 
         self.ble = bluetooth.BLE()
