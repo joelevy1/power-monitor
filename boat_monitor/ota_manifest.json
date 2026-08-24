@@ -1,11 +1,7 @@
 {
-  "version": "1.1.144",
-  "notes": "Bounded headless cellular handoff for BLE Log Now.",
+  "version": "1.1.145",
+  "notes": "BLE repeated-command completion and key-off transition fix.",
   "files": [
-    {
-      "path": "main.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
-    },
     {
       "path": "ble_service.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
