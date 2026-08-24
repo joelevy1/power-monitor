@@ -32,7 +32,6 @@ BLE_ADV_INTERVAL_US = 128000
 BLE_ADV_REFRESH_MS = 15000
 BLE_ADV_FAILURE_RESET_COUNT = 3
 BLE_NOTIFY_FAILURE_LIMIT = 3
-BLE_AUTO_LOG_RECYCLE_HEAP_BYTES = 60000
 BLE_CONNECT_MIN_HEAP_BYTES = 60000
 BLE_LOG_COMMAND_DEADLINE_MS = 180000
 BLE_LOG_REQUEST_PATH = "ble_log_request.txt"
@@ -624,24 +623,15 @@ class BoatMonitorBle:
         self.update_status()
         if not self.connections:
             try:
-                import gc
+                import diag_log
 
-                gc.collect()
-                heap_free = gc.mem_free()
+                diag_log.log(
+                    "BLE auto-log complete; rebooting to reclaim network modules"
+                )
             except Exception:
-                heap_free = BLE_AUTO_LOG_RECYCLE_HEAP_BYTES
-            if heap_free < BLE_AUTO_LOG_RECYCLE_HEAP_BYTES:
-                try:
-                    import diag_log
-
-                    diag_log.log(
-                        "BLE auto-log heap %s < %s; rebooting to reclaim modules"
-                        % (heap_free, BLE_AUTO_LOG_RECYCLE_HEAP_BYTES)
-                    )
-                except Exception:
-                    pass
-                time.sleep(0.3)
-                machine.reset()
+                pass
+            time.sleep(0.3)
+            machine.reset()
 
     def run(self):
         while True:
