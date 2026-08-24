@@ -176,6 +176,11 @@ BLE_LOG_HANDOFF_PATHS = (
     "version.py",
 )
 
+BLE_SENSOR_CACHE_PATHS = (
+    "boat_status.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -323,7 +328,19 @@ def main(argv=None):
         action="store_true",
         help="3-file bounded BLE-to-cellular Log Now handoff",
     )
+    p.add_argument(
+        "--ble-sensor-cache",
+        action="store_true",
+        help="2-file cached BLE sensor status release",
+    )
     args = p.parse_args(argv)
+    if args.ble_sensor_cache:
+        return _write_manifest(
+            BLE_SENSOR_CACHE_PATHS,
+            "Keep refreshed sensor readings across lightweight BLE heartbeats.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.ble_log_handoff:
         return _write_manifest(
             BLE_LOG_HANDOFF_PATHS,
