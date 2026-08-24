@@ -67,6 +67,16 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 8. Events are baselined immediately before each ship; old lifecycle rows do not
    count as current-round progress.
 
+## Production switch-on profile
+
+1. Use `--profile switch-on` for qualification with switch/key ON.
+2. Preserve production intervals: 600 seconds key-on and 3600 seconds standby.
+3. Require every target-version Power_Log row to use `uplink=cellular`.
+4. Do not count a round unless the subsequent clean-heap automatic log also
+   completes with `power: ok, gps: ok`.
+5. The 60-second `underway` profile is a bench-only pressure test and must not
+   be used for winter qualification.
+
 ## Dock / standby profile (switch+key off, V50 power)
 
 1. Use harness `--profile dock` — sets `dock_mode=home` (Wi‑Fi standby logs),

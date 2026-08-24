@@ -30,6 +30,11 @@ def profile_rows(profile, version):
             ("interval_engine_on_s", "600", "10 min while key_on during dock campaign"),
             ("interval_engine_off_s", "3600", "1 hour winter dock interval"),
         ]
+    elif profile == "switch-on":
+        intervals = [
+            ("interval_engine_on_s", "600", "10 min production switch-on cadence"),
+            ("interval_engine_off_s", "3600", "1 hour production standby cadence"),
+        ]
     else:
         intervals = [
             ("interval_engine_on_s", "60", "1 min while key_on (engine charging)"),
@@ -45,7 +50,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Apply validated release settings to the boat sheet")
     parser.add_argument(
         "--profile",
-        choices=("underway", "dock"),
+        choices=("underway", "switch-on", "dock"),
         default="underway",
         help="preserve the intended logging cadence while setting min_fw",
     )

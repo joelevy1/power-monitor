@@ -28,6 +28,13 @@ def main():
     assert underway["interval_engine_on_s"] == "60"
     assert underway["interval_engine_off_s"] == "300"
 
+    switch_on = {
+        key: value for key, value, _ in profile_rows("switch-on", "1.1.117")
+    }
+    assert switch_on["interval_engine_on_s"] == "600"
+    assert switch_on["interval_engine_off_s"] == "3600"
+    assert switch_on["min_fw_version"] == "1.1.117"
+
     assert _uplink_matches("Levy-Guest", "wifi")
     assert not _uplink_matches("cellular", "wifi")
     assert _uplink_matches("cellular", "cellular")
