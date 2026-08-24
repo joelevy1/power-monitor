@@ -1,15 +1,11 @@
 {
   "version": "1.1.146",
-  "notes": "BLE repeated-command completion and key-off transition fix.",
+  "notes": "Patch OTA: version.py only (cellular heap safe).",
   "files": [
-    {
-      "path": "ble_service.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
-    },
     {
       "path": "version.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
     }
   ],
-  "manifest_kind": "wifi-feature"
+  "manifest_kind": "stress"
 }
