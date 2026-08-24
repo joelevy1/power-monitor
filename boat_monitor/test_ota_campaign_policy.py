@@ -61,6 +61,9 @@ def main():
     assert "cmd_ota_force" in STALE_SHEET_KEYS
     assert "boat-p2:cmd_ota_force" in STALE_SHEET_KEYS
     assert DOCK_BOOT_START_TIMEOUT_S >= 3600 + 900
+    harness_source = (ROOT / "ota_stress_harness.py").read_text(encoding="utf-8")
+    assert "upsert_clear_pending" not in harness_source
+    assert 'print("Bootstrap-rules skip: explicitly disabled")' in harness_source
 
     original_path = remote_boot_config.PATH
     with tempfile.TemporaryDirectory() as tmp:
