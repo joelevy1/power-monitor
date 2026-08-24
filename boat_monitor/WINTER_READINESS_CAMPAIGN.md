@@ -206,3 +206,40 @@ Conclusion: winter qualification cannot continue remotely from this flash
 state. USB cleanup is required to remove `.bak`, `.new`, bundle, and diagnostic
 artifacts. The subsequent full USB push must include `gps.py` as well as the
 other watchdog-aware network modules before the hardware watchdog is re-enabled.
+
+### 2026-08-24 — Production switch-on campaign: six rounds passed
+
+After installing the bounded cellular transport, fail-open OTA recovery, BLE
+handoff, and deterministic post-log heap recycling, the production switch-on
+profile completed six autonomous version-only upgrades:
+
+| Round | Target | Target Power_Log | Result |
+|---|---:|---|---|
+| 1 | 1.1.148 | Aug 23, 9:31 PM | pass |
+| 2 | 1.1.149 | Aug 23, 9:58 PM | pass |
+| 3 | 1.1.150 | Aug 23, 10:25 PM | pass |
+| 4 | 1.1.151 | Aug 23, 10:51 PM | pass |
+| 5 | 1.1.152 | Aug 23, 11:17 PM | pass |
+| 6 | 1.1.153 | Aug 23, 11:43 PM | pass |
+
+Qualification evidence:
+
+- `success_count=6`, `fail_count=0`
+- all target-version rows used the cellular uplink in `key_on` mode
+- production intervals remained 600 seconds key-on and 3600 seconds standby
+- no telemetry gaps or OTA-action stalls
+- no ENOMEM, low-flash, degraded, backoff, or reboot-loop failure
+- no physical or USB intervention during the six successful rounds
+- measured round wall times: 990, 1498, 1495, 1494, 1458, and 1459 seconds
+
+One publication attempt at 1.1.147 was stopped before changing the Sheet target
+because raw GitHub CDN had not converged. It is not counted as a device upgrade.
+The guardrail worked as intended, and the successful six-round series began at
+1.1.148.
+
+Final production state:
+
+- firmware and `min_fw_version`: 1.1.153
+- `auto_ota_on_boot=0`
+- all OTA one-shots and recovery-clear keys blank
+- boot OTA transport policy: cellular
