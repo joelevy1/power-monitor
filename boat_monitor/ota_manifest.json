@@ -1,10 +1,14 @@
 {
-  "version": "1.1.154",
-  "notes": "Keep refreshed sensor readings across lightweight BLE heartbeats.",
+  "version": "1.1.155",
+  "notes": "Disable Wi-Fi console commands, boot routing, and runtime fallback.",
   "files": [
     {
-      "path": "boat_status.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/boat_status.py"
+      "path": "main.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
+    },
+    {
+      "path": "ble_service.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
     },
     {
       "path": "version.py",
