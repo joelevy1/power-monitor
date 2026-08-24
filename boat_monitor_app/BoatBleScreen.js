@@ -35,10 +35,6 @@ const LIVE_RSSI_POLL_MS = 2000;
 // platform restriction, not something this app can work around -- so this
 // checks REACHABILITY of the console instead: it only succeeds once your
 // phone has actually joined the BoatMonitor Wi-Fi network in iOS Settings,
-// at which point a real fetch to it is the practical equivalent of "is the
-// AP up and serving".
-const WIFI_CONSOLE_URL = 'http://192.168.4.1/';
-const WIFI_CHECK_TIMEOUT_MS = 4000;
 const OTA_MANIFEST_URL =
   'https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_manifest.json';
 const FIRMWARE_CHECK_TIMEOUT_MS = 8000;
@@ -55,11 +51,10 @@ function fetchWithTimeout(url, options, timeoutMs) {
 // registration + HTTPS), not app slowness -- see cellular.py/auto_log.py.
 const COMMAND_INFO = {
   refresh: { label: 'Refresh', hint: 'instant' },
-  log: { label: 'Log Now', hint: '~15-45s over cellular (BLE stays connected)' },
+  log: { label: 'Log Now', hint: 'BLE disconnects briefly; logging completes in the background' },
   signal: { label: 'Check Signal', hint: '~5-20s (modem/SIM/network registration, no data session)' },
   gps: { label: 'Check GPS', hint: '~5-30s (GPS fix check, no internet data session)' },
   ota: { label: 'OTA Check', hint: 'reboots, then checks GitHub before BLE starts' },
-  wifi: { label: 'Start Wi-Fi', hint: 'reboots immediately -- BLE will disconnect' },
   reboot: { label: 'Reboot', hint: 'reboots immediately -- BLE will disconnect' },
 };
 
@@ -71,6 +66,7 @@ const COMMAND_INFO = {
 const IN_PROGRESS_RESULTS = new Set([
   'refreshing',
   'logging',
+  'logging_handoff',
   'logging_modem',
   'logging_power',
   'logging_power_ok',
@@ -79,7 +75,6 @@ const IN_PROGRESS_RESULTS = new Set([
   'checking_gps',
   'ota_started',
   'ota_rebooting',
-  'starting_wifi',
   'rebooting',
 ]);
 
@@ -109,6 +104,8 @@ function inProgressStageText(result) {
       return 'Refreshing Pico status...';
     case 'logging':
       return 'Starting log to Google Sheets...';
+    case 'logging_handoff':
+      return 'Logging in the background. BLE will return shortly...';
     case 'logging_modem':
       return 'Connecting cellular modem to the network (this is usually the slow part)...';
     case 'logging_power':
@@ -125,8 +122,6 @@ function inProgressStageText(result) {
       return 'Rebooting to run OTA before BLE starts...';
     case 'ota_started':
       return 'Checking GitHub for firmware updates...';
-    case 'starting_wifi':
-      return 'Switching to Wi-Fi console mode...';
     case 'rebooting':
       return 'Rebooting Pico...';
     default:
@@ -136,20 +131,19 @@ function inProgressStageText(result) {
 
 // These intentionally reboot the Pico -- BLE disconnecting shortly after
 // sending them is EXPECTED (a successful outcome), not a failure/hang.
-const RESET_COMMANDS = new Set(['reboot', 'wifi', 'ota']);
+const RESET_COMMANDS = new Set(['log', 'reboot', 'ota']);
 const COMMAND_TIMEOUT_S = {
   refresh: 15,
   log: 120,
   signal: 45,
   gps: 60,
   ota: 30,
-  wifi: 30,
   reboot: 30,
 };
 
 // Expands the compact command_result strings ble_service.py sends into a
 // clearer sentence + icon. Covers every shape handle_command()/
-// _maybe_auto_log() actually produce (refreshed, rebooting, starting_wifi,
+// _maybe_auto_log() actually produce (refreshed, rebooting,
 // ota_current/updated/failed, logged/auto_logged (power: ..., gps: ...),
 // log_failed, signal: ...(...), gps: fix/no_fix (...), *_failed,
 // unknown_command) -- falls back to showing the raw text with a generic icon
@@ -216,6 +210,13 @@ function friendlyCommandResult(result) {
     };
   }
   if (result === 'refreshed') return { icon: '✅', text: 'Status refreshed.', danger: false };
+  if (result === 'logging_handoff') {
+    return {
+      icon: '⏳',
+      text: 'Logging in the background. BLE will return shortly.',
+      danger: false,
+    };
+  }
   if (result === 'ota_current') return { icon: '✅', text: 'Already on the latest firmware.', danger: false };
   if (result === 'ota_updated') {
     return { icon: '✅', text: 'Firmware updated — Pico is rebooting now.', danger: false };
@@ -224,7 +225,6 @@ function friendlyCommandResult(result) {
     return { icon: '⏳', text: 'Rebooting to run OTA before BLE starts...', danger: false };
   }
   if (result === 'rebooting') return { icon: '⏳', text: 'Rebooting...', danger: false };
-  if (result === 'starting_wifi') return { icon: '⏳', text: 'Switching to Wi-Fi mode...', danger: false };
 
   if (result.startsWith('ota_failed:')) {
     return { icon: '❌', text: result.replace(/^ota_failed:\s*/, 'OTA check failed: '), danger: true };
@@ -258,10 +258,9 @@ export default function BoatBleScreen({ onBack }) {
   const [rawStatus, setRawStatus] = useState('');
   const [message, setMessage] = useState('Not connected');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [sensorReadAt, setSensorReadAt] = useState(null);
   const [scanRssi, setScanRssi] = useState(null);
   const [signalStrength, setSignalStrength] = useState(null);
-  const [wifiConsoleStatus, setWifiConsoleStatus] = useState('idle'); // idle | checking | reachable | unreachable
-  const [wifiConsoleError, setWifiConsoleError] = useState(null);
   const [latestFirmware, setLatestFirmware] = useState(null);
   const [firmwareCheckStatus, setFirmwareCheckStatus] = useState('idle'); // idle | checking | ok | error
   const [firmwareCheckError, setFirmwareCheckError] = useState(null);
@@ -271,15 +270,11 @@ export default function BoatBleScreen({ onBack }) {
   const [commandResultAt, setCommandResultAt] = useState(null);
   const lastCommandResultRef = useRef(null);
   const lastFirmwareCheckRef = useRef(null);
-  const wifiCheckIdRef = useRef(0);
   const commandBaselineRef = useRef(null);
   const commandProgressSeenRef = useRef(false);
-
-  function resetWifiConsoleStatus() {
-    wifiCheckIdRef.current += 1;
-    setWifiConsoleStatus('idle');
-    setWifiConsoleError(null);
-  }
+  const intentionalHandoffRef = useRef(null);
+  const refreshPendingRef = useRef(false);
+  const sensorReadAtRef = useRef(null);
 
   // Ticking display while a command is pending -- without this, pressing
   // a button that takes 10-90s (a real cellular round-trip) just shows a
@@ -382,6 +377,9 @@ export default function BoatBleScreen({ onBack }) {
           (device) => {
             if (!cancelled && Number.isFinite(device?.rssi)) {
               setScanRssi(device.rssi);
+              if (intentionalHandoffRef.current === 'log') {
+                setMessage('Log handoff complete — BoatMonitor BLE is back. Tap Connect BLE to view the result.');
+              }
             }
           },
           () => {
@@ -429,31 +427,6 @@ export default function BoatBleScreen({ onBack }) {
     return () => clearInterval(id);
   }, [connected]);
 
-  async function checkWifiConsole() {
-    const checkId = wifiCheckIdRef.current + 1;
-    wifiCheckIdRef.current = checkId;
-    setWifiConsoleStatus('checking');
-    setWifiConsoleError(null);
-    try {
-      const res = await fetchWithTimeout(WIFI_CONSOLE_URL, { method: 'GET' }, WIFI_CHECK_TIMEOUT_MS);
-      if (wifiCheckIdRef.current !== checkId) return;
-      setWifiConsoleStatus(res.ok ? 'reachable' : 'unreachable');
-      if (!res.ok) setWifiConsoleError(`HTTP ${res.status}`);
-    } catch (error) {
-      if (wifiCheckIdRef.current !== checkId) return;
-      setWifiConsoleStatus('unreachable');
-      setWifiConsoleError(error?.message || String(error));
-    }
-  }
-
-  async function openWifiConsole() {
-    try {
-      await Linking.openURL(WIFI_CONSOLE_URL);
-    } catch (error) {
-      Alert.alert('Could not open Wi-Fi console', error?.message || String(error));
-    }
-  }
-
   function confirmRebootForUpdate() {
     if (!firmwareUpdateNeeded) return;
     Alert.alert(
@@ -470,7 +443,6 @@ export default function BoatBleScreen({ onBack }) {
     if (scanning) return;
     setScanning(true);
     setMessage('Scanning for BoatMonitor...');
-    resetWifiConsoleStatus();
     setStatus(null);
     setRawStatus('');
 
@@ -480,12 +452,16 @@ export default function BoatBleScreen({ onBack }) {
       deviceRef.current = connectedDevice;
 
       connectedDevice.onDisconnected(() => {
+        const handoff = intentionalHandoffRef.current;
         setConnected(false);
-        setMessage('Disconnected');
+        setMessage(
+          handoff === 'log'
+            ? 'Logging in the background — waiting for BoatMonitor BLE to return.'
+            : 'Disconnected',
+        );
         setLastUpdated(null);
         setSignalStrength(null);
-        resetWifiConsoleStatus();
-        // A pending "reboot"/"wifi" command causes exactly this disconnect
+        // A pending reset/handoff command causes exactly this disconnect,
         // as its expected, successful outcome -- but ANY disconnect ends
         // whatever was pending, since there's no more BLE connection left
         // to receive a final result on.
@@ -507,6 +483,7 @@ export default function BoatBleScreen({ onBack }) {
           // error -- see the BLE decode crash fixed in 0.1.8/0.1.9.
           try {
             if (error) {
+              if (/operation was cancelle?d|cancelled|canceled/i.test(error.message || '')) return;
               setMessage(`Notify error: ${error.message}`);
               return;
             }
@@ -514,7 +491,19 @@ export default function BoatBleScreen({ onBack }) {
             setRawStatus(text);
             setLastUpdated(new Date());
             try {
-              setStatus(JSON.parse(text));
+              const parsed = JSON.parse(text);
+              setStatus(parsed);
+              if (
+                parsed?.engine &&
+                parsed?.house &&
+                parsed?.v50 &&
+                (!sensorReadAtRef.current || refreshPendingRef.current)
+              ) {
+                const readAt = new Date();
+                sensorReadAtRef.current = readAt;
+                refreshPendingRef.current = false;
+                setSensorReadAt(readAt);
+              }
             } catch {
               setStatus(null);
             }
@@ -529,12 +518,18 @@ export default function BoatBleScreen({ onBack }) {
       setRawStatus(text);
       setLastUpdated(new Date());
       try {
-        setStatus(JSON.parse(text));
+        const parsed = JSON.parse(text);
+        setStatus(parsed);
+        if (parsed?.engine && parsed?.house && parsed?.v50) {
+          const readAt = new Date();
+          sensorReadAtRef.current = readAt;
+          setSensorReadAt(readAt);
+        }
       } catch {
         setStatus(null);
       }
       setConnected(true);
-      resetWifiConsoleStatus();
+      intentionalHandoffRef.current = null;
       setMessage(`Connected to ${ble.deviceLabel(connectedDevice) || connectedDevice.id}`);
       checkFirmwareUpdate();
     } catch (error) {
@@ -561,7 +556,7 @@ export default function BoatBleScreen({ onBack }) {
       setMessage('Disconnected');
       setLastUpdated(null);
       setSignalStrength(null);
-      resetWifiConsoleStatus();
+      intentionalHandoffRef.current = null;
       setPendingCommand(null);
       setPendingSince(null);
       import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
@@ -589,7 +584,8 @@ export default function BoatBleScreen({ onBack }) {
     setPendingCommand(cmd);
     setPendingSince(Date.now());
     setMessage(`Sending ${label} command to Pico...`);
-    if (RESET_COMMANDS.has(cmd)) resetWifiConsoleStatus();
+    if (cmd === 'log') intentionalHandoffRef.current = 'log';
+    if (cmd === 'refresh') refreshPendingRef.current = true;
 
     try {
       const ble = await import('./bleConnection');
@@ -597,10 +593,14 @@ export default function BoatBleScreen({ onBack }) {
       await device.writeCharacteristicWithResponseForService(ble.SERVICE_UUID, ble.COMMAND_UUID, payload);
       setMessage(
         RESET_COMMANDS.has(cmd)
-          ? `${label} sent — Pico will reboot and disconnect shortly (expected).`
+          ? cmd === 'log'
+            ? 'Log Now accepted — BLE will disconnect while the Pico logs in the background.'
+            : `${label} sent — Pico will reboot and disconnect shortly (expected).`
           : `${label} command sent to Pico.`,
       );
     } catch (error) {
+      if (cmd === 'log') intentionalHandoffRef.current = null;
+      if (cmd === 'refresh') refreshPendingRef.current = false;
       setPendingCommand(null);
       setPendingSince(null);
       Alert.alert('Command failed', error.message || String(error));
@@ -624,14 +624,6 @@ export default function BoatBleScreen({ onBack }) {
   const activeRssi = connected ? signalStrength : scanRssi;
   const bleQuality = signalQualityFor(activeRssi);
   const bleBroadcasting = connected || Number.isFinite(scanRssi);
-  const wifiConsoleText =
-    wifiConsoleStatus === 'checking'
-      ? 'Checking...'
-      : wifiConsoleStatus === 'reachable'
-        ? 'Open 192.168.4.1'
-        : wifiConsoleStatus === 'unreachable'
-          ? `Not reachable${wifiConsoleError ? ` (${wifiConsoleError})` : ''}`
-          : 'Not checked yet';
   const picoFirmware = status?.fw || null;
   const firmwareUpdateNeeded = !!latestFirmware && !!picoFirmware && picoFirmware !== 'unknown' && latestFirmware !== picoFirmware;
   const firmwareText =
@@ -709,7 +701,7 @@ export default function BoatBleScreen({ onBack }) {
                 {pendingStage ? <Text style={styles.stageText}>{pendingStage}</Text> : null}
                 <Text style={styles.hint}>
                   Expected: {COMMAND_INFO[pendingCommand]?.hint || 'a few seconds'}.
-                  {pendingCommand === 'log' ? ' Uses cellular while you stay connected over BLE.' : ''}
+                  {pendingCommand === 'log' ? ' The app will detect when BoatMonitor BLE returns.' : ''}
                 </Text>
               </View>
             </View>
@@ -749,6 +741,7 @@ export default function BoatBleScreen({ onBack }) {
             pendingCommand={pendingCommand}
             onPress={sendCommand}
           />
+          <Text style={styles.subsectionTitle}>Diagnostics</Text>
           <View style={styles.serviceGrid}>
             <ServiceButton
               cmd="signal"
@@ -766,14 +759,9 @@ export default function BoatBleScreen({ onBack }) {
               pendingCommand={pendingCommand}
               onPress={sendCommand}
             />
-            <ServiceButton
-              cmd="wifi"
-              label="Start Wi-Fi"
-              style={styles.serviceGridButton}
-              connected={connected}
-              pendingCommand={pendingCommand}
-              onPress={sendCommand}
-            />
+          </View>
+          <Text style={styles.subsectionTitle}>Recovery</Text>
+          <View style={styles.serviceGrid}>
             <ServiceButton
               cmd="reboot"
               label="Reboot"
@@ -783,7 +771,10 @@ export default function BoatBleScreen({ onBack }) {
               onPress={sendCommand}
             />
           </View>
-          <Text style={styles.hint}>Log Now posts to Google Sheets over cellular. Firmware: use the Firmware card below (Check GitHub / Reboot to Update).</Text>
+          <Text style={styles.hint}>
+            Log Now intentionally disconnects BLE, posts to Google Sheets on a fresh heap, and advertises again afterward.
+            Signal and GPS are troubleshooting tools; a successful Log Now already exercises both paths.
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -834,6 +825,7 @@ export default function BoatBleScreen({ onBack }) {
           <StatusRow label="Engine" value={`${fmtMetric(status?.engine, 'v')} V  ${fmtMetric(status?.engine, 'a', 3)} A`} />
           <StatusRow label="House" value={`${fmtMetric(status?.house, 'v')} V  ${fmtMetric(status?.house, 'a', 3)} A`} />
           <StatusRow label="V50" value={`${fmtMetric(status?.v50, 'v')} V`} />
+          <StatusRow label="Battery readings" value={sensorReadAt ? `Sampled ${fmtTime(sensorReadAt)}` : '--'} />
           <View style={styles.subsectionDivider} />
           <Text style={styles.subsectionTitle}>Inputs</Text>
           <StatusRow label="Switch" value={inputs.switch ? 'ON' : 'off'} danger={inputs.switch && !inputs.key} />
@@ -842,31 +834,6 @@ export default function BoatBleScreen({ onBack }) {
           <StatusRow label="Aft bilge" value={inputs.aft_bilge ? 'ON' : 'off'} danger={inputs.aft_bilge} />
           <StatusRow label="Mid float" value={inputs.mid_float ? 'ON' : 'off'} danger={inputs.mid_float} />
           <StatusRow label="Aft float" value={inputs.aft_float ? 'ON' : 'off'} danger={inputs.aft_float} />
-        </View>
-
-        <View style={[styles.card, styles.cardMuted]}>
-          <Text style={styles.cardTitle}>Wi-Fi console (optional)</Text>
-          <StatusRow
-            label="Console"
-            value={wifiConsoleText}
-            danger={wifiConsoleStatus === 'unreachable'}
-            onPress={wifiConsoleStatus === 'reachable' ? openWifiConsole : null}
-          />
-          <TouchableOpacity
-            style={[styles.secondaryButton, styles.checkWifiButton]}
-            onPress={checkWifiConsole}
-            disabled={wifiConsoleStatus === 'checking'}
-          >
-            {wifiConsoleStatus === 'checking' ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Check Wi-Fi Console</Text>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.hint}>
-            Optional field tool: join the BoatMonitor Wi-Fi AP in iOS Settings, then check console reachability. Normal
-            operation uses BLE (app) or automatic Wi-Fi/cellular logging — not this AP.
-          </Text>
         </View>
 
         <View style={styles.card}>

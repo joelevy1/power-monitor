@@ -3,7 +3,7 @@
     "name": "Boat Monitor",
     "slug": "boat-monitor",
     "scheme": "boatmonitor",
-    "version": "0.1.33",
+    "version": "0.1.34",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -16,6 +16,7 @@
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to your boat monitor.",
         "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to your boat monitor.",
+        "NSLocationWhenInUseUsageDescription": "Boat Monitor uses your location while the app is open to show your position relative to the boat on map features.",
         "NSLocalNetworkUsageDescription": "This app checks whether your boat monitor's Wi-Fi console is reachable when you've joined its Wi-Fi network.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
