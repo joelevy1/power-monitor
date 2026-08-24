@@ -420,12 +420,8 @@ class BoatMonitorBle:
             time.sleep(0.5)
             machine.reset()
         elif cmd in ("wifi", "start_wifi"):
-            with open("wifi_mode.txt", "w") as f:
-                f.write("1")
-            self.command_result = "starting_wifi"
+            self.command_result = "wifi_console_disabled"
             self.update_status()
-            time.sleep(0.5)
-            machine.reset()
         elif cmd in ("ota", "ota_check"):
             # Do not run the full downloader while BLE is active. The BLE
             # service and status JSON already consume enough heap that large
