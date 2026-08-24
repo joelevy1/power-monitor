@@ -8,6 +8,12 @@ def main():
     source = (Path(__file__).resolve().parent / "ble_service.py").read_text(
         encoding="utf-8"
     )
+    init = source.split("class BoatMonitorBle:", 1)[1].split(
+        "def irq", 1
+    )[0]
+    assert init.index("auto_log.load_persisted_overrides()") < init.index(
+        "bluetooth.BLE()"
+    )
     update = source.split("def update_status", 1)[1].split(
         "def handle_command", 1
     )[0]
