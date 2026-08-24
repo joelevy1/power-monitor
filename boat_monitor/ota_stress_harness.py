@@ -823,18 +823,15 @@ def run_rounds(
             print("FAIL:", exc)
             return 1
         print("OK: sheet preflight (recovery keys + cleared one-shots)")
-        upsert_clear_pending = [
-            ("cmd_clear_pending_ota", "1", "ota_stress: clear stale pending_ota"),
-            ("clear_pending_ota", "1", "ota_stress: clear stale pending_ota"),
-        ]
-        from sheets_config_upsert import upsert_config_keys
-
-        upsert_config_keys(sheets, sid, upsert_clear_pending)
         dev_fw = _current_device_fw()
-        if device_ahead_of_repo(dev_fw, start_ver):
+        if not bootstrap:
+            print("Bootstrap-rules skip: explicitly disabled")
+        elif device_ahead_of_repo(dev_fw, start_ver):
             print("WARN: device fw %s ahead of repo %s" % (dev_fw, start_ver))
         # USB ram-fix already ships remote_boot_config.py; skip cellular bootstrap OTA.
-        if dev_fw and _parse_ver_tuple(dev_fw) >= _parse_ver_tuple(start_ver):
+        if not bootstrap:
+            pass
+        elif dev_fw and _parse_ver_tuple(dev_fw) >= _parse_ver_tuple(start_ver):
             print(
                 "Bootstrap-rules skip: device fw %s >= repo %s (USB ram-fix assumed)"
                 % (dev_fw, start_ver)
