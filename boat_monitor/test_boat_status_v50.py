@@ -91,6 +91,27 @@ def run():
     assert [bus.kind for bus in fallback_calls] == ["hardware"], fallback_calls
     assert fallback_calls[0].bus_id == 0
 
+    sensor_reads = []
+
+    def fake_ina(*args):
+        sensor_reads.append(args)
+        return {"ok": True, "v": 12.4, "a": 0.2}
+
+    soft_module.read_ina260 = fake_ina
+    soft_module.read_v50 = lambda: {"ok": True, "v": 5.1, "a": 0.03}
+    populated = soft_module.read_status(sensors=True)
+    assert populated["engine"]["v"] == 12.4
+    assert populated["house"]["v"] == 12.4
+    assert populated["v50"]["v"] == 5.1
+    assert len(sensor_reads) == 2
+
+    sensor_reads.clear()
+    cached = soft_module.read_status(sensors=False)
+    assert cached["engine"] == populated["engine"]
+    assert cached["house"] == populated["house"]
+    assert cached["v50"] == populated["v50"]
+    assert sensor_reads == []
+
     print("boat_status V50 tests OK")
 
 

@@ -136,7 +136,11 @@ def current_mode(inputs):
     return "docked_off"
 
 
+_last_sensor_status = None
+
+
 def read_status(command_result=None, sensors=True):
+    global _last_sensor_status
     inputs = {
         "switch": input_on(cfg.PIN_BATTERY_SWITCH),
         "key": input_on(cfg.PIN_KEY),
@@ -154,13 +158,23 @@ def read_status(command_result=None, sensors=True):
         "note": "negative current means solar charging",
     }
     if sensors:
-        status["engine"] = read_ina260(
-            cfg.I2C_ENGINE_SDA, cfg.I2C_ENGINE_SCL, 0, cfg.INA260_ENGINE_ADDR
-        )
-        status["house"] = read_ina260(
-            cfg.I2C_HOUSE_SDA, cfg.I2C_HOUSE_SCL, 1, cfg.INA260_HOUSE_ADDR
-        )
-        status["v50"] = read_v50()
+        _last_sensor_status = {
+            "engine": read_ina260(
+                cfg.I2C_ENGINE_SDA,
+                cfg.I2C_ENGINE_SCL,
+                0,
+                cfg.INA260_ENGINE_ADDR,
+            ),
+            "house": read_ina260(
+                cfg.I2C_HOUSE_SDA,
+                cfg.I2C_HOUSE_SCL,
+                1,
+                cfg.INA260_HOUSE_ADDR,
+            ),
+            "v50": read_v50(),
+        }
+    if _last_sensor_status:
+        status.update(_last_sensor_status)
 
     if command_result:
         status["command_result"] = command_result
