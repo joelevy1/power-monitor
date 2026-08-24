@@ -885,7 +885,11 @@ def run_rounds(
         else:
             pl_before, _ = _fetch_power_tail()
             _set_min_fw_only(ver)
-        expected_uplink = "wifi" if profile == "dock" else None
+        expected_uplink = (
+            "wifi"
+            if profile == "dock"
+            else ("cellular" if profile == "switch-on" else None)
+        )
         if profile == "dock":
             from ota_stress_rules import DOCK_BOOT_START_TIMEOUT_S
 
@@ -950,9 +954,12 @@ def main():
     p.add_argument("--bootstrap-timeout", type=int, default=7200, help="seconds to wait for bootstrap (default 2h)")
     p.add_argument(
         "--profile",
-        choices=("underway", "dock"),
+        choices=("underway", "switch-on", "dock"),
         default="underway",
-        help="underway=cellular key-on stress; dock=standby Wi-Fi-first",
+        help=(
+            "underway=60s cellular stress; switch-on=production 600s cellular; "
+            "dock=standby Wi-Fi-first"
+        ),
     )
     p.add_argument(
         "--round-timeout",
