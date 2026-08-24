@@ -53,8 +53,9 @@ def main():
     auto_log = source.split("def _maybe_auto_log", 1)[1].split(
         "def run(self):", 1
     )[0]
-    assert "BLE_AUTO_LOG_RECYCLE_HEAP_BYTES" in auto_log
-    assert auto_log.index("gc.collect()") < auto_log.index("machine.reset()")
+    assert "BLE auto-log complete; rebooting to reclaim network modules" in auto_log
+    assert "gc.mem_free()" not in auto_log
+    assert "machine.reset()" in auto_log
     on_connect = source.split("def _scheduled_on_connect", 1)[1].split(
         "def _scheduled_conn_params", 1
     )[0]
