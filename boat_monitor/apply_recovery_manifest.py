@@ -88,7 +88,6 @@ STANDBY_WIFI_FIX_PATHS = (
     "ble_service.py",
     "standby_monitor.py",
     "main.py",
-    "field_console.py",
     "version.py",
 )
 

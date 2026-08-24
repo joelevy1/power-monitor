@@ -169,8 +169,10 @@ def test_standby_manifest_mode_is_complete_and_version_last():
         "ble_service.py",
         "standby_monitor.py",
         "main.py",
-        "field_console.py",
     }
+    main_source = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert "import field_console" not in main_source
+    assert "os.remove(\"wifi_mode.txt\")" in main_source
 
 
 def main():

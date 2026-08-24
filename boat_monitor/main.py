@@ -397,81 +397,68 @@ if _deferred_ble_log:
         _ble_log_time.sleep(0.5)
         _ble_log_machine.reset()
 
-# Decide which mode was requested BEFORE trying to start either one -- a
-# single try/except wrapping both the os.stat() check AND the import that
-# starts a whole radio mode was a real bug: os.stat() raising OSError
-# (file missing -- the normal "no Wi-Fi requested" case) and, say,
-# field_console.py's start_ap() raising OSError (AP failed to come up --
-# a real error) both landed in the SAME "except OSError:" branch. That
-# branch always printed "Starting BLE service" regardless of which one
-# actually happened, silently misreporting a real Wi-Fi AP failure as
-# "no wifi_mode.txt file" and masking the actual error entirely.
-wifi_requested = False
+# The Wi-Fi AP service console is intentionally disabled. Remove any stale
+# one-shot marker left by older firmware, then choose only BLE or standby.
 try:
     import os
 
-    os.stat("wifi_mode.txt")
     os.remove("wifi_mode.txt")
-    wifi_requested = True
 except OSError:
-    wifi_requested = False
+    pass
 except Exception as exc:
-    print("wifi_mode.txt check failed:", exc)
+    print("stale wifi_mode.txt cleanup failed:", exc)
 
-if wifi_requested:
-    try:
-        print("Starting Wi-Fi service console")
-        import field_console
-    except Exception as exc:
-        print("Wi-Fi service console failed:", exc)
+try:
+    import ble_policy
+
+    if ble_policy.wait_for_ble_wanted(timeout_s=3.0):
+        print("Starting BLE service (switch or key on)")
         try:
-            print("Falling back to BLE service")
-            import ble_service
+            import status_led
 
-            ble_service.main()
-        except Exception as exc2:
-            print("BLE service also failed:", exc2)
-else:
-    try:
-        import ble_policy
-
-        if ble_policy.wait_for_ble_wanted(timeout_s=3.0):
-            print("Starting BLE service (switch or key on)")
-            try:
-                import status_led
-
-                status_led.set_mode("ble")
-            except Exception:
-                pass
-            try:
-                import time
-                from wifi_uplink import ensure_wifi_off
-
-                ensure_wifi_off()
-                time.sleep_ms(400)
-            except Exception:
-                pass
-            import ble_service
-
-            ble_service.main()
-        else:
-            print("Starting standby monitor (BLE off — Wi-Fi auto-log; USB OK)")
-            try:
-                import status_led
-
-                status_led.set_mode("standby")
-            except Exception:
-                pass
-            import standby_monitor
-
-            standby_monitor.main()
-    except Exception as exc:
-        print("Primary service failed:", exc)
+            status_led.set_mode("ble")
+        except Exception:
+            pass
         try:
-            print("Falling back to BLE service")
-            import ble_service
+            import time
+            from wifi_uplink import ensure_wifi_off
 
-            ble_service.main()
-        except Exception as exc2:
-            print("BLE service also failed:", exc2)
-            import field_console
+            ensure_wifi_off()
+            time.sleep_ms(400)
+        except Exception:
+            pass
+        import ble_service
+
+        ble_service.main()
+    else:
+        print("Starting standby monitor (BLE off — Wi-Fi auto-log; USB OK)")
+        try:
+            import status_led
+
+            status_led.set_mode("standby")
+        except Exception:
+            pass
+        import standby_monitor
+
+        standby_monitor.main()
+except Exception as exc:
+    print("Primary service failed:", exc)
+    try:
+        print("Falling back to BLE service")
+        import ble_service
+
+        ble_service.main()
+    except Exception as exc2:
+        print("BLE service also failed:", exc2)
+        try:
+            import status_led
+
+            status_led.set_mode("fault")
+        except Exception:
+            pass
+        import time
+
+        time.sleep(2)
+        import machine
+
+        machine.reset()

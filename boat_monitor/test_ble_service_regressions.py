@@ -72,6 +72,12 @@ def main():
         'elif cmd in ("log", "log_now"):', 1
     )[0]
     assert "set_pending_ota(True)" in ota
+    wifi = source.split('elif cmd in ("wifi", "start_wifi"):', 1)[1].split(
+        'elif cmd in ("ota", "ota_check"):', 1
+    )[0]
+    assert 'self.command_result = "wifi_console_disabled"' in wifi
+    assert "wifi_mode.txt" not in wifi
+    assert "machine.reset()" not in wifi
 
     print("BLE service regression guards OK")
     return 0
