@@ -332,7 +332,19 @@ def main(argv=None):
         action="store_true",
         help="2-file cached BLE sensor status release",
     )
+    p.add_argument(
+        "--disable-wifi-console",
+        action="store_true",
+        help="3-file removal of normal Wi-Fi console runtime paths",
+    )
     args = p.parse_args(argv)
+    if args.disable_wifi_console:
+        return _write_manifest(
+            BLE_LOG_HANDOFF_PATHS,
+            "Disable Wi-Fi console commands, boot routing, and runtime fallback.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.ble_sensor_cache:
         return _write_manifest(
             BLE_SENSOR_CACHE_PATHS,
