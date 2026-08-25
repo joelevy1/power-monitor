@@ -52,7 +52,6 @@ function fetchWithTimeout(url, options, timeoutMs) {
 const COMMAND_INFO = {
   refresh: { label: 'Refresh', hint: 'instant' },
   log: { label: 'Log Now', hint: 'BLE disconnects briefly; logging completes in the background' },
-  signal: { label: 'Check Signal', hint: '~5-20s (modem/SIM/network registration, no data session)' },
   gps: { label: 'Check GPS', hint: '~5-30s (GPS fix check, no internet data session)' },
   ota: { label: 'OTA Check', hint: 'reboots, then checks GitHub before BLE starts' },
   reboot: { label: 'Reboot', hint: 'reboots immediately -- BLE will disconnect' },
@@ -71,7 +70,6 @@ const IN_PROGRESS_RESULTS = new Set([
   'logging_power',
   'logging_power_ok',
   'logging_gps',
-  'checking_signal',
   'checking_gps',
   'ota_started',
   'ota_rebooting',
@@ -114,8 +112,6 @@ function inProgressStageText(result) {
       return 'Power row saved — check the sheet now. Trying a quick GPS fix...';
     case 'logging_gps':
       return 'Trying a quick GPS fix for GPS_Log...';
-    case 'checking_signal':
-      return 'Checking modem/SIM/network registration...';
     case 'checking_gps':
       return 'Checking GPS fix...';
     case 'ota_rebooting':
@@ -756,14 +752,6 @@ export default function BoatBleScreen({ onBack }) {
           <Text style={styles.subsectionTitle}>Diagnostics</Text>
           <View style={styles.serviceGrid}>
             <ServiceButton
-              cmd="signal"
-              label="Check Signal"
-              style={styles.serviceGridButton}
-              connected={connected}
-              pendingCommand={pendingCommand}
-              onPress={sendCommand}
-            />
-            <ServiceButton
               cmd="gps"
               label="Check GPS"
               style={styles.serviceGridButton}
@@ -785,7 +773,7 @@ export default function BoatBleScreen({ onBack }) {
           </View>
           <Text style={styles.hint}>
             Log Now intentionally disconnects BLE, posts to Google Sheets on a fresh heap, and advertises again afterward.
-            Signal and GPS are troubleshooting tools; a successful Log Now already exercises both paths.
+            GPS is a troubleshooting tool; a successful Log Now already proves cellular signal, internet, and Sheets.
           </Text>
         </View>
 

@@ -10,6 +10,9 @@ const failures = [];
 if (source.includes('Start Wi-Fi') || source.includes('Wi-Fi console (optional)')) {
   failures.push('obsolete Wi-Fi console UI is still visible');
 }
+if (source.includes('label="Check Signal"')) {
+  failures.push('unsafe synchronous signal command is still visible');
+}
 if (!source.includes("'logging_handoff'")) {
   failures.push('Log Now handoff state is missing');
 }
