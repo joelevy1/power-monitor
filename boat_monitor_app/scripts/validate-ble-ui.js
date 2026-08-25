@@ -16,11 +16,11 @@ if (source.includes('label="Check Signal"')) {
 if (!source.includes("'logging_handoff'")) {
   failures.push('Log Now handoff state is missing');
 }
-if (!source.includes('Log handoff complete — BoatMonitor BLE is back')) {
+if (!source.includes('Log complete — BoatMonitor is ready to reconnect')) {
   failures.push('BLE return detection message is missing');
 }
-if (!source.includes('Battery readings')) {
-  failures.push('battery reading freshness row is missing');
+if (!source.includes('as of {fmtTime(lastUpdated)}')) {
+  failures.push('boat status freshness timestamp is missing');
 }
 if (!source.includes('Engine solar branch') || !source.includes('House solar branch')) {
   failures.push('solar-only current labels are missing');
