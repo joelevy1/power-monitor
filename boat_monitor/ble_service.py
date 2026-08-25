@@ -30,6 +30,7 @@ from wifi_uplink import ensure_wifi_off
 # Faster connectable advertising (µs). 128 ms is aggressive but helps iOS find/connect.
 BLE_ADV_INTERVAL_US = 128000
 BLE_ADV_REFRESH_MS = 15000
+BLE_CONNECTED_SENSOR_REFRESH_MS = 5000
 BLE_ADV_FAILURE_RESET_COUNT = 3
 BLE_NOTIFY_FAILURE_LIMIT = 3
 BLE_CONNECT_MIN_HEAP_BYTES = 60000
@@ -190,6 +191,7 @@ class BoatMonitorBle:
         self.command_result = _consume_deferred_log_result()
         self._cellular_busy = False
         self._last_advertise_ms = time.ticks_ms()
+        self._last_sensor_refresh_ms = time.ticks_ms()
         self._advertise_failures = 0
         self._notify_failures = {}
 
@@ -317,6 +319,7 @@ class BoatMonitorBle:
         except AttributeError:
             time.sleep(0.4)
         self.update_status(sensors=True)
+        self._last_sensor_refresh_ms = time.ticks_ms()
 
     def _scheduled_conn_params(self, conn_handle):
         self._request_conn_params(conn_handle)
@@ -414,6 +417,7 @@ class BoatMonitorBle:
             self.update_status(sensors=False)
             self.command_result = "refreshed"
             self.update_status(sensors=True)
+            self._last_sensor_refresh_ms = time.ticks_ms()
         elif cmd == "reboot":
             self.command_result = "rebooting"
             self.update_status()
@@ -619,7 +623,14 @@ class BoatMonitorBle:
                 time.sleep(0.3)
                 machine.reset()
 
-            status = self.update_status(sensors=not self.connections)
+            now_ms = time.ticks_ms()
+            read_sensors = not self.connections or (
+                time.ticks_diff(now_ms, self._last_sensor_refresh_ms)
+                >= BLE_CONNECTED_SENSOR_REFRESH_MS
+            )
+            status = self.update_status(sensors=read_sensors)
+            if read_sensors:
+                self._last_sensor_refresh_ms = now_ms
             self._maybe_auto_log(status["mode"])
             if not self.connections:
                 try:
