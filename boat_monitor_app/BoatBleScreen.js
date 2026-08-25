@@ -76,26 +76,6 @@ const IN_PROGRESS_RESULTS = new Set([
   'rebooting',
 ]);
 
-function bleAvailabilitySummary({ connected, bleBroadcasting, scanning, inputs }) {
-  const switchOn = !!inputs?.switch;
-  const keyOn = !!inputs?.key;
-  if (connected) {
-    if (switchOn || keyOn) {
-      return 'BLE active — battery switch or key is ON.';
-    }
-    return 'Connected, but switch and key read OFF — Pico may leave BLE mode soon.';
-  }
-  if (scanning) return 'Scanning for BoatMonitor…';
-  if (bleBroadcasting) {
-    return 'BoatMonitor nearby — tap Connect BLE (keep switch or key ON).';
-  }
-  return 'No BLE yet — turn battery switch or key ON at the boat and stay within range. USB to a laptop does not start BLE.';
-}
-
-function remoteFirmwareHint() {
-  return 'Remote firmware update: set Config cmd_ota = 1 on the sheet (one shot). The next automatic upload reboots the Pico for OTA — this does not turn BLE on.';
-}
-
 function inProgressStageText(result) {
   switch (result) {
     case 'refreshing':
@@ -251,10 +231,8 @@ export default function BoatBleScreen({ onBack }) {
   const [scanning, setScanning] = useState(false);
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState(null);
-  const [rawStatus, setRawStatus] = useState('');
   const [message, setMessage] = useState('Not connected');
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [sensorReadAt, setSensorReadAt] = useState(null);
   const [scanRssi, setScanRssi] = useState(null);
   const [signalStrength, setSignalStrength] = useState(null);
   const [latestFirmware, setLatestFirmware] = useState(null);
@@ -264,13 +242,15 @@ export default function BoatBleScreen({ onBack }) {
   const [pendingSince, setPendingSince] = useState(null);
   const [pendingElapsedS, setPendingElapsedS] = useState(0);
   const [commandResultAt, setCommandResultAt] = useState(null);
+  const [handoffActive, setHandoffActive] = useState(null);
+  const [handoffReady, setHandoffReady] = useState(false);
   const lastCommandResultRef = useRef(null);
   const lastFirmwareCheckRef = useRef(null);
   const commandBaselineRef = useRef(null);
   const commandProgressSeenRef = useRef(false);
   const intentionalHandoffRef = useRef(null);
-  const refreshPendingRef = useRef(false);
-  const sensorReadAtRef = useRef(null);
+  const scanRssiRef = useRef(null);
+  const handoffStabilizeTimerRef = useRef(null);
 
   // Ticking display while a command is pending -- without this, pressing
   // a button that takes 10-90s (a real cellular round-trip) just shows a
@@ -368,13 +348,29 @@ export default function BoatBleScreen({ onBack }) {
         await ble.waitForPoweredOn(mgr, 5000);
         if (cancelled) return;
         setScanRssi(null);
+        scanRssiRef.current = null;
         ble.startPassiveScan(
           mgr,
           (device) => {
             if (!cancelled && Number.isFinite(device?.rssi)) {
               setScanRssi(device.rssi);
-              if (intentionalHandoffRef.current === 'log') {
-                setMessage('Log handoff complete — BoatMonitor BLE is back. Tap Connect BLE to view the result.');
+              scanRssiRef.current = device.rssi;
+              if (
+                intentionalHandoffRef.current &&
+                !handoffStabilizeTimerRef.current
+              ) {
+                setMessage('BoatMonitor BLE detected — waiting briefly for it to finish starting.');
+                handoffStabilizeTimerRef.current = setTimeout(() => {
+                  handoffStabilizeTimerRef.current = null;
+                  if (Number.isFinite(scanRssiRef.current)) {
+                    setHandoffReady(true);
+                    setMessage(
+                      intentionalHandoffRef.current === 'log'
+                        ? 'Log complete — BoatMonitor is ready to reconnect.'
+                        : 'BoatMonitor reboot complete — ready to reconnect.',
+                    );
+                  }
+                }, 8000);
               }
             }
           },
@@ -400,6 +396,10 @@ export default function BoatBleScreen({ onBack }) {
       cancelled = true;
       if (windowTimer) clearTimeout(windowTimer);
       if (repeatTimer) clearInterval(repeatTimer);
+      if (handoffStabilizeTimerRef.current) {
+        clearTimeout(handoffStabilizeTimerRef.current);
+        handoffStabilizeTimerRef.current = null;
+      }
       if (mgr) {
         import('./bleConnection').then((ble) => ble.stopScan(mgr)).catch(() => {});
       }
@@ -440,7 +440,6 @@ export default function BoatBleScreen({ onBack }) {
     setScanning(true);
     setMessage('Scanning for BoatMonitor...');
     setStatus(null);
-    setRawStatus('');
 
     try {
       const ble = await import('./bleConnection');
@@ -450,10 +449,16 @@ export default function BoatBleScreen({ onBack }) {
       connectedDevice.onDisconnected(() => {
         const handoff = intentionalHandoffRef.current;
         setConnected(false);
+        setHandoffActive(handoff);
+        setHandoffReady(false);
+        setScanRssi(null);
+        scanRssiRef.current = null;
         setMessage(
           handoff === 'log'
             ? 'Logging in the background — waiting for BoatMonitor BLE to return.'
-            : 'Disconnected',
+            : handoff
+              ? 'Pico is rebooting — waiting for BoatMonitor BLE to return.'
+              : 'Disconnected',
         );
         setLastUpdated(null);
         setSignalStrength(null);
@@ -480,28 +485,16 @@ export default function BoatBleScreen({ onBack }) {
           // error -- see the BLE decode crash fixed in 0.1.8/0.1.9.
           try {
             if (error) {
-              if (intentionalHandoffRef.current === 'log') return;
+              if (intentionalHandoffRef.current) return;
               if (/operation was cancelle?d|cancelled|canceled/i.test(error.message || '')) return;
               setMessage(`Notify error: ${error.message}`);
               return;
             }
             const text = ble.decodeBleValue(characteristic?.value);
-            setRawStatus(text);
             setLastUpdated(new Date());
             try {
               const parsed = JSON.parse(text);
               setStatus(parsed);
-              if (
-                parsed?.engine &&
-                parsed?.house &&
-                parsed?.v50 &&
-                (!sensorReadAtRef.current || refreshPendingRef.current)
-              ) {
-                const readAt = new Date();
-                sensorReadAtRef.current = readAt;
-                refreshPendingRef.current = false;
-                setSensorReadAt(readAt);
-              }
             } catch {
               setStatus(null);
             }
@@ -513,21 +506,21 @@ export default function BoatBleScreen({ onBack }) {
 
       const first = await connectedDevice.readCharacteristicForService(ble.SERVICE_UUID, ble.STATUS_UUID);
       const text = ble.decodeBleValue(first.value);
-      setRawStatus(text);
       setLastUpdated(new Date());
       try {
         const parsed = JSON.parse(text);
         setStatus(parsed);
-        if (parsed?.engine && parsed?.house && parsed?.v50) {
-          const readAt = new Date();
-          sensorReadAtRef.current = readAt;
-          setSensorReadAt(readAt);
-        }
       } catch {
         setStatus(null);
       }
       setConnected(true);
       intentionalHandoffRef.current = null;
+      setHandoffActive(null);
+      setHandoffReady(false);
+      if (handoffStabilizeTimerRef.current) {
+        clearTimeout(handoffStabilizeTimerRef.current);
+        handoffStabilizeTimerRef.current = null;
+      }
       setMessage(`Connected to ${ble.deviceLabel(connectedDevice) || connectedDevice.id}`);
       checkFirmwareUpdate();
     } catch (error) {
@@ -555,6 +548,12 @@ export default function BoatBleScreen({ onBack }) {
       setLastUpdated(null);
       setSignalStrength(null);
       intentionalHandoffRef.current = null;
+      setHandoffActive(null);
+      setHandoffReady(false);
+      if (handoffStabilizeTimerRef.current) {
+        clearTimeout(handoffStabilizeTimerRef.current);
+        handoffStabilizeTimerRef.current = null;
+      }
       setPendingCommand(null);
       setPendingSince(null);
       import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
@@ -582,8 +581,11 @@ export default function BoatBleScreen({ onBack }) {
     setPendingCommand(cmd);
     setPendingSince(Date.now());
     setMessage(`Sending ${label} command to Pico...`);
-    if (cmd === 'log') intentionalHandoffRef.current = 'log';
-    if (cmd === 'refresh') refreshPendingRef.current = true;
+    if (RESET_COMMANDS.has(cmd)) {
+      intentionalHandoffRef.current = cmd;
+      setHandoffActive(cmd);
+      setHandoffReady(false);
+    }
 
     try {
       const ble = await import('./bleConnection');
@@ -597,8 +599,11 @@ export default function BoatBleScreen({ onBack }) {
           : `${label} command sent to Pico.`,
       );
     } catch (error) {
-      if (cmd === 'log') intentionalHandoffRef.current = null;
-      if (cmd === 'refresh') refreshPendingRef.current = false;
+      if (RESET_COMMANDS.has(cmd)) {
+        intentionalHandoffRef.current = null;
+        setHandoffActive(null);
+        setHandoffReady(false);
+      }
       setPendingCommand(null);
       setPendingSince(null);
       Alert.alert('Command failed', error.message || String(error));
@@ -648,42 +653,47 @@ export default function BoatBleScreen({ onBack }) {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.topConnectRow}>
           <View style={styles.buttonRowInner}>
-            <TouchableOpacity style={styles.primaryButton} onPress={connected ? disconnect : connect} disabled={scanning}>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={connected ? disconnect : connect}
+              disabled={scanning || (!!handoffActive && !handoffReady)}
+            >
               {scanning ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>{connected ? 'Disconnect' : 'Connect BLE'}</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => sendCommand('refresh')}
-              disabled={!connected || !!pendingCommand}
-            >
-              {pendingCommand === 'refresh' ? (
-                <View style={styles.pendingButtonContent}>
-                  <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.buttonText}>Refreshing…</Text>
-                </View>
-              ) : (
-                <Text style={styles.buttonText}>Refresh</Text>
+                <Text style={styles.buttonText}>
+                  {connected
+                    ? 'Disconnect'
+                    : handoffActive && !handoffReady
+                      ? 'Waiting for BLE…'
+                      : 'Connect BLE'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
           <View style={styles.topSignalBlock}>
-            <Text style={styles.signalBarsCompact}>{bleBroadcasting ? bleQuality.bars : '○○○○○'}</Text>
-            <Text style={styles.signalRssiCompact}>
-              {Number.isFinite(activeRssi) ? `${activeRssi}` : '—'}
+            <Text style={styles.signalBarsCompact}>
+              {handoffActive && !handoffReady
+                ? '○○○○○'
+                : bleBroadcasting
+                  ? bleQuality.bars
+                  : '○○○○○'}
             </Text>
-            <Text style={styles.signalCaptionInline}>{bleBroadcasting ? bleQuality.text : 'No BLE'}</Text>
+            <Text style={styles.signalRssiCompact}>
+              {handoffActive && !handoffReady
+                ? '—'
+                : Number.isFinite(activeRssi)
+                  ? `${activeRssi}`
+                  : '—'}
+            </Text>
+            <Text style={styles.signalCaptionInline}>
+              {handoffActive && !handoffReady
+                ? 'Starting…'
+                : bleBroadcasting
+                  ? bleQuality.text
+                  : 'No BLE'}
+            </Text>
           </View>
-        </View>
-
-        <View style={styles.bleBanner}>
-          <Text style={styles.bleBannerText}>
-            {bleAvailabilitySummary({ connected, bleBroadcasting, scanning, inputs })}
-          </Text>
-          <Text style={styles.bleBannerHint}>{remoteFirmwareHint()}</Text>
         </View>
 
         <View style={styles.card}>
@@ -693,7 +703,7 @@ export default function BoatBleScreen({ onBack }) {
             <Text
               style={[
                 styles.commandMessageText,
-                !connected && !scanning ? styles.danger : null,
+                !connected && !scanning && !handoffActive ? styles.danger : null,
               ]}
             >
               {message}
@@ -740,7 +750,46 @@ export default function BoatBleScreen({ onBack }) {
         </View>
 
         <View style={styles.card}>
+          <View style={styles.statusCardHeader}>
+            <Text style={styles.cardTitle}>Boat Status</Text>
+            <Text style={styles.statusAsOf}>as of {fmtTime(lastUpdated)}</Text>
+          </View>
+          <StatusRow label="Mode" value={friendlyBoatMode(mode)} danger={mode === 'switch_on_key_off' || mode === 'float_alert'} />
+          <Text style={styles.subsectionTitle}>Battery voltage</Text>
+          <StatusRow label="Engine battery" value={`${fmtMetric(status?.engine, 'v')} V`} />
+          <StatusRow label="House battery" value={`${fmtMetric(status?.house, 'v')} V`} />
+          <Text style={styles.subsectionTitle}>Solar charging</Text>
+          <StatusRow label="Engine solar branch" value={fmtSolarCurrent(status?.engine)} />
+          <StatusRow label="House solar branch" value={fmtSolarCurrent(status?.house)} />
+          <Text style={styles.hint}>
+            Solar current is not total battery load, starter current, stereo current, or alternator current.
+          </Text>
+          <Text style={styles.subsectionTitle}>V50 power bank output</Text>
+          <StatusRow label="V50 output voltage" value={`${fmtMetric(status?.v50, 'v')} V`} />
+          <StatusRow label="V50 output current" value={`${fmtMetric(status?.v50, 'a', 3)} A`} />
+          <Text style={styles.hint}>
+            Near-zero V50 current is expected while boat 5 V powers the Pico/modem; voltage may still remain visible.
+          </Text>
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>Inputs</Text>
+          <StatusRow label="Switch" value={inputs.switch ? 'ON' : 'off'} danger={inputs.switch && !inputs.key} />
+          <StatusRow label="Key" value={inputs.key ? 'ON' : 'off'} />
+          <StatusRow label="Mid bilge" value={inputs.mid_bilge ? 'ON' : 'off'} danger={inputs.mid_bilge} />
+          <StatusRow label="Aft bilge" value={inputs.aft_bilge ? 'ON' : 'off'} danger={inputs.aft_bilge} />
+          <StatusRow label="Mid float" value={inputs.mid_float ? 'ON' : 'off'} danger={inputs.mid_float} />
+          <StatusRow label="Aft float" value={inputs.aft_float ? 'ON' : 'off'} danger={inputs.aft_float} />
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>Service Commands</Text>
+          <ServiceButton
+            cmd="refresh"
+            label="Refresh Now"
+            style={styles.logNowButton}
+            connected={connected}
+            pendingCommand={pendingCommand}
+            onPress={sendCommand}
+          />
           <ServiceButton
             cmd="log"
             label="Log Now"
@@ -755,17 +804,6 @@ export default function BoatBleScreen({ onBack }) {
               cmd="gps"
               label="Check GPS"
               style={styles.serviceGridButton}
-              connected={connected}
-              pendingCommand={pendingCommand}
-              onPress={sendCommand}
-            />
-          </View>
-          <Text style={styles.subsectionTitle}>Recovery</Text>
-          <View style={styles.serviceGrid}>
-            <ServiceButton
-              cmd="reboot"
-              label="Reboot"
-              style={[styles.serviceGridButton, styles.dangerButton]}
               connected={connected}
               pendingCommand={pendingCommand}
               onPress={sendCommand}
@@ -808,49 +846,28 @@ export default function BoatBleScreen({ onBack }) {
               ) : null}
               <TouchableOpacity
                 style={[styles.secondaryButton, styles.checkWifiButton]}
+                onPress={() => sendCommand('reboot')}
+                disabled={!!pendingCommand}
+              >
+                <Text style={styles.buttonText}>Quick Reboot Pico</Text>
+              </TouchableOpacity>
+              <Text style={styles.hint}>
+                Quick Reboot only restarts the Pico to recover memory/radio state; it does not contact GitHub.
+              </Text>
+              <TouchableOpacity
+                style={[styles.secondaryButton, styles.checkWifiButton]}
                 onPress={() => sendCommand('ota')}
                 disabled={!!pendingCommand}
               >
                 <Text style={styles.buttonText}>OTA Check (reboot)</Text>
               </TouchableOpacity>
+              <Text style={styles.hint}>
+                OTA Check reboots, contacts GitHub, installs newer firmware when available, and can take several minutes.
+              </Text>
             </>
           ) : (
             <Text style={styles.hint}>Connect BLE to compare Pico vs GitHub and run OTA.</Text>
           )}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Boat Status</Text>
-          <StatusRow label="Mode" value={mode} danger={mode === 'switch_on_key_off' || mode === 'float_alert'} />
-          <Text style={styles.subsectionTitle}>Battery voltage</Text>
-          <StatusRow label="Engine battery" value={`${fmtMetric(status?.engine, 'v')} V`} />
-          <StatusRow label="House battery" value={`${fmtMetric(status?.house, 'v')} V`} />
-          <Text style={styles.subsectionTitle}>Solar charging</Text>
-          <StatusRow label="Engine solar branch" value={fmtSolarCurrent(status?.engine)} />
-          <StatusRow label="House solar branch" value={fmtSolarCurrent(status?.house)} />
-          <Text style={styles.hint}>
-            Solar current is not total battery load, starter current, stereo current, or alternator current.
-          </Text>
-          <Text style={styles.subsectionTitle}>V50 power bank output</Text>
-          <StatusRow label="V50 output voltage" value={`${fmtMetric(status?.v50, 'v')} V`} />
-          <StatusRow label="V50 output current" value={`${fmtMetric(status?.v50, 'a', 3)} A`} />
-          <Text style={styles.hint}>
-            Near-zero V50 current is expected while boat 5 V powers the Pico/modem; voltage may still remain visible.
-          </Text>
-          <StatusRow label="Battery readings" value={sensorReadAt ? `Sampled ${fmtTime(sensorReadAt)}` : '--'} />
-          <View style={styles.subsectionDivider} />
-          <Text style={styles.subsectionTitle}>Inputs</Text>
-          <StatusRow label="Switch" value={inputs.switch ? 'ON' : 'off'} danger={inputs.switch && !inputs.key} />
-          <StatusRow label="Key" value={inputs.key ? 'ON' : 'off'} />
-          <StatusRow label="Mid bilge" value={inputs.mid_bilge ? 'ON' : 'off'} danger={inputs.mid_bilge} />
-          <StatusRow label="Aft bilge" value={inputs.aft_bilge ? 'ON' : 'off'} danger={inputs.aft_bilge} />
-          <StatusRow label="Mid float" value={inputs.mid_float ? 'ON' : 'off'} danger={inputs.mid_float} />
-          <StatusRow label="Aft float" value={inputs.aft_float ? 'ON' : 'off'} danger={inputs.aft_float} />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Raw BLE</Text>
-          <Text style={styles.raw}>{rawStatus || 'No status yet'}</Text>
         </View>
 
         <Text style={styles.buildLabel}>
@@ -928,6 +945,23 @@ function fmtSolarCurrent(reading) {
   if (Math.abs(amps) < 0.01) return '0.000 A · idle';
   if (amps < 0) return `${Math.abs(amps).toFixed(3)} A · charging`;
   return `${amps.toFixed(3)} A · reverse flow`;
+}
+
+function friendlyBoatMode(mode) {
+  switch (mode) {
+    case 'key_on':
+      return 'Boat Power On';
+    case 'switch_on_key_off':
+      return 'Boat Power On · Key Off';
+    case 'docked_off':
+      return 'Boat Power Off';
+    case 'bilge_active':
+      return 'Boat Power Off · Bilge Active';
+    case 'float_alert':
+      return 'Boat Power Off · Float Alert';
+    default:
+      return mode && mode !== '--' ? mode.replaceAll('_', ' ') : '--';
+  }
 }
 
 // Plain Date getters (no Intl) — see dateTimeFormat.js
@@ -1116,6 +1150,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     ...FW600,
     marginBottom: 10,
+  },
+  statusCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  statusAsOf: {
+    color: '#94a3b8',
+    fontSize: 12,
+    textAlign: 'right',
+    flexShrink: 1,
   },
   row: {
     flexDirection: 'row',

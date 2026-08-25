@@ -31,6 +31,18 @@ if (!source.includes('Solar current is not total battery load')) {
 if (!source.includes("intentionalHandoffRef.current === 'log'")) {
   failures.push('intentional Log Now disconnect suppression is missing');
 }
+if (!source.includes('label="Refresh Now"')) {
+  failures.push('Refresh is not located with service commands');
+}
+if (!source.includes("return 'Boat Power On'") || !source.includes("return 'Boat Power Off'")) {
+  failures.push('friendly boat power mode labels are missing');
+}
+if (!source.includes('Quick Reboot Pico') || !source.includes('OTA Check (reboot)')) {
+  failures.push('firmware reboot choices are incomplete');
+}
+if (!source.includes('BoatMonitor BLE detected — waiting briefly')) {
+  failures.push('BLE handoff stabilization delay is missing');
+}
 if (source.includes('BLE stays connected')) {
   failures.push('obsolete Log Now BLE behavior text remains');
 }
