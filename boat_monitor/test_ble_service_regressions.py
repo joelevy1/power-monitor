@@ -50,6 +50,9 @@ def main():
     run_loop = source.split("def run(self):", 1)[1].split("def main():", 1)[0]
     assert "BLE_ADV_REFRESH_MS" in run_loop
     assert "self.advertise(refresh=True)" in run_loop
+    assert "BLE_CONNECTED_SENSOR_REFRESH_MS" in run_loop
+    assert "read_sensors = not self.connections" in run_loop
+    assert "self._last_sensor_refresh_ms = now_ms" in run_loop
     auto_log = source.split("def _maybe_auto_log", 1)[1].split(
         "def run(self):", 1
     )[0]
