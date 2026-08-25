@@ -470,6 +470,7 @@ export default function BoatBleScreen({ onBack }) {
         monitorSubRef.current?.remove?.();
         monitorSubRef.current = null;
         deviceRef.current = null;
+        import('./bleConnection').then((m) => m.destroyBleManager()).catch(() => {});
       });
 
       monitorSubRef.current = connectedDevice.monitorCharacteristicForService(
@@ -483,6 +484,7 @@ export default function BoatBleScreen({ onBack }) {
           // error -- see the BLE decode crash fixed in 0.1.8/0.1.9.
           try {
             if (error) {
+              if (intentionalHandoffRef.current === 'log') return;
               if (/operation was cancelle?d|cancelled|canceled/i.test(error.message || '')) return;
               setMessage(`Notify error: ${error.message}`);
               return;
@@ -690,7 +692,17 @@ export default function BoatBleScreen({ onBack }) {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Command Status</Text>
-          <StatusRow label="App" value={message} danger={!connected && !scanning} />
+          <View style={styles.commandMessage}>
+            <Text style={styles.commandMessageLabel}>App</Text>
+            <Text
+              style={[
+                styles.commandMessageText,
+                !connected && !scanning ? styles.danger : null,
+              ]}
+            >
+              {message}
+            </Text>
+          </View>
           {pendingCommand ? (
             <View style={styles.pendingRow}>
               <ActivityIndicator color="#7dd3fc" />
@@ -822,9 +834,21 @@ export default function BoatBleScreen({ onBack }) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Boat Status</Text>
           <StatusRow label="Mode" value={mode} danger={mode === 'switch_on_key_off' || mode === 'float_alert'} />
-          <StatusRow label="Engine" value={`${fmtMetric(status?.engine, 'v')} V  ${fmtMetric(status?.engine, 'a', 3)} A`} />
-          <StatusRow label="House" value={`${fmtMetric(status?.house, 'v')} V  ${fmtMetric(status?.house, 'a', 3)} A`} />
-          <StatusRow label="V50" value={`${fmtMetric(status?.v50, 'v')} V`} />
+          <Text style={styles.subsectionTitle}>Battery voltage</Text>
+          <StatusRow label="Engine battery" value={`${fmtMetric(status?.engine, 'v')} V`} />
+          <StatusRow label="House battery" value={`${fmtMetric(status?.house, 'v')} V`} />
+          <Text style={styles.subsectionTitle}>Solar charging</Text>
+          <StatusRow label="Engine solar branch" value={fmtSolarCurrent(status?.engine)} />
+          <StatusRow label="House solar branch" value={fmtSolarCurrent(status?.house)} />
+          <Text style={styles.hint}>
+            Solar current is not total battery load, starter current, stereo current, or alternator current.
+          </Text>
+          <Text style={styles.subsectionTitle}>V50 power bank output</Text>
+          <StatusRow label="V50 output voltage" value={`${fmtMetric(status?.v50, 'v')} V`} />
+          <StatusRow label="V50 output current" value={`${fmtMetric(status?.v50, 'a', 3)} A`} />
+          <Text style={styles.hint}>
+            Near-zero V50 current is expected while boat 5 V powers the Pico/modem; voltage may still remain visible.
+          </Text>
           <StatusRow label="Battery readings" value={sensorReadAt ? `Sampled ${fmtTime(sensorReadAt)}` : '--'} />
           <View style={styles.subsectionDivider} />
           <Text style={styles.subsectionTitle}>Inputs</Text>
@@ -908,6 +932,14 @@ function signalQualityFor(rssi) {
 function fmtMetric(reading, field, digits = 2) {
   if (!reading?.ok || typeof reading[field] !== 'number') return '--';
   return reading[field].toFixed(digits);
+}
+
+function fmtSolarCurrent(reading) {
+  if (!reading?.ok || typeof reading.a !== 'number') return '--';
+  const amps = reading.a;
+  if (Math.abs(amps) < 0.01) return '0.000 A · idle';
+  if (amps < 0) return `${Math.abs(amps).toFixed(3)} A · charging`;
+  return `${amps.toFixed(3)} A · reverse flow`;
 }
 
 // Plain Date getters (no Intl) — see dateTimeFormat.js
@@ -1088,6 +1120,7 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 14,
     ...FW600,
+    marginTop: 10,
     marginBottom: 4,
   },
   cardTitle: {
@@ -1117,6 +1150,21 @@ const styles = StyleSheet.create({
   },
   rowValueWrap: {
     flexShrink: 1,
+  },
+  commandMessage: {
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#334155',
+  },
+  commandMessageLabel: {
+    color: '#94a3b8',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  commandMessageText: {
+    color: '#f8fafc',
+    fontSize: 16,
+    lineHeight: 22,
   },
   linkValue: {
     color: '#7dd3fc',

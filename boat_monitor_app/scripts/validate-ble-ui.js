@@ -19,6 +19,15 @@ if (!source.includes('Log handoff complete — BoatMonitor BLE is back')) {
 if (!source.includes('Battery readings')) {
   failures.push('battery reading freshness row is missing');
 }
+if (!source.includes('Engine solar branch') || !source.includes('House solar branch')) {
+  failures.push('solar-only current labels are missing');
+}
+if (!source.includes('Solar current is not total battery load')) {
+  failures.push('solar current scope explanation is missing');
+}
+if (!source.includes("intentionalHandoffRef.current === 'log'")) {
+  failures.push('intentional Log Now disconnect suppression is missing');
+}
 if (source.includes('BLE stays connected')) {
   failures.push('obsolete Log Now BLE behavior text remains');
 }
