@@ -78,6 +78,11 @@ def main():
     assert 'self.command_result = "wifi_console_disabled"' in wifi
     assert "wifi_mode.txt" not in wifi
     assert "machine.reset()" not in wifi
+    signal = source.split(
+        'elif cmd in ("signal", "modem_status", "cell_status"):', 1
+    )[1].split('elif cmd in ("gps", "check_gps", "gps_status"):', 1)[0]
+    assert 'signal_check_disabled: use Log Now' in signal
+    assert "Sim7600Modem" not in signal
 
     print("BLE service regression guards OK")
     return 0

@@ -476,44 +476,7 @@ class BoatMonitorBle:
                 self.command_result = "diag_failed: %s" % exc
             self.update_status()
         elif cmd in ("signal", "modem_status", "cell_status"):
-            if self._cellular_busy:
-                self.command_result = "signal_busy: logging in progress"
-                self.update_status()
-                return
-            # A lightweight cellular diagnostic -- registration + signal
-            # quality only, no AT+NETOPEN/data session -- so it's quick
-            # (a few seconds, not the 30-60s a full "log"/"ota" cellular
-            # session can take) and safe to run without disrupting
-            # anything else. This is the app-side equivalent of the
-            # "Waiting for network registration... CSQ: ..." lines Thonny
-            # already shows during boot, surfaced through command_result
-            # instead of requiring a laptop.
-            self.command_result = "checking_signal"
-            self.update_status()
-            try:
-                from cellular import CellularError, Sim7600Modem, one_line
-
-                modem = Sim7600Modem()
-                try:
-                    modem.check_alive()
-                    modem.check_sim()
-                    try:
-                        modem.wait_for_registration(seconds=15)
-                        reg_state = "registered"
-                    except CellularError:
-                        reg_state = "not registered"
-                    csq = one_line(modem.at("AT+CSQ", 2000, quiet=True))
-                    self.command_result = "signal: %s (%s)" % (csq, reg_state)
-                finally:
-                    modem.close_data()
-            except Exception as exc:
-                self.command_result = "signal_failed: %s" % exc
-                try:
-                    import diag_log
-
-                    diag_log.log("ble_signal_failed %s" % exc)
-                except Exception:
-                    pass
+            self.command_result = "signal_check_disabled: use Log Now"
             self.update_status()
         elif cmd in ("gps", "check_gps", "gps_status"):
             self.command_result = "checking_gps"
