@@ -180,6 +180,11 @@ BLE_SENSOR_CACHE_PATHS = (
     "version.py",
 )
 
+CLEAN_STANDBY_BOOT_PATHS = (
+    "main.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -337,7 +342,19 @@ def main(argv=None):
         action="store_true",
         help="3-file removal of normal Wi-Fi console runtime paths",
     )
+    p.add_argument(
+        "--clean-standby-boot",
+        action="store_true",
+        help="2-file clean-heap dock standby launcher",
+    )
     args = p.parse_args(argv)
+    if args.clean_standby_boot:
+        return _write_manifest(
+            CLEAN_STANDBY_BOOT_PATHS,
+            "Launch dock standby before importing heavy OTA/telemetry modules.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.disable_wifi_console:
         return _write_manifest(
             BLE_LOG_HANDOFF_PATHS,
