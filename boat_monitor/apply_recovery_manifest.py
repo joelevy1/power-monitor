@@ -212,6 +212,13 @@ CUMULATIVE_DOCK_PATHS = (
     "version.py",
 )
 
+OTA_FAIL_OPEN_PATHS = (
+    "main.py",
+    "ota_health.py",
+    "remote_boot_config.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -394,7 +401,19 @@ def main(argv=None):
         action="store_true",
         help="6-file cumulative fresh-heap dock and command-sync release",
     )
+    p.add_argument(
+        "--ota-fail-open",
+        action="store_true",
+        help="4-file terminal failure circuit-breaker and key-on rescue release",
+    )
     args = p.parse_args(argv)
+    if args.ota_fail_open:
+        return _write_manifest(
+            OTA_FAIL_OPEN_PATHS,
+            "Fail open after terminal/repeated OTA failures with key-on BLE rescue.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.cumulative_dock:
         return _write_manifest(
             CUMULATIVE_DOCK_PATHS,

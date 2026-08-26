@@ -21,6 +21,9 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 5. Multi-file master releases are allowed only as explicit `wifi-feature`
    manifests: no bundle, at most eight files, and `version.py` last. Device
    policy refuses them over cellular.
+6. `apply_ship_config.py` stages `boot_ota_prefer_wifi=1` without a firmware
+   target, then waits for both a device `remote_config` acknowledgement and a
+   successful Wi-Fi Power_Log. Only a later invocation may publish `min_fw`.
 
 ## Sheet rules
 
@@ -31,6 +34,8 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 2. After every ship: `apply_ship_config.py` clears the same one-shots.
 3. **Never** leave `force_ota=1` on Config while `current >= min_fw` — device
    will `reboot_queued` every log cycle without upgrading.
+4. Transport prerequisites and a multi-file OTA target must never be written in
+   the same phase.
 
 ## Device rules (firmware)
 
@@ -41,11 +46,17 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
    `pending_ota` so recovery can retry boot OTA after sheet/USB clears backoff.
 4. **Backoff trap**: `clear_boot_ota_backoff` on sheet clears flash
    `boot_ota_backoff_until` / `boot_ota_skip_remaining` (1.1.91+).
+5. Manifest policy refusals clear `pending_ota`, force and automatic boot OTA,
+   then continue into normal BLE/standby service.
+6. Transient failures get at most two boot attempts before the same fail-open
+   circuit breaker activates.
+7. If a failed OTA request somehow remains persisted, key/switch ON bypasses it
+   and starts BLE recovery.
 
 ## USB recovery rules
 
-1. **Patch-only** for stress recovery: use `--enable-boot-ota` so flash is not
-   left with `auto_ota_on_boot=false` while `min_fw > VERSION`.
+1. Prefer a normal patch with boot OTA disabled; a fresh explicit command is
+   safer than carrying a failed request across recovery.
 2. Default patch-only (non-stress) still sets `auto_ota_on_boot=false` to stop
    boot loops during manual recovery.
 3. After USB patch: unplug USB, power cycle, sheet `auto_ota_on_boot=1` if you
@@ -99,6 +110,6 @@ See `WINTER_READINESS_CAMPAIGN.md` for the full six-round and transport matrix.
 | Symptom | Action |
 |---------|--------|
 | `reboot_queued` loop, no `boot_start` | USB `run_usb_recovery.bat --patch-only --enable-boot-ota`, power cycle |
-| ENOMEM on boot OTA | Ship version-only manifest; never bump min_fw with multi-file master |
+| ENOMEM on boot OTA | Device fails open; use USB or stage an acknowledged Wi-Fi feature release |
 | Stuck after USB | Sheet `auto_ota_on_boot=1`, power cycle |
 | At min_fw but still rebooting | Clear `force_ota` / `cmd_ota` on Config |

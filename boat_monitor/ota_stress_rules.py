@@ -129,6 +129,60 @@ def read_config_map(sheets, spreadsheet_id):
     return out
 
 
+def manifest_requires_wifi(manifest):
+    """Multi-file feature releases must never be dispatched to cellular OTA."""
+    return len((manifest or {}).get("files") or []) > MAX_BOOTSTRAP_MANIFEST_FILES
+
+
+def device_config_acknowledged(
+    sheets,
+    spreadsheet_id,
+    key,
+    value,
+    device_id="boat-p2",
+):
+    """Return whether the latest device config report confirms key=value."""
+    rows = (
+        sheets.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range="Events!A2:D")
+        .execute()
+        .get("values", [])
+    )
+    expected = "%s=%s" % (key, value)
+    for row in reversed(rows):
+        if len(row) < 4 or row[1] != device_id or row[2] != "remote_config":
+            continue
+        return expected in str(row[3])
+    return False
+
+
+def latest_power_log_uses_wifi(sheets, spreadsheet_id, device_id="boat-p2"):
+    """Require recent successful Wi-Fi telemetry before a feature OTA dispatch."""
+    header = (
+        sheets.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range="Power_Log!1:1")
+        .execute()
+        .get("values", [[]])[0]
+    )
+    rows = (
+        sheets.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range="Power_Log!A2:Z")
+        .execute()
+        .get("values", [])
+    )
+    columns = {name: idx for idx, name in enumerate(header)}
+    uplink_idx = columns.get("uplink", 12)
+    for row in reversed(rows):
+        if len(row) < 2 or row[1] != device_id:
+            continue
+        uplink = row[uplink_idx] if len(row) > uplink_idx else ""
+        return bool(str(uplink).strip()) and str(uplink).strip().lower() != "cellular"
+    return False
+
+
 def preflight_sheet(sheets, spreadsheet_id, note_prefix="ota_stress_rules", profile="underway"):
     """
     Normalize Config for a stress pass. Returns list of stale keys that were set.
@@ -315,10 +369,12 @@ def pause_min_fw_to_device(sheets, spreadsheet_id, device_fw: str, reason: str):
         return False
     rows = [
         ("min_fw_version", device_fw, "ota_stress_rules: PAUSE %s" % reason[:80]),
+        ("auto_ota_on_boot", "0", "ota_stress_rules: fail-open pause"),
+        ("clear_pending_ota", "1", "ota_stress_rules: clear failed request"),
+        ("clear_ota_degraded", "1", "ota_stress_rules: leave normal service available"),
     ]
     for key in STALE_SHEET_KEYS:
         rows.append((key, "", "ota_stress_rules: clear one-shot on pause"))
-    rows.extend(STRESS_RECOVERY_KEYS)
     upsert_config_keys(sheets, spreadsheet_id, rows)
     print("PAUSE: min_fw_version=%s (%s)" % (device_fw, reason))
     return True

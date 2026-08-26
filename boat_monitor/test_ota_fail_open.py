@@ -3,6 +3,8 @@
 
 from pathlib import Path
 
+import ota_health
+
 
 def main():
     root = Path(__file__).resolve().parent
@@ -10,6 +12,10 @@ def main():
         encoding="utf-8"
     )
     assert "pause_after_ota_memory_failure" in source
+    assert "pause_after_terminal_ota_failure" in source
+    assert "pause_after_retry_limit" in source
+    assert "terminal_ota_error" in source
+    assert "boot_retry_allowed" in source
     assert "boot OTA Wi-Fi ENOMEM" not in source
     assert "if not ota_memory_failure:" in source
     flush = source.split("if not ota_memory_failure:", 1)[1].split(
@@ -37,6 +43,13 @@ def main():
     assert deferred.rindex("_ble_log_machine.reset()") > deferred.index(
         "_deferred_log("
     )
+    assert ota_health.terminal_ota_error(
+        "manifest_tier_max_2_files_cellular"
+    )
+    assert ota_health.terminal_ota_error(
+        "manifest_kind_wifi-feature_cellular_blocked"
+    )
+    assert not ota_health.terminal_ota_error("Wi-Fi could not connect")
     print("OTA fail-open recovery guards OK")
     return 0
 

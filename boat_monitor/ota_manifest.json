@@ -1,22 +1,14 @@
 {
-  "version": "1.1.164",
-  "notes": "Cumulative fresh-heap dock logging, Wi-Fi teardown, and command acknowledgement.",
+  "version": "1.1.165",
+  "notes": "Fail open after terminal/repeated OTA failures with key-on BLE rescue.",
   "files": [
     {
       "path": "main.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
     },
     {
-      "path": "standby_monitor.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/standby_monitor.py"
-    },
-    {
-      "path": "wifi_uplink.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
-    },
-    {
-      "path": "sheets_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
+      "path": "ota_health.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_health.py"
     },
     {
       "path": "remote_boot_config.py",
