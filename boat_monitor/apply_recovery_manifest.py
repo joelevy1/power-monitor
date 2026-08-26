@@ -185,6 +185,12 @@ CLEAN_STANDBY_BOOT_PATHS = (
     "version.py",
 )
 
+WIFI_TELEMETRY_PATHS = (
+    "wifi_uplink.py",
+    "sheets_log.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -347,7 +353,19 @@ def main(argv=None):
         action="store_true",
         help="2-file clean-heap dock standby launcher",
     )
+    p.add_argument(
+        "--wifi-telemetry",
+        action="store_true",
+        help="3-file detailed Wi-Fi association telemetry release",
+    )
     args = p.parse_args(argv)
+    if args.wifi_telemetry:
+        return _write_manifest(
+            WIFI_TELEMETRY_PATHS,
+            "Capture complete per-SSID association failures before fallback.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.clean_standby_boot:
         return _write_manifest(
             CLEAN_STANDBY_BOOT_PATHS,
