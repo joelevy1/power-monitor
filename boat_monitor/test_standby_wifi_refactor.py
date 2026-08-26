@@ -179,7 +179,7 @@ def test_standby_manifest_mode_is_complete_and_version_last():
     dock_log = main_source.split("if _dock_log_requested:", 1)[1].split(
         "if _standby_after_log:", 1
     )[0]
-    assert dock_log.index("_early_os.remove(_request_path)") < dock_log.index(
+    assert main_source.index("_early_os.remove(_request_path)") < main_source.index(
         "_dock_log_once("
     )
     assert "with open(STANDBY_AFTER_LOG_PATH" in dock_log

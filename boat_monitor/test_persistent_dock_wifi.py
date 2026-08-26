@@ -254,7 +254,7 @@ def test_standby_tears_down_wifi_before_ble_reset():
 
 def test_standby_arms_switch_irq_before_blocking_boot_log():
     source = (ROOT / "standby_monitor.py").read_text(encoding="utf-8")
-    main = source.split("def main():", 1)[1]
+    main = source.split("def main(", 1)[1]
     assert main.index("_arm_ble_transition_irq()") < main.index("if _boot_log_wanted():")
     irq = source.split("def _arm_ble_transition_irq():", 1)[1].split(
         "def _standby_prefer_wifi():", 1
