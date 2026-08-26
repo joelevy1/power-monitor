@@ -10,6 +10,9 @@ def main():
     ).read_text(encoding="utf-8")
     assert "var RECEIVER_VERSION = 6;" in source
     assert "body.consume_commands === true" in source
+    assert "legacyResponseCapable" in source
+    assert "uplink === 'cellular'" in source
+    assert "uplink === 'cellular_control_sync'" in source
     assert "readConfigCommands_(deviceId, consumeCommands)" in source
     command_reader = source.split(
         "function readConfigCommands_(deviceId, consumeCommands)", 1

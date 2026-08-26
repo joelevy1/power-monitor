@@ -315,7 +315,13 @@ function handlePost_(e) {
   }
 
   var deviceId = data.device ? String(data.device) : '';
-  var consumeCommands = body.consume_commands === true;
+  var hasConsumptionAck = Object.prototype.hasOwnProperty.call(body, 'consume_commands');
+  var uplink = String(data.uplink || '').trim().toLowerCase();
+  var legacyResponseCapable =
+    uplink === 'cellular' || uplink === 'cellular_control_sync';
+  var consumeCommands = hasConsumptionAck
+    ? body.consume_commands === true
+    : legacyResponseCapable;
   var commands = readConfigCommands_(deviceId, consumeCommands);
 
   return {
