@@ -452,7 +452,15 @@ class SheetsLogger:
         except Exception:
             pass
 
-        body = {"tab": tab, "token": self.token, "data": data}
+        body = {
+            "tab": tab,
+            "token": self.token,
+            "data": data,
+            # Apps Script must clear one-shots only when this transport reads
+            # its JSON response. Trusted one-TLS Wi-Fi redirects intentionally
+            # do not, so those posts preserve pending commands for cellular.
+            "consume_commands": not bool(self._wifi_ssid),
+        }
         last_exc = None
         for attempt in range(2):
             try:

@@ -31,6 +31,12 @@ def main():
         os.chdir(tmp)
         remote_boot_config.PATH = str(Path(tmp) / "remote_boot_config.json")
         try:
+            _state()
+            assert (
+                remote_boot_config.effective_cellular_control_sync_every_logs()
+                == 3
+            )
+
             _state(
                 min_fw_version="999.0",
                 auto_ota_on_boot=True,
