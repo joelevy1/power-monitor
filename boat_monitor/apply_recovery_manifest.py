@@ -216,6 +216,7 @@ OTA_FAIL_OPEN_PATHS = (
     "main.py",
     "ota_health.py",
     "remote_boot_config.py",
+    "remote_control.py",
     "version.py",
 )
 
@@ -404,7 +405,7 @@ def main(argv=None):
     p.add_argument(
         "--ota-fail-open",
         action="store_true",
-        help="4-file terminal failure circuit-breaker and key-on rescue release",
+        help="5-file terminal failure, key-on rescue, and split-dispatch release",
     )
     args = p.parse_args(argv)
     if args.ota_fail_open:

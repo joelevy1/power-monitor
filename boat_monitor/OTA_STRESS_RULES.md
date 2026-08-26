@@ -36,6 +36,8 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
    will `reboot_queued` every log cycle without upgrading.
 4. Transport prerequisites and a multi-file OTA target must never be written in
    the same phase.
+5. Firmware defensively applies a changed transport setting but defers any OTA
+   action and target from the same response until a later acknowledged payload.
 
 ## Device rules (firmware)
 
