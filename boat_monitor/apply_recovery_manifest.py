@@ -191,6 +191,12 @@ WIFI_TELEMETRY_PATHS = (
     "version.py",
 )
 
+HEADLESS_DOCK_LOG_PATHS = (
+    "main.py",
+    "standby_monitor.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -358,7 +364,19 @@ def main(argv=None):
         action="store_true",
         help="3-file detailed Wi-Fi association telemetry release",
     )
+    p.add_argument(
+        "--headless-dock-log",
+        action="store_true",
+        help="3-file fresh-heap dock logging handoff",
+    )
     args = p.parse_args(argv)
+    if args.headless_dock_log:
+        return _write_manifest(
+            HEADLESS_DOCK_LOG_PATHS,
+            "Run each dock upload in a bounded fresh-heap boot.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.wifi_telemetry:
         return _write_manifest(
             WIFI_TELEMETRY_PATHS,
