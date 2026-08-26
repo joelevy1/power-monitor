@@ -379,6 +379,34 @@ class BoatMonitorBle:
         print("BLE advertising as BoatMonitor")
         return True
 
+    def _shutdown_ble_for_standby(self):
+        """Fully release CYW43439 BLE state before rebooting into dock Wi-Fi."""
+        try:
+            self.ble.gap_advertise(None)
+        except Exception:
+            pass
+        for conn in tuple(self.connections):
+            try:
+                self.ble.gap_disconnect(conn)
+            except Exception:
+                pass
+        self.connections.clear()
+        try:
+            time.sleep_ms(100)
+        except AttributeError:
+            time.sleep(0.1)
+        try:
+            self.ble.active(False)
+        except Exception as exc:
+            print("BLE deactivate before standby:", exc)
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+        time.sleep(1)
+
     def update_status(self, sensors=None):
         if sensors is None:
             sensors = not self.connections
@@ -620,6 +648,7 @@ class BoatMonitorBle:
                     "BLE GPIO off for %.0fs (hold %ss) — rebooting to standby"
                     % (self._gpio_low_accum_s, hold_s)
                 )
+                self._shutdown_ble_for_standby()
                 time.sleep(0.3)
                 machine.reset()
 

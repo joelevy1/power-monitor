@@ -269,6 +269,20 @@ def test_standby_arms_switch_irq_before_blocking_boot_log():
     )
 
 
+def test_ble_deactivates_shared_radio_before_standby_reset():
+    source = (ROOT / "ble_service.py").read_text(encoding="utf-8")
+    shutdown = source.split("def _shutdown_ble_for_standby", 1)[1].split(
+        "def update_status", 1
+    )[0]
+    assert "self.ble.gap_advertise(None)" in shutdown
+    assert "self.ble.gap_disconnect(conn)" in shutdown
+    assert "self.ble.active(False)" in shutdown
+    loop = source.split("def run(self):", 1)[1].split("def main():", 1)[0]
+    assert loop.index("self._shutdown_ble_for_standby()") < loop.index(
+        "machine.reset()"
+    )
+
+
 def main():
     test_remote_policy()
     test_reuse_and_stale_reset()
@@ -277,6 +291,7 @@ def main():
     test_ble_shutdown_deinitializes_sta_and_ap()
     test_standby_tears_down_wifi_before_ble_reset()
     test_standby_arms_switch_irq_before_blocking_boot_log()
+    test_ble_deactivates_shared_radio_before_standby_reset()
     print("persistent dock Wi-Fi tests OK")
 
 
