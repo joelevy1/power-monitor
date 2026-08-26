@@ -884,7 +884,7 @@ def run_rounds(
             _set_min_fw_only(ver)
         expected_uplink = (
             "wifi"
-            if profile == "dock"
+            if profile in ("dock", "dock-stress")
             else ("cellular" if profile == "switch-on" else None)
         )
         if profile == "dock":
@@ -951,11 +951,11 @@ def main():
     p.add_argument("--bootstrap-timeout", type=int, default=7200, help="seconds to wait for bootstrap (default 2h)")
     p.add_argument(
         "--profile",
-        choices=("underway", "switch-on", "dock"),
+        choices=("underway", "switch-on", "dock-stress", "dock"),
         default="underway",
         help=(
             "underway=60s cellular stress; switch-on=production 600s cellular; "
-            "dock=standby Wi-Fi-first"
+            "dock-stress=300s Wi-Fi dock; dock=hourly Wi-Fi dock"
         ),
     )
     p.add_argument(
