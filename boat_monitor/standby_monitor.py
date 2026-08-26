@@ -12,7 +12,6 @@ import ble_policy
 import diag_log
 import resilience
 from boat_status import read_status
-from log_session import log_power_and_gps
 
 
 # Minutes after an auto-log attempt before we probe the modem (logging can
@@ -25,6 +24,7 @@ MIN_ATTEMPT_GAP_S = 60
 MIN_ATTEMPT_GAP_ENOMEM_S = 30
 # Consecutive soft-fails before stall reboot (also triggers degraded Events).
 AUTO_LOG_FAIL_REBOOT_COUNT = 4
+DOCK_LOG_REQUEST_PATH = "dock_log_request.flag"
 
 _transition_pins = []
 _transition_scheduled = False
@@ -153,8 +153,8 @@ def _finish_log_session(device_id, mode, summary, source):
         pass
 
 
-def main():
-    diag_log.log("standby_monitor start")
+def main(skip_boot_log=False):
+    diag_log.log("standby_monitor start skip_boot_log=%s" % skip_boot_log)
     resilience.enable_watchdog()
     _arm_ble_transition_irq()
     print("standby_monitor: BLE off — auto-log (Wi-Fi or cellular per remote_boot_config)")
@@ -171,9 +171,18 @@ def main():
     # Schedule from last *successful* sheet row so Config intervals match what
     # you see in Power_Log (failed/hung cycles retry without waiting another
     # full interval from a doomed attempt start).
-    last_successful_log_ms = time.ticks_add(now_boot, -int(interval_s * 1000))
-    last_attempt_ms = time.ticks_add(now_boot, -int(MIN_ATTEMPT_GAP_S * 1000))
-    last_auto_log_mode = None
+    if skip_boot_log:
+        last_successful_log_ms = now_boot
+        last_attempt_ms = now_boot
+        last_auto_log_mode = "docked_off"
+    else:
+        last_successful_log_ms = time.ticks_add(
+            now_boot, -int(interval_s * 1000)
+        )
+        last_attempt_ms = time.ticks_add(
+            now_boot, -int(MIN_ATTEMPT_GAP_S * 1000)
+        )
+        last_auto_log_mode = None
     last_heartbeat_ms = now_boot
     last_modem_watchdog_ms = now_boot
     auto_log_failures = 0
@@ -185,8 +194,10 @@ def main():
         if _reboot_for_pending_upgrade("standby_boot_skip_log"):
             return
 
-    if _boot_log_wanted():
+    if not skip_boot_log and _boot_log_wanted():
         try:
+            from log_session import log_power_and_gps
+
             status = read_status()
             mode = status["mode"]
             device_id = status.get("device") or device_id
@@ -333,73 +344,22 @@ def main():
                     continue
                 time.sleep(30)
                 continue
-            last_auto_log_mode = mode
-            auto_log_started_ms = now
-            last_attempt_ms = now
-            diag_log.log("auto-log START mode=%s since_success=%.0fs" % (mode, since_success_s))
-            print("standby_monitor: auto-log mode=%s since_success=%.0fs" % (mode, since_success_s))
             try:
-                summary = log_power_and_gps(
-                    note="auto_log",
-                    prefer_wifi=_standby_prefer_wifi(),
-                    ble_monitor=None,
-                    periodic_cellular_sync=True,
-                )
-                auto_log_started_ms = None
-                diag_log.log("auto-log DONE %s" % summary)
-                print("standby_monitor: auto-log result:", summary)
-                if summary and str(summary).startswith("power: ok"):
-                    last_successful_log_ms = time.ticks_ms()
-                    auto_log_failures = 0
-                else:
-                    auto_log_failures += 1
-                    diag_log.log("auto-log soft-fail count=%s" % auto_log_failures)
-                    if summary and "ENOMEM" in str(summary):
-                        last_attempt_ms = time.ticks_add(
-                            now, -int((MIN_ATTEMPT_GAP_S - MIN_ATTEMPT_GAP_ENOMEM_S) * 1000)
-                        )
-                try:
-                    import remote_telemetry
-
-                    if auto_log_failures >= 1 and (
-                        auto_log_failures >= 2
-                        or (summary and "ENOMEM" in str(summary))
-                        or since_success_s >= auto_log.interval_for_mode(mode)
-                    ):
-                        remote_telemetry.maybe_report_auto_log_fail(
-                            device_id,
-                            mode,
-                            since_success_s,
-                            auto_log_failures,
-                            summary,
-                        )
-                except Exception as exc:
-                    diag_log.log("auto_log_degraded telemetry skipped: %s" % exc)
-                _finish_log_session(device_id, mode, summary, "standby_auto_log")
-                if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
-                    reason = "auto-log failed %s times in a row" % auto_log_failures
-                    print("standby_monitor: %s — rebooting" % reason)
-                    _reboot_after_stall(reason, mode, device_id)
-                print(
-                    "standby_monitor: next auto-log in ~%ds (mode=%s)"
-                    % (auto_log.interval_for_mode(mode), mode)
-                )
+                with open(DOCK_LOG_REQUEST_PATH, "w") as request_file:
+                    request_file.write("1")
             except Exception as exc:
-                auto_log_started_ms = None
-                auto_log_failures += 1
-                diag_log.log("auto-log FAIL %s count=%s" % (exc, auto_log_failures))
-                print("standby_monitor: auto-log failed:", exc)
-                try:
-                    import mem_guard
+                diag_log.log("dock log request write failed: %s" % exc)
+                time.sleep(30)
+                continue
+            diag_log.log(
+                "dock log due mode=%s since_success=%.0fs -> fresh-heap reboot"
+                % (mode, since_success_s)
+            )
+            print("standby_monitor: rebooting for fresh-heap dock log")
+            time.sleep(0.3)
+            import machine
 
-                    if not mem_guard.skip_network_diag_upload():
-                        diag_log.upload_tail_to_events(device=device_id, lines=25)
-                except Exception:
-                    pass
-                if auto_log_failures >= AUTO_LOG_FAIL_REBOOT_COUNT:
-                    reason = "auto-log exception x%s last=%s" % (auto_log_failures, exc)
-                    print("standby_monitor: %s — rebooting" % reason)
-                    _reboot_after_stall(reason, mode, device_id)
+            machine.reset()
 
         last_auto_log_mode = mode
         resilience.feed_watchdog()

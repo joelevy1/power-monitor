@@ -1,35 +1,84 @@
-STANDBY_CLEAN_BOOT_PATH = "standby_clean_boot.flag"
+STANDBY_CLEAN_BOOT_PATH = "standby_clean_boot.flag"  # legacy 1.1.159 marker
+DOCK_LOG_REQUEST_PATH = "dock_log_request.flag"
+STANDBY_AFTER_LOG_PATH = "standby_after_log.flag"
+DOCK_LOG_DEADLINE_MS = 180000
 
-_clean_standby_requested = False
+_dock_log_requested = False
+_standby_after_log = False
 try:
     import os as _early_os
 
-    _early_os.stat(STANDBY_CLEAN_BOOT_PATH)
-    _early_os.remove(STANDBY_CLEAN_BOOT_PATH)
-    _clean_standby_requested = True
-except OSError:
-    pass
+    for _request_path in (DOCK_LOG_REQUEST_PATH, STANDBY_CLEAN_BOOT_PATH):
+        try:
+            _early_os.stat(_request_path)
+            _early_os.remove(_request_path)
+            _dock_log_requested = True
+        except OSError:
+            pass
+    try:
+        _early_os.stat(STANDBY_AFTER_LOG_PATH)
+        _early_os.remove(STANDBY_AFTER_LOG_PATH)
+        _standby_after_log = True
+    except OSError:
+        pass
 except Exception:
     pass
 
-if _clean_standby_requested:
-    # Enter standby before importing OTA/telemetry modules. MicroPython cannot
-    # unload those modules later, and their fragmented heap breaks Wi-Fi TLS.
+if _dock_log_requested:
+    # Consume the request before networking. If the deadline/watchdog resets,
+    # the next boot enters idle standby rather than retrying in a tight loop.
     try:
-        import gc as _early_gc
-
-        _early_gc.collect()
+        with open(STANDBY_AFTER_LOG_PATH, "w") as _after_log_marker:
+            _after_log_marker.write("1")
     except Exception:
         pass
+    import time as _dock_time
+    import resilience as _dock_resilience
+
+    _dock_resilience.enable_watchdog()
+    _dock_started_ms = _dock_time.ticks_ms()
+
+    def _dock_log_deadline():
+        if (
+            _dock_time.ticks_diff(_dock_time.ticks_ms(), _dock_started_ms)
+            >= DOCK_LOG_DEADLINE_MS
+        ):
+            import machine as _dock_deadline_machine
+
+            _dock_deadline_machine.reset()
+
+    _dock_resilience.set_service_hook(_dock_log_deadline)
     try:
-        import status_led as _early_led
+        from log_session import log_power_and_gps as _dock_log_once
 
-        _early_led.set_mode("standby")
+        _dock_result = _dock_log_once(
+            "auto_log",
+            gps_timeout_s=10,
+            prefer_wifi=True,
+            ble_monitor=None,
+        )
+        print("dock log handoff:", _dock_result)
+    except Exception as _dock_exc:
+        print("dock log handoff failed:", _dock_exc)
+    finally:
+        _dock_resilience.set_service_hook(None)
+        import machine as _dock_machine
+
+        _dock_time.sleep(0.5)
+        _dock_machine.reset()
+
+if _standby_after_log:
+    # A pending OTA must run through normal main before returning to standby.
+    try:
+        import remote_boot_config as _early_rbc
+
+        _standby_can_idle = not _early_rbc.should_run_boot_ota()
     except Exception:
-        pass
-    import standby_monitor as _early_standby
+        _standby_can_idle = True
+    if _standby_can_idle:
+        import standby_monitor as _early_standby
 
-    _early_standby.main()
+        _early_standby.main(skip_boot_log=True)
 
 try:
     import gc
@@ -464,9 +513,9 @@ try:
 
         ble_service.main()
     else:
-        print("Rebooting into clean-heap standby monitor")
+        print("Rebooting into fresh-heap dock log handoff")
         try:
-            with open(STANDBY_CLEAN_BOOT_PATH, "w") as _standby_marker:
+            with open(DOCK_LOG_REQUEST_PATH, "w") as _standby_marker:
                 _standby_marker.write("1")
         except Exception as _marker_exc:
             print("standby marker write failed:", _marker_exc)

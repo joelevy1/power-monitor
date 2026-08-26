@@ -173,19 +173,35 @@ def test_standby_manifest_mode_is_complete_and_version_last():
     main_source = (ROOT / "main.py").read_text(encoding="utf-8")
     assert "import field_console" not in main_source
     assert "os.remove(\"wifi_mode.txt\")" in main_source
-    assert main_source.index("STANDBY_CLEAN_BOOT_PATH") < main_source.index(
+    assert main_source.index("DOCK_LOG_REQUEST_PATH") < main_source.index(
         "import ota_telemetry"
     )
-    clean_boot = main_source.split("if _clean_standby_requested:", 1)[1].split(
+    dock_log = main_source.split("if _dock_log_requested:", 1)[1].split(
+        "if _standby_after_log:", 1
+    )[0]
+    assert main_source.index("_early_os.remove(_request_path)") < main_source.index(
+        "_dock_log_once("
+    )
+    assert "with open(STANDBY_AFTER_LOG_PATH" in dock_log
+    assert "_dock_resilience.set_service_hook(_dock_log_deadline)" in dock_log
+    standby_after = main_source.split("if _standby_after_log:", 1)[1].split(
         "try:\n    import gc", 1
     )[0]
-    assert "_early_standby.main()" in clean_boot
+    assert "_early_standby.main(skip_boot_log=True)" in standby_after
     normal_standby = main_source.split(
-        'print("Rebooting into clean-heap standby monitor")', 1
+        'print("Rebooting into fresh-heap dock log handoff")', 1
     )[1].split("except Exception as exc:", 1)[0]
-    assert normal_standby.index("open(STANDBY_CLEAN_BOOT_PATH") < normal_standby.index(
+    assert normal_standby.index("open(DOCK_LOG_REQUEST_PATH") < normal_standby.index(
         "_standby_machine.reset()"
     )
+    standby_source = (ROOT / "standby_monitor.py").read_text(encoding="utf-8")
+    assert "from log_session import log_power_and_gps" not in standby_source.split(
+        "def main(", 1
+    )[0]
+    due = standby_source.split("and auto_log.should_log_now", 1)[1].split(
+        "last_auto_log_mode = mode", 1
+    )[0]
+    assert due.index("open(DOCK_LOG_REQUEST_PATH") < due.index("machine.reset()")
 
 
 def main():
