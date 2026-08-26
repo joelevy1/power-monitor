@@ -173,6 +173,19 @@ def test_standby_manifest_mode_is_complete_and_version_last():
     main_source = (ROOT / "main.py").read_text(encoding="utf-8")
     assert "import field_console" not in main_source
     assert "os.remove(\"wifi_mode.txt\")" in main_source
+    assert main_source.index("STANDBY_CLEAN_BOOT_PATH") < main_source.index(
+        "import ota_telemetry"
+    )
+    clean_boot = main_source.split("if _clean_standby_requested:", 1)[1].split(
+        "try:\n    import gc", 1
+    )[0]
+    assert "_early_standby.main()" in clean_boot
+    normal_standby = main_source.split(
+        'print("Rebooting into clean-heap standby monitor")', 1
+    )[1].split("except Exception as exc:", 1)[0]
+    assert normal_standby.index("open(STANDBY_CLEAN_BOOT_PATH") < normal_standby.index(
+        "_standby_machine.reset()"
+    )
 
 
 def main():
