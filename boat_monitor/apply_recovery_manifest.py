@@ -197,6 +197,12 @@ HEADLESS_DOCK_LOG_PATHS = (
     "version.py",
 )
 
+COMMAND_ACK_PATHS = (
+    "sheets_log.py",
+    "remote_boot_config.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -369,7 +375,19 @@ def main(argv=None):
         action="store_true",
         help="3-file fresh-heap dock logging handoff",
     )
+    p.add_argument(
+        "--command-ack",
+        action="store_true",
+        help="3-file acknowledged remote command delivery",
+    )
     args = p.parse_args(argv)
+    if args.command_ack:
+        return _write_manifest(
+            COMMAND_ACK_PATHS,
+            "Preserve Wi-Fi one-shots until a response-capable transport consumes them.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.headless_dock_log:
         return _write_manifest(
             HEADLESS_DOCK_LOG_PATHS,
