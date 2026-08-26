@@ -62,6 +62,14 @@ def run():
     check("bounded fallback note retains telemetry marker", "wifi_fallback " in bounded)
     check("bounded fallback note retains existing note prefix", bounded.startswith("x"))
 
+    source = (Path(__file__).resolve().parent / "sheets_log.py").read_text(
+        encoding="utf-8"
+    )
+    check(
+        "Wi-Fi posts preserve unacknowledged commands",
+        '"consume_commands": not bool(self._wifi_ssid)' in source,
+    )
+
     fake_wifi = types.ModuleType("wifi_uplink")
     fake_wifi.load_networks = lambda: [("Dock", "password")]
     fake_wifi.connect = lambda timeout_s=15: None

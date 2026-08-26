@@ -31,7 +31,7 @@
  * Saving Code.gs alone does NOT update the live /exec URL the Pico uses.
  */
 
-var RECEIVER_VERSION = 5;
+var RECEIVER_VERSION = 6;
 var TIMESTAMP_DISPLAY_FORMAT = 'mmm d, yyyy h:mm AM/PM';
 var CONFIG_TAB = 'Config';
 
@@ -315,7 +315,8 @@ function handlePost_(e) {
   }
 
   var deviceId = data.device ? String(data.device) : '';
-  var commands = readConfigCommands_(deviceId);
+  var consumeCommands = body.consume_commands === true;
+  var commands = readConfigCommands_(deviceId, consumeCommands);
 
   return {
     ok: true,
@@ -337,9 +338,10 @@ function truthy_(value) {
 /**
  * Read the Config tab (key | value | updated_utc | note).
  * Persistent keys (interval_*, min_fw_version, ...) are returned in settings.
- * One-shot keys cmd_* (or boat-p2:cmd_ota) clear the value cell when consumed.
+ * One-shot keys cmd_* (or boat-p2:cmd_ota) clear only when the requesting
+ * transport explicitly confirms it will consume the JSON response.
  */
-function readConfigCommands_(deviceId) {
+function readConfigCommands_(deviceId, consumeCommands) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var config = ss.getSheetByName(CONFIG_TAB);
   if (!config || config.getLastRow() < 2) {
@@ -367,14 +369,16 @@ function readConfigCommands_(deviceId) {
     }
 
     if (key.indexOf('cmd_') === 0) {
-      if (truthy_(value)) {
+      if (consumeCommands && truthy_(value)) {
         oneShots.push(key.substring(4));
         clearRows.push(i + 2);
       }
       continue;
     }
 
-    settings[key] = value;
+    if (consumeCommands) {
+      settings[key] = value;
+    }
   }
 
   for (var c = 0; c < clearRows.length; c++) {

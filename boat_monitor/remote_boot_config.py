@@ -24,7 +24,7 @@ except ImportError:
     import json
 
 PATH = "remote_boot_config.json"
-CELLULAR_CONTROL_SYNC_DEFAULT = 12
+CELLULAR_CONTROL_SYNC_DEFAULT = 3
 CELLULAR_CONTROL_SYNC_MAX = 255
 CELLULAR_CONTROL_SYNC_COUNT_KEY = "_cellular_control_sync_success_count"
 
