@@ -62,9 +62,17 @@ if _dock_log_requested:
         print("dock log handoff failed:", _dock_exc)
     finally:
         _dock_resilience.set_service_hook(None)
+        try:
+            import wifi_uplink as _dock_wifi
+
+            _dock_wifi.ensure_wifi_off()
+        except Exception as _wifi_shutdown_exc:
+            print("dock Wi-Fi shutdown before reset:", _wifi_shutdown_exc)
         import machine as _dock_machine
 
-        _dock_time.sleep(0.5)
+        # CYW43439 survives RP2040 reset; allow STA deinit to settle so the
+        # next fresh boot does not inherit stale association/driver state.
+        _dock_time.sleep(1)
         _dock_machine.reset()
 
 if _standby_after_log:
