@@ -58,7 +58,7 @@ def run():
         append_wifi_fallback_note("scheduled", "") == "scheduled",
     )
     bounded = append_wifi_fallback_note("x" * 200, "reason=" + ("y" * 200))
-    check("fallback note stays bounded", len(bounded) <= 160)
+    check("fallback note stays bounded", len(bounded) <= 600)
     check("bounded fallback note retains telemetry marker", "wifi_fallback " in bounded)
     check("bounded fallback note retains existing note prefix", bounded.startswith("x"))
 

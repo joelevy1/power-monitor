@@ -423,6 +423,11 @@ def run():
             and "retry_status=connected" in success_report
             and "outcome=wifi" in success_report,
         )
+        check(
+            "successful report keeps per-attempt timeline",
+            "Levy-Guest:first:-3" in success_report
+            and "Levy-Guest:retry:connected" in success_report,
+        )
         check("successful retry report excludes password", "do-not-report" not in success_report)
 
         retry_failure = FakeWlan([-3, -3])
@@ -435,6 +440,11 @@ def run():
             "first_status=-3" in failure_report
             and "retry_status=-3" in failure_report
             and "outcome=fallback" in failure_report,
+        )
+        check(
+            "failure report keeps per-attempt timeline",
+            "Levy-Guest:first:-3" in failure_report
+            and "Levy-Guest:retry:-3" in failure_report,
         )
         check("connection report remains bounded", len(failure_report) <= wifi_uplink.CONNECTION_REPORT_MAX_CHARS)
     finally:
