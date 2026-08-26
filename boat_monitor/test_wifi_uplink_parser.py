@@ -417,6 +417,7 @@ def run():
         check("retry fully disconnects STA", retry_success.disconnect_calls == 1)
         check("retry deactivates and reactivates STA", retry_success.active_calls[:3] == [True, False, True])
         success_report = wifi_uplink.get_last_connection_report()
+        check("successful report includes reset/heap context", "reset=" in success_report and "heap=" in success_report)
         check(
             "successful retry report has both statuses and outcome",
             "first_status=-3" in success_report
@@ -435,6 +436,7 @@ def run():
         check("double negative status falls back", wifi_uplink.connect(timeout_s=1) is None)
         check("failed retry occurs exactly once", len(retry_failure.connect_calls) == 2)
         failure_report = wifi_uplink.get_last_connection_report()
+        check("failure report includes reset/heap context", "reset=" in failure_report and "heap=" in failure_report)
         check(
             "failed retry report has both statuses and fallback",
             "first_status=-3" in failure_report

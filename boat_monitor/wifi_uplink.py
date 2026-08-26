@@ -468,8 +468,18 @@ def connect(timeout_s=15):
     or None if none did (including if none are configured).
     """
     networks = _load_networks()
+    try:
+        import gc
+        import machine
+
+        start_context = "reset=%s heap=%s" % (
+            machine.reset_cause(),
+            gc.mem_free(),
+        )
+    except Exception:
+        start_context = "reset=? heap=?"
     if not networks:
-        _set_connection_report("reason=no configured networks")
+        _set_connection_report("%s reason=no configured networks" % start_context)
         print(
             "wifi_uplink: no networks configured "
             "(wifi_credentials.py, wifi_sheet.json, or wifi_known_networks.py)"
@@ -489,8 +499,13 @@ def connect(timeout_s=15):
         rssi = _rssi(wlan)
         pm = _set_pm(wlan, idle=False)
         _set_connection_report(
-            "outcome=reused connected=%s rssi=%s pm=%s"
-            % (_ssid_text(ssid), rssi if rssi is not None else "unknown", pm)
+            "%s outcome=reused connected=%s rssi=%s pm=%s"
+            % (
+                start_context,
+                _ssid_text(ssid),
+                rssi if rssi is not None else "unknown",
+                pm,
+            )
         )
         print("wifi_uplink: reusing", ssid, wlan.ifconfig())
         return ssid
@@ -597,8 +612,9 @@ def connect(timeout_s=15):
                 else:
                     status_detail = " outcome=wifi path=fresh"
                 _set_connection_report(
-                    "connected=%s rssi=%s%s pm=%s reconnects=%s attempts=%s"
+                    "%s connected=%s rssi=%s%s pm=%s reconnects=%s attempts=%s"
                     % (
+                        start_context,
                         report_ssid,
                         rssi if rssi is not None else "unknown",
                         status_detail,
@@ -701,7 +717,7 @@ def connect(timeout_s=15):
         last_failure = "reason=no configured network visible"
     if attempt_history:
         last_failure += " attempts=" + ",".join(attempt_history)
-    _set_connection_report(last_failure, scan_text)
+    _set_connection_report(start_context + " " + last_failure, scan_text)
     try:
         import diag_log
 
