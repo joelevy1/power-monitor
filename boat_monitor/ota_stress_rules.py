@@ -139,7 +139,7 @@ def preflight_sheet(sheets, spreadsheet_id, note_prefix="ota_stress_rules", prof
     cfg = read_config_map(sheets, spreadsheet_id)
     stale = [k for k in STALE_SHEET_KEYS if _truthy(cfg.get(k))]
     rows = list(STRESS_RECOVERY_KEYS)
-    if profile == "dock":
+    if profile in ("dock", "dock-stress"):
         rows.extend(DOCK_STRESS_KEYS)
     for key in STALE_SHEET_KEYS:
         rows.append((key, "", "%s: clear stale one-shot" % note_prefix))

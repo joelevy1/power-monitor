@@ -35,6 +35,12 @@ def main():
     assert switch_on["interval_engine_off_s"] == "3600"
     assert switch_on["min_fw_version"] == "1.1.117"
 
+    dock_stress = {
+        key: value for key, value, _ in profile_rows("dock-stress", "1.1.117")
+    }
+    assert dock_stress["interval_engine_on_s"] == "600"
+    assert dock_stress["interval_engine_off_s"] == "300"
+
     assert _uplink_matches("Levy-Guest", "wifi")
     assert not _uplink_matches("cellular", "wifi")
     assert _uplink_matches("cellular", "cellular")
@@ -64,6 +70,13 @@ def main():
     harness_source = (ROOT / "ota_stress_harness.py").read_text(encoding="utf-8")
     assert "upsert_clear_pending" not in harness_source
     assert 'print("Bootstrap-rules skip: explicitly disabled")' in harness_source
+    overnight_source = (ROOT / "overnight_dock_campaign.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'mode == "docked_off"' in overnight_source
+    assert 'uplink != "cellular"' in overnight_source
+    assert '"dock-stress"' in overnight_source
+    assert "restore_production()" in overnight_source
 
     original_path = remote_boot_config.PATH
     with tempfile.TemporaryDirectory() as tmp:
