@@ -203,6 +203,15 @@ COMMAND_ACK_PATHS = (
     "version.py",
 )
 
+CUMULATIVE_DOCK_PATHS = (
+    "main.py",
+    "standby_monitor.py",
+    "wifi_uplink.py",
+    "sheets_log.py",
+    "remote_boot_config.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -380,7 +389,19 @@ def main(argv=None):
         action="store_true",
         help="3-file acknowledged remote command delivery",
     )
+    p.add_argument(
+        "--cumulative-dock",
+        action="store_true",
+        help="6-file cumulative fresh-heap dock and command-sync release",
+    )
     args = p.parse_args(argv)
+    if args.cumulative_dock:
+        return _write_manifest(
+            CUMULATIVE_DOCK_PATHS,
+            "Cumulative fresh-heap dock logging, Wi-Fi teardown, and command acknowledgement.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.command_ack:
         return _write_manifest(
             COMMAND_ACK_PATHS,
