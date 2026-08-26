@@ -32,8 +32,8 @@ import time
 
 
 WIFI_IO_SLICE_TIMEOUT_S = 5
-CONNECTION_REPORT_MAX_CHARS = 146
-SCAN_TEXT_MAX_CHARS = 108
+CONNECTION_REPORT_MAX_CHARS = 512
+SCAN_TEXT_MAX_CHARS = 160
 _last_connection_report = ""
 RP2_PM_NONE = 0xA11140
 RP2_PM_POWERSAVE = 0xA11142
@@ -538,6 +538,7 @@ def connect(timeout_s=15):
     any_configured_visible = any(rssi is not None for rssi in visible_rssi.values())
     last_failure = "reason=connection failed"
     retry_detail = ""
+    attempt_history = []
 
     for ssid, password in networks:
         if wlan.isconnected():
@@ -568,6 +569,14 @@ def connect(timeout_s=15):
                 outcome, status = "connect_error", None
             else:
                 outcome, status = _wait_for_connection(wlan, timeout_s)
+            attempt_history.append(
+                "%s:%s:%s"
+                % (
+                    _ssid_text(ssid),
+                    "retry" if retry_used else "first",
+                    status if status is not None else outcome,
+                )
+            )
 
             if outcome == "connected":
                 report_ssid = _ssid_text(ssid)
@@ -588,13 +597,14 @@ def connect(timeout_s=15):
                 else:
                     status_detail = " outcome=wifi path=fresh"
                 _set_connection_report(
-                    "connected=%s rssi=%s%s pm=%s reconnects=%s"
+                    "connected=%s rssi=%s%s pm=%s reconnects=%s attempts=%s"
                     % (
                         report_ssid,
                         rssi if rssi is not None else "unknown",
                         status_detail,
                         pm_mode,
                         reconnects,
+                        ",".join(attempt_history),
                     ),
                     scan_text,
                 )
@@ -689,6 +699,8 @@ def connect(timeout_s=15):
             pass
     if scan_text != "scan=failed" and not any_configured_visible and not retry_detail:
         last_failure = "reason=no configured network visible"
+    if attempt_history:
+        last_failure += " attempts=" + ",".join(attempt_history)
     _set_connection_report(last_failure, scan_text)
     try:
         import diag_log

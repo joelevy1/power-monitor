@@ -93,7 +93,7 @@ def maps_link_url(lat, lon):
     return "https://www.google.com/maps?q=%.7f,%.7f" % (lat, lon)
 
 
-def append_wifi_fallback_note(note, report, max_chars=160):
+def append_wifi_fallback_note(note, report, max_chars=600):
     """Append bounded Wi-Fi fallback telemetry to a Power_Log note."""
     if not report:
         return str(note or "")
