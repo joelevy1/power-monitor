@@ -1,3 +1,36 @@
+STANDBY_CLEAN_BOOT_PATH = "standby_clean_boot.flag"
+
+_clean_standby_requested = False
+try:
+    import os as _early_os
+
+    _early_os.stat(STANDBY_CLEAN_BOOT_PATH)
+    _early_os.remove(STANDBY_CLEAN_BOOT_PATH)
+    _clean_standby_requested = True
+except OSError:
+    pass
+except Exception:
+    pass
+
+if _clean_standby_requested:
+    # Enter standby before importing OTA/telemetry modules. MicroPython cannot
+    # unload those modules later, and their fragmented heap breaks Wi-Fi TLS.
+    try:
+        import gc as _early_gc
+
+        _early_gc.collect()
+    except Exception:
+        pass
+    try:
+        import status_led as _early_led
+
+        _early_led.set_mode("standby")
+    except Exception:
+        pass
+    import standby_monitor as _early_standby
+
+    _early_standby.main()
+
 try:
     import gc
 
@@ -431,16 +464,18 @@ try:
 
         ble_service.main()
     else:
-        print("Starting standby monitor (BLE off — Wi-Fi auto-log; USB OK)")
+        print("Rebooting into clean-heap standby monitor")
         try:
-            import status_led
+            with open(STANDBY_CLEAN_BOOT_PATH, "w") as _standby_marker:
+                _standby_marker.write("1")
+        except Exception as _marker_exc:
+            print("standby marker write failed:", _marker_exc)
+            raise
+        import machine as _standby_machine
+        import time as _standby_time
 
-            status_led.set_mode("standby")
-        except Exception:
-            pass
-        import standby_monitor
-
-        standby_monitor.main()
+        _standby_time.sleep(0.3)
+        _standby_machine.reset()
 except Exception as exc:
     print("Primary service failed:", exc)
     try:
