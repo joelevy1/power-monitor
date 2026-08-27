@@ -123,7 +123,7 @@ def main(argv=None):
     p.add_argument(
         "--ota-self-sufficient",
         action="store_true",
-        help="Persist dock policy + manifest tier cap on flash (recommended week-away kit)",
+        help="Persist safe home-dock policy without arming boot OTA",
     )
     p.add_argument(
         "--dry-run",
@@ -144,7 +144,7 @@ def main(argv=None):
     patch_text = patch_src.read_text(encoding="utf-8")
     prefer = "True" if not args.no_prefer_wifi else "False"
     patch_text = re.sub(r"PREFER_WIFI = \w+", "PREFER_WIFI = %s" % prefer, patch_text, count=1)
-    auto_ota = "True" if args.enable_boot_ota or args.ota_self_sufficient else "False"
+    auto_ota = "True" if args.enable_boot_ota else "False"
     patch_text = re.sub(
         r"AUTO_OTA_ON_BOOT = \w+", "AUTO_OTA_ON_BOOT = %s" % auto_ota, patch_text, count=1
     )
@@ -157,15 +157,22 @@ def main(argv=None):
     )
     if args.ota_self_sufficient or args.enable_boot_ota:
         patch_text = re.sub(r"OTA_SELF_SUFFICIENT = \w+", "OTA_SELF_SUFFICIENT = True", patch_text, count=1)
-        patch_text = re.sub(r"DOCK_MODE = \"[^\"]*\"", "DOCK_MODE = \"away\"", patch_text, count=1)
+    else:
+        patch_text = re.sub(r"OTA_SELF_SUFFICIENT = \w+", "OTA_SELF_SUFFICIENT = False", patch_text, count=1)
+    if args.ota_self_sufficient:
+        patch_text = re.sub(r"DOCK_MODE = \"[^\"]*\"", "DOCK_MODE = \"home\"", patch_text, count=1)
         patch_text = re.sub(
-            r"STANDBY_PREFER_WIFI = \w+",
-            "STANDBY_PREFER_WIFI = False",
+            r"OTA_MANIFEST_PROFILE = \"[^\"]*\"",
+            'OTA_MANIFEST_PROFILE = "feature-pack"',
             patch_text,
             count=1,
         )
-    else:
-        patch_text = re.sub(r"OTA_SELF_SUFFICIENT = \w+", "OTA_SELF_SUFFICIENT = False", patch_text, count=1)
+        patch_text = re.sub(
+            r"STANDBY_PREFER_WIFI = \w+",
+            "STANDBY_PREFER_WIFI = True",
+            patch_text,
+            count=1,
+        )
     patch_local = ROOT / ".usb_recovery_patch_run.py"
     patch_local.write_text(patch_text, encoding="utf-8")
 
@@ -208,6 +215,7 @@ def main(argv=None):
     if args.dry_run:
         for cmd, desc in steps:
             print("[dry-run]", " ".join(mp + cmd), "-", desc)
+        patch_local.unlink(missing_ok=True)
         return 0
 
     try:
@@ -232,7 +240,7 @@ def main(argv=None):
 
     print(
         "\nDone. Pico should reboot into main.py with fw from this folder "
-        "(see version.py). On home Wi-Fi it should run boot OTA to GitHub min_fw."
+        "(see version.py). Boot OTA remains off unless explicitly enabled."
     )
     if args.ota_self_sufficient or args.enable_boot_ota:
         version_text = (ROOT / "version.py").read_text(encoding="utf-8")

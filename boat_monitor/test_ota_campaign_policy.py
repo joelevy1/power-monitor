@@ -76,6 +76,16 @@ def main():
     assert "--enable-boot-ota" not in usb_batch
     usb_patch = (ROOT / "usb_recovery_patch.py").read_text(encoding="utf-8")
     assert "PENDING_OTA_ON_BOOT = False" in usb_patch
+    assert "AUTO_OTA_ON_BOOT = False" in usb_patch
+    assert 'DOCK_MODE = "home"' in usb_patch
+    assert 'OTA_MANIFEST_PROFILE = "feature-pack"' in usb_patch
+    assert "STANDBY_PREFER_WIFI = True" in usb_patch
+    usb_push = (ROOT / "usb_recovery_push.py").read_text(encoding="utf-8")
+    assert (
+        'auto_ota = "True" if args.enable_boot_ota else "False"'
+        in usb_push
+    )
+    assert 'DOCK_MODE = \\"away\\"' not in usb_push
 
     version_before = (ROOT / "version.py").read_text(encoding="utf-8")
     manifest_before = (ROOT / "ota_manifest.json").read_text(encoding="utf-8")
