@@ -246,6 +246,7 @@ RADIO_TEARDOWN_PATHS = (
     "ble_service.py",
     "main.py",
     "remote_boot_config.py",
+    "sheets_log.py",
     "wifi_uplink.py",
     "version.py",
 )
@@ -455,7 +456,7 @@ def main(argv=None):
     p.add_argument(
         "--radio-teardown",
         action="store_true",
-        help="5-file non-destructive Wi-Fi/BLE handoff release",
+        help="6-file non-destructive Wi-Fi/BLE handoff release",
     )
     args = p.parse_args(argv)
     if args.radio_teardown:
