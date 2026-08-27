@@ -127,11 +127,4 @@ def should_log_now(mode, elapsed_s, last_mode=None):
     """
     if last_mode is not None and mode == ENGINE_ON_MODE and last_mode != ENGINE_ON_MODE:
         return True
-    try:
-        import remote_boot_config
-
-        if remote_boot_config.needs_firmware_upgrade():
-            return True
-    except Exception:
-        pass
     return elapsed_s >= interval_for_mode(mode)

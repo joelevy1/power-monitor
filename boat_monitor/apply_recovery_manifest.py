@@ -226,6 +226,12 @@ DOCK_CONTROL_SYNC_PATHS = (
     "version.py",
 )
 
+BLOCKED_OTA_CADENCE_PATHS = (
+    "auto_log.py",
+    "main.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -418,7 +424,19 @@ def main(argv=None):
         action="store_true",
         help="2-file fresh-heap dock cellular command-sync release",
     )
+    p.add_argument(
+        "--blocked-ota-cadence",
+        action="store_true",
+        help="3-file dock cadence and cellular command-sync release",
+    )
     args = p.parse_args(argv)
+    if args.blocked_ota_cadence:
+        return _write_manifest(
+            BLOCKED_OTA_CADENCE_PATHS,
+            "Keep blocked OTA targets from accelerating dock logs; restore control sync.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.dock_control_sync:
         return _write_manifest(
             DOCK_CONTROL_SYNC_PATHS,
