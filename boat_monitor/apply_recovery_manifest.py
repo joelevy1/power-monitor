@@ -221,6 +221,11 @@ OTA_FAIL_OPEN_PATHS = (
     "version.py",
 )
 
+DOCK_CONTROL_SYNC_PATHS = (
+    "main.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -408,7 +413,19 @@ def main(argv=None):
         action="store_true",
         help="6-file failure, key-on rescue, dedupe, and split-dispatch release",
     )
+    p.add_argument(
+        "--dock-control-sync",
+        action="store_true",
+        help="2-file fresh-heap dock cellular command-sync release",
+    )
     args = p.parse_args(argv)
+    if args.dock_control_sync:
+        return _write_manifest(
+            DOCK_CONTROL_SYNC_PATHS,
+            "Restore periodic cellular command sync in fresh-heap dock logging.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.ota_fail_open:
         return _write_manifest(
             OTA_FAIL_OPEN_PATHS,
