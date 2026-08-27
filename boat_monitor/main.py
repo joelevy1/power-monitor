@@ -110,17 +110,21 @@ except Exception:
     pass
 
 try:
-    import ota_telemetry
-
-    ota_telemetry.flush_pending_on_boot()
-except Exception:
-    pass
-
-try:
     import ota_config
     import remote_boot_config
 
-    if remote_boot_config.should_run_boot_ota():
+    _boot_ota_wanted = remote_boot_config.should_run_boot_ota()
+    if not _boot_ota_wanted:
+        # Never open a telemetry transport before OTA. Cellular/TLS imports
+        # fragment the fresh boot heap needed by a subsequent Wi-Fi TLS socket.
+        try:
+            import ota_telemetry
+
+            ota_telemetry.flush_pending_on_boot()
+        except Exception:
+            pass
+
+    if _boot_ota_wanted:
         try:
             import status_led
 
@@ -179,17 +183,6 @@ try:
                     target_fw=ota_target,
                     max_s=max_s,
                     prefer_wifi=prefer_wifi,
-                )
-            except Exception:
-                pass
-            try:
-                import ota_diag
-
-                ota_diag.upload_bounded(
-                    phase="boot_start",
-                    prefer_wifi=False,
-                    max_total_s=18,
-                    target_fw=ota_target,
                 )
             except Exception:
                 pass

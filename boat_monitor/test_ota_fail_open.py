@@ -17,6 +17,14 @@ def main():
     assert "terminal_ota_error" in source
     assert "boot_retry_allowed" in source
     assert "boot OTA Wi-Fi ENOMEM" not in source
+    before_update = source.split("success = ota.update(", 1)[0]
+    boot_ota = before_update.split("if _boot_ota_wanted:", 1)[1]
+    assert "upload_bounded(" not in boot_ota
+    assert "flush_pending_on_boot()" not in boot_ota
+    no_ota = source.split("if not _boot_ota_wanted:", 1)[1].split(
+        "if _boot_ota_wanted:", 1
+    )[0]
+    assert "flush_pending_on_boot()" in no_ota
     assert "if not ota_memory_failure:" in source
     flush = source.split("if not ota_memory_failure:", 1)[1].split(
         "except Exception as exc:", 1
