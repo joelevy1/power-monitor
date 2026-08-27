@@ -56,6 +56,7 @@ if _dock_log_requested:
             gps_timeout_s=10,
             prefer_wifi=True,
             ble_monitor=None,
+            periodic_cellular_sync=True,
         )
         print("dock log handoff:", _dock_result)
     except Exception as _dock_exc:
