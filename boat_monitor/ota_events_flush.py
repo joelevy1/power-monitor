@@ -6,7 +6,27 @@ explicit flush they never appear on Events when the device reboots immediately.
 """
 
 DEFAULT_DEVICE = "boat-p2"
-UPLOAD_MAX_S = 90
+UPLOAD_MAX_S = 30
+
+
+def _now_ms():
+    try:
+        import time
+
+        return time.ticks_ms()
+    except Exception:
+        import time
+
+        return int(time.time() * 1000)
+
+
+def _elapsed_s(start_ms):
+    try:
+        import time
+
+        return max(0, time.ticks_diff(time.ticks_ms(), start_ms)) / 1000
+    except Exception:
+        return max(0, _now_ms() - start_ms) / 1000
 
 
 def flush_ota_events(logger=None, device=None, prefer_wifi=False):
@@ -32,31 +52,47 @@ def flush_ota_events(logger=None, device=None, prefer_wifi=False):
 
 
 def flush_ota_events_uplink(device=None, prefer_wifi=False, max_total_s=None):
-    """Open a short Sheets session and post all pending OTA Events rows."""
+    """Post a bounded sample of queued OTA events within one shared deadline."""
     device = device or DEFAULT_DEVICE
     max_s = max_total_s or UPLOAD_MAX_S
+    started_ms = _now_ms()
     posted = 0
     try:
         import ota_lifecycle
 
         posted += ota_lifecycle.upload_pending_uplink(
-            device=device, prefer_wifi=prefer_wifi, max_total_s=max_s
+            device=device,
+            prefer_wifi=prefer_wifi,
+            max_total_s=max(2, max_s - _elapsed_s(started_ms)),
+            max_rows=2,
         )
     except Exception:
         pass
+    remaining_s = max_s - _elapsed_s(started_ms)
+    if remaining_s < 2:
+        return posted
     try:
         import ota_telemetry
 
         if ota_telemetry.upload_pending_uplink(
-            device=device, prefer_wifi=prefer_wifi, max_total_s=max_s
+            device=device,
+            prefer_wifi=prefer_wifi,
+            max_total_s=remaining_s,
         ):
             posted += 1
     except Exception:
         pass
+    remaining_s = max_s - _elapsed_s(started_ms)
+    if remaining_s < 2:
+        return posted
     try:
         import ota_trace
 
-        if ota_trace.flush_pending(device=device, prefer_wifi=prefer_wifi, max_total_s=max_s):
+        if ota_trace.flush_pending(
+            device=device,
+            prefer_wifi=prefer_wifi,
+            max_total_s=remaining_s,
+        ):
             posted += 1
     except Exception:
         pass

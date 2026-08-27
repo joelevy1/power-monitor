@@ -25,11 +25,7 @@ def main():
         "if _boot_ota_wanted:", 1
     )[0]
     assert "flush_pending_on_boot()" in no_ota
-    assert "if not ota_memory_failure:" in source
-    flush = source.split("if not ota_memory_failure:", 1)[1].split(
-        "except Exception as exc:", 1
-    )[0]
-    assert "flush_ota_events_uplink" in flush
+    assert "flush_ota_events_uplink" not in source
     ota_source = (root / "ota.py").read_text(encoding="utf-8")
     reboot_success = ota_source.split("if reboot:", 1)[1].split(
         "return True", 1

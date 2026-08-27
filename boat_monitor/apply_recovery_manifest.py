@@ -233,8 +233,11 @@ BLOCKED_OTA_CADENCE_PATHS = (
 )
 
 WIFI_OTA_HARDENING_PATHS = (
+    "main.py",
     "ota.py",
     "ota_capability.py",
+    "ota_events_flush.py",
+    "ota_lifecycle.py",
     "wifi_uplink.py",
     "version.py",
 )

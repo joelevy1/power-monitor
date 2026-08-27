@@ -380,13 +380,6 @@ try:
                     )
                 except Exception:
                     pass
-            if not ota_memory_failure:
-                try:
-                    import ota_events_flush
-
-                    ota_events_flush.flush_ota_events_uplink(prefer_wifi=False)
-                except Exception:
-                    pass
         except Exception as exc:
             print("Boot OTA skipped/failed:", exc)
             try:
