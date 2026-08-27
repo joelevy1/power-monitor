@@ -151,8 +151,12 @@ def _ticks_diff(new, old):
         return new - old
 
 
-def ensure_wifi_off():
-    """Fully disable/deinitialize STA/AP and settle the radio for BLE."""
+def ensure_wifi_off(hard_deinit=False):
+    """Disable STA/AP and settle the shared radio before BLE.
+
+    Normal handoffs deliberately avoid WLAN.deinit(): Pico W can report BLE
+    active after a CYW43 deinit/reinit cycle without actually advertising.
+    """
     try:
         import network
     except ImportError:
@@ -176,12 +180,12 @@ def ensure_wifi_off():
                 wlan.active(False)
             except Exception:
                 pass
-            if hasattr(wlan, "deinit"):
+            if hard_deinit and hasattr(wlan, "deinit"):
                 try:
                     wlan.deinit()
                 except Exception:
                     pass
-            # Some ports leave the interface active after a partial deinit.
+            # Confirm inactive even when disconnect() leaves driver state.
             try:
                 wlan.active(False)
             except Exception:
@@ -426,11 +430,6 @@ def _reset_sta_for_retry(wlan):
         wlan.active(False)
     except Exception:
         pass
-    if hasattr(wlan, "deinit"):
-        try:
-            wlan.deinit()
-        except Exception:
-            pass
     _sleep_with_watchdog(WIFI_DRIVER_SETTLE_S)
     try:
         wlan = _wlan()
@@ -746,15 +745,9 @@ def connect(timeout_s=15):
         rssi is not None for rssi in visible_rssi.values()
     )
     try:
-        if hasattr(wlan, "deinit"):
-            wlan.deinit()
-        else:
-            wlan.active(False)
+        wlan.active(False)
     except Exception:
-        try:
-            wlan.active(False)
-        except Exception:
-            pass
+        pass
     if scan_text != "scan=failed" and not any_configured_visible and not retry_detail:
         last_failure = "reason=no configured network visible"
     if attempt_history:
@@ -777,12 +770,9 @@ def disconnect():
     except OSError:
         pass
     try:
-        if hasattr(wlan, "deinit"):
-            wlan.deinit()
-        else:
-            wlan.active(False)
-    except Exception:
         wlan.active(False)
+    except Exception:
+        pass
 
 
 def is_connected():

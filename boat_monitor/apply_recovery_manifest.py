@@ -242,6 +242,15 @@ WIFI_OTA_HARDENING_PATHS = (
     "version.py",
 )
 
+RADIO_TEARDOWN_PATHS = (
+    "ble_service.py",
+    "main.py",
+    "remote_boot_config.py",
+    "sheets_log.py",
+    "wifi_uplink.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -442,9 +451,21 @@ def main(argv=None):
     p.add_argument(
         "--wifi-ota-hardening",
         action="store_true",
-        help="4-file MicroPython 1.29 Wi-Fi association/TLS hardening release",
+        help="7-file MicroPython 1.29 Wi-Fi association/TLS hardening release",
+    )
+    p.add_argument(
+        "--radio-teardown",
+        action="store_true",
+        help="6-file non-destructive Wi-Fi/BLE handoff release",
     )
     args = p.parse_args(argv)
+    if args.radio_teardown:
+        return _write_manifest(
+            RADIO_TEARDOWN_PATHS,
+            "Avoid CYW43 deinit during Wi-Fi/BLE handoff; honor explicit OTA.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.wifi_ota_hardening:
         return _write_manifest(
             WIFI_OTA_HARDENING_PATHS,

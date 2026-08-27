@@ -69,6 +69,19 @@ def run():
         "Wi-Fi posts preserve unacknowledged commands",
         '"consume_commands": not bool(self._wifi_ssid)' in source,
     )
+    log_method = source.split("def log_power_and_gps(", 1)[1].split(
+        "def log_gps_now(", 1
+    )[0]
+    before_power = log_method.split("last_response = self.log_power(", 1)[0]
+    check(
+        "critical Power_Log runs before optional OTA backlog",
+        "flush_pending" not in before_power,
+    )
+    check(
+        "BLE cellular handoffs suppress optional OTA backlog",
+        'note == "ble_log_now"' in log_method
+        and "_suppress_optional_ota_flush" in source,
+    )
 
     fake_wifi = types.ModuleType("wifi_uplink")
     fake_wifi.load_networks = lambda: [("Dock", "password")]

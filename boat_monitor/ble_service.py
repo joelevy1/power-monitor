@@ -464,7 +464,9 @@ class BoatMonitorBle:
             try:
                 import remote_boot_config
 
-                remote_boot_config.set_pending_ota(True)
+                # A connected user explicitly requested recovery. Force only
+                # scheduling/degraded gates; manifest transport limits remain.
+                remote_boot_config.set_pending_ota(True, force=True)
             except Exception:
                 pass
             time.sleep(0.5)

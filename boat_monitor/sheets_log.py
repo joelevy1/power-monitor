@@ -147,6 +147,7 @@ class SheetsLogger:
         self._wifi_fallback_report = ""
         self.cellular_control_sync = bool(cellular_control_sync)
         self._last_power_success = False
+        self._suppress_optional_ota_flush = False
 
     def uplink_label(self):
         """SSID string when on Wi-Fi, or 'cellular' after ensure_data()."""
@@ -378,12 +379,16 @@ class SheetsLogger:
             self._data_open = False
             actions = getattr(self, "_last_remote_actions", None) or []
             self._last_remote_actions = []
-            try:
-                import ota_events_flush
+            if not getattr(self, "_suppress_optional_ota_flush", False):
+                try:
+                    import ota_events_flush
 
-                ota_events_flush.flush_ota_events(self, device=getattr(self, "_last_device", None) or "boat-p2")
-            except Exception as exc:
-                print("SheetsLogger: ota events flush:", exc)
+                    ota_events_flush.flush_ota_events(
+                        self,
+                        device=getattr(self, "_last_device", None) or "boat-p2",
+                    )
+                except Exception as exc:
+                    print("SheetsLogger: ota events flush:", exc)
             if actions:
                 try:
                     import ota_reboot
@@ -406,12 +411,13 @@ class SheetsLogger:
         device = getattr(self, "_last_device", None) or "boat-p2"
         if actions and ("ota" in actions or "reboot" in actions):
             pass
-        try:
-            import ota_events_flush
+        if not getattr(self, "_suppress_optional_ota_flush", False):
+            try:
+                import ota_events_flush
 
-            ota_events_flush.flush_ota_events(self, device=device)
-        except Exception as exc:
-            print("SheetsLogger: ota events flush:", exc)
+                ota_events_flush.flush_ota_events(self, device=device)
+            except Exception as exc:
+                print("SheetsLogger: ota events flush:", exc)
         if actions:
             try:
                 import ota_reboot
@@ -763,27 +769,11 @@ class SheetsLogger:
         self._last_remote_actions = []
         self._last_power_success = False
         self._last_device = device
+        self._suppress_optional_ota_flush = (
+            note == "ble_log_now"
+            or (note == "auto_log" and not self.prefer_wifi)
+        )
         self.ensure_data()
-        try:
-            import mem_guard
-
-            if mem_guard.heap_ok_for_https_post():
-                try:
-                    import ota_telemetry
-
-                    ota_telemetry.flush_pending_inline(self, device)
-                except Exception:
-                    pass
-                try:
-                    import ota_lifecycle
-
-                    ota_lifecycle.flush_pending(self, device)
-                except Exception:
-                    pass
-            else:
-                print("SheetsLogger: skip OTA inline flush (low heap)")
-        except Exception:
-            pass
         if on_progress:
             on_progress("logging_power")
         status_note = note
