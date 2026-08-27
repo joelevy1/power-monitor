@@ -1,26 +1,18 @@
 {
-  "version": "1.1.168",
-  "notes": "MicroPython 1.29 Wi-Fi OTA TLS and dock association hardening.",
+  "version": "1.1.169",
+  "notes": "Avoid CYW43 deinit during Wi-Fi/BLE handoff; honor explicit OTA.",
   "files": [
+    {
+      "path": "ble_service.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
+    },
     {
       "path": "main.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
     },
     {
-      "path": "ota.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
-    },
-    {
-      "path": "ota_capability.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_capability.py"
-    },
-    {
-      "path": "ota_events_flush.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_events_flush.py"
-    },
-    {
-      "path": "ota_lifecycle.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_lifecycle.py"
+      "path": "remote_boot_config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
     },
     {
       "path": "wifi_uplink.py",

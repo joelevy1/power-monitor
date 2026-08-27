@@ -74,7 +74,7 @@ def main():
     ota = source.split('elif cmd in ("ota", "ota_check"):', 1)[1].split(
         'elif cmd in ("log", "log_now"):', 1
     )[0]
-    assert "set_pending_ota(True)" in ota
+    assert "set_pending_ota(True, force=True)" in ota
     wifi = source.split('elif cmd in ("wifi", "start_wifi"):', 1)[1].split(
         'elif cmd in ("ota", "ota_check"):', 1
     )[0]

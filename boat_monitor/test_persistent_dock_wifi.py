@@ -116,7 +116,7 @@ def test_reuse_and_stale_reset():
         wifi_uplink._wlan = lambda: stale
         assert wifi_uplink.connect(timeout_s=1) == "DockNet"
         assert stale.disconnect_calls >= 1
-        assert stale.deinit_calls >= 1
+        assert stale.deinit_calls == 0
         assert len(stale.connect_calls) == 1
         assert "path=fresh" in wifi_uplink.get_last_connection_report()
     finally:
@@ -217,7 +217,7 @@ def test_cellular_policy_disconnects_persistent_wifi():
                 sys.modules[name] = module
 
 
-def test_ble_shutdown_deinitializes_sta_and_ap():
+def test_ble_shutdown_deactivates_without_cyw43_deinit():
     sta = FakeWlan()
     ap = FakeWlan()
     network = types.ModuleType("network")
@@ -232,7 +232,7 @@ def test_ble_shutdown_deinitializes_sta_and_ap():
         wifi_uplink.ensure_wifi_off()
         for wlan in (sta, ap):
             assert wlan.enabled is False
-            assert wlan.deinit_calls == 1
+            assert wlan.deinit_calls == 0
         assert sta.disconnect_calls == 1
     finally:
         wifi_uplink.time = original_time
@@ -290,7 +290,7 @@ def main():
     test_reuse_and_stale_reset()
     test_sheets_close_persistence()
     test_cellular_policy_disconnects_persistent_wifi()
-    test_ble_shutdown_deinitializes_sta_and_ap()
+    test_ble_shutdown_deactivates_without_cyw43_deinit()
     test_standby_tears_down_wifi_before_ble_reset()
     test_standby_arms_switch_irq_before_blocking_boot_log()
     test_ble_deactivates_shared_radio_before_standby_reset()

@@ -39,6 +39,19 @@ if _dock_log_requested:
     _dock_started_ms = _dock_time.ticks_ms()
 
     def _dock_log_deadline():
+        try:
+            import ble_policy as _dock_ble_policy
+
+            if _dock_ble_policy.ble_inputs_on():
+                import wifi_uplink as _dock_interrupt_wifi
+
+                _dock_interrupt_wifi.ensure_wifi_off()
+                _dock_time.sleep(0.5)
+                import machine as _dock_interrupt_machine
+
+                _dock_interrupt_machine.reset()
+        except Exception:
+            pass
         if (
             _dock_time.ticks_diff(_dock_time.ticks_ms(), _dock_started_ms)
             >= DOCK_LOG_DEADLINE_MS

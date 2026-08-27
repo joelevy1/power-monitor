@@ -132,9 +132,17 @@ def main():
             try:
                 _state(
                     min_fw_version="999.0",
-                    auto_ota_on_boot=True,
+                    auto_ota_on_boot=False,
                     pending_ota=True,
                     cmd_ota_force=True,
+                    boot_ota_fail_count=1,
+                )
+                _check(None, should_run=True)
+
+                _state(
+                    min_fw_version="999.0",
+                    auto_ota_on_boot=True,
+                    pending_ota=True,
                     boot_ota_fail_count=1,
                 )
                 _check("key_on_recovery")

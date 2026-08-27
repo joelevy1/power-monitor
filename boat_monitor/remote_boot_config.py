@@ -546,10 +546,10 @@ def clear_pending_ota_if_current():
 def boot_ota_block_reason():
     """Return the exact boot OTA gate reason, or None when OTA may run."""
     data = load()
-    if _key_on_failed_ota_recovery(data):
+    force = bool(data.get("cmd_ota_force"))
+    if not force and _key_on_failed_ota_recovery(data):
         pause_after_ota_failure("physical key/switch recovery", outcome="key_on_recovery")
         return "key_on_recovery"
-    force = bool(data.get("cmd_ota_force"))
     # A force command is an explicit recovery override. Do not consume a
     # backoff boot while forced, and bypass every normal scheduling gate.
     if not force and boot_ota_backoff_active():
