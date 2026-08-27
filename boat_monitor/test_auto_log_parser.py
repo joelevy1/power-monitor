@@ -72,6 +72,19 @@ def _run_checks():
         "docked_off: due once the long interval elapses",
         should_log_now("docked_off", INTERVAL_ENGINE_OFF_S, last_mode="docked_off") is True,
     )
+    import remote_boot_config
+
+    remote_boot_config.save(
+        {
+            "min_fw_version": "999.0",
+            "auto_ota_on_boot": False,
+            "ota_degraded": True,
+        }
+    )
+    check(
+        "blocked OTA target does not accelerate dock logging",
+        should_log_now("docked_off", 60, last_mode="docked_off") is False,
+    )
 
     # The "log immediately on engine start" behavior -- the whole point of
     # "very frequent when engine is on, much less frequent when off": a
