@@ -32,6 +32,29 @@ def enomem_error(exc):
     )
 
 
+def terminal_ota_error(exc):
+    """True for deterministic release-policy errors that a reboot cannot fix."""
+    if exc is None:
+        return False
+    text = str(exc).strip().lower()
+    return text.startswith(
+        (
+            "manifest_tier_",
+            "manifest_kind_",
+            "manifest has no files",
+            "bundle missing ",
+            "bundle sha256 mismatch",
+        )
+    )
+
+
+def boot_retry_allowed(error=None):
+    """Bound transient boot retries; policy refusals never retry automatically."""
+    if terminal_ota_error(error):
+        return False
+    return fail_count() < FAIL_LIMIT_REBOOT_BLOCK
+
+
 def reclaim_stale_ota_flash():
     """Remove safe transient artifacts before refusing an OTA for low flash."""
     removed = []
@@ -166,13 +189,8 @@ def check_manifest_policy(manifest, used_wifi=False):
     if n <= 1:
         return True, ""
     kind = manifest_kind(manifest)
-    try:
-        import remote_boot_config
-
-        if remote_boot_config.load().get("cmd_ota_force"):
-            return True, ""
-    except Exception:
-        pass
+    # A force command may bypass scheduling/degraded gates, never transport
+    # safety. Rebooting cannot make a cellular feature bundle safe for heap.
     if kind in RECOVERY_MANIFEST_KINDS and not used_wifi:
         return False, "manifest_tier_recovery_requires_wifi"
     limit = MAX_WIFI_MANIFEST_FILES if used_wifi else MAX_CELLULAR_MANIFEST_FILES

@@ -13,6 +13,11 @@ except ImportError:
     import json
 
 APPLIED_DETAIL_MAX_CHARS = 512
+TRANSPORT_SETTING_KEYS = (
+    "boot_ota_prefer_wifi",
+    "dock_mode",
+    "ota_manifest_profile",
+)
 
 
 def _truthy(value):
@@ -47,6 +52,62 @@ def _safe_command_name(value):
     return out or "<empty>"
 
 
+def _ota_requested(settings, one_shots):
+    for name in one_shots or []:
+        if str(name or "").strip().lower() in (
+            "ota",
+            "update",
+            "firmware",
+            "ota_force",
+            "force",
+        ):
+            return True
+    if _truthy(settings.get("cmd_ota")) or _truthy(settings.get("force_ota")):
+        return True
+    min_fw = settings.get("min_fw_version") or settings.get("target_fw_version")
+    if not min_fw:
+        return False
+    try:
+        import version
+
+        return _version_lt(getattr(version, "VERSION", "0"), min_fw)
+    except Exception:
+        return True
+
+
+def _transport_settings_changed(settings):
+    """Compare OTA transport settings before applying this response."""
+    try:
+        import remote_boot_config
+
+        current = remote_boot_config.load()
+    except Exception:
+        current = {}
+    for key in TRANSPORT_SETTING_KEYS:
+        value = settings.get(key)
+        if value is None or str(value).strip() == "":
+            continue
+        if key == "boot_ota_prefer_wifi":
+            changed = bool(current.get(key)) != _truthy(value)
+        else:
+            changed = str(current.get(key) or "").strip().lower() != str(
+                value
+            ).strip().lower()
+        if changed:
+            return True
+    wifi_text = settings.get("wifi_networks")
+    if wifi_text is not None and str(wifi_text).strip() != "":
+        try:
+            import wifi_networks
+
+            requested = wifi_networks.parse_wifi_networks_text(wifi_text)
+            if requested != wifi_networks.load_sheet_networks():
+                return True
+        except Exception:
+            return True
+    return False
+
+
 def apply_commands_payload(payload, device_id=""):
     """Parse Apps Script `commands` object.
 
@@ -59,6 +120,11 @@ def apply_commands_payload(payload, device_id=""):
     settings = payload.get("settings") or {}
     one_shots = payload.get("one_shots") or []
     applied = []
+    defer_ota = _ota_requested(settings, one_shots) and _transport_settings_changed(
+        settings
+    )
+    if defer_ota:
+        applied.append("ota_deferred_transport=1")
 
     try:
         import auto_log
@@ -89,25 +155,27 @@ def apply_commands_payload(payload, device_id=""):
     for name in one_shots:
         key = str(name or "").strip().lower()
         if key in ("ota", "update", "firmware"):
-            actions.append("ota")
             applied.append("one_shot=ota")
-            applied.append("ota_action=1")
-            try:
-                import remote_boot_config
+            if not defer_ota:
+                actions.append("ota")
+                applied.append("ota_action=1")
+                try:
+                    import remote_boot_config
 
-                remote_boot_config.set_pending_ota(True)
-            except Exception as exc:
-                print("remote_control: set_pending_ota:", exc)
+                    remote_boot_config.set_pending_ota(True)
+                except Exception as exc:
+                    print("remote_control: set_pending_ota:", exc)
         elif key in ("ota_force", "force"):
-            actions.append("ota")
             applied.append("one_shot=ota_force")
-            applied.append("ota_action=1")
-            try:
-                import remote_boot_config
+            if not defer_ota:
+                actions.append("ota")
+                applied.append("ota_action=1")
+                try:
+                    import remote_boot_config
 
-                remote_boot_config.set_pending_ota(True, force=True)
-            except Exception as exc:
-                print("remote_control: set_pending_ota force:", exc)
+                    remote_boot_config.set_pending_ota(True, force=True)
+                except Exception as exc:
+                    print("remote_control: set_pending_ota force:", exc)
         elif key in ("reboot", "reset"):
             actions.append("reboot")
             applied.append("one_shot=reboot")
@@ -121,7 +189,7 @@ def apply_commands_payload(payload, device_id=""):
 
             current = getattr(version, "VERSION", "0")
             applied.append("min_fw_version=%s current=%s" % (min_fw, current))
-            if _version_lt(current, min_fw):
+            if _version_lt(current, min_fw) and not defer_ota:
                 actions.append("ota")
                 applied.append("ota_action=1")
                 try:
@@ -145,7 +213,7 @@ def apply_commands_payload(payload, device_id=""):
                 applied.append("ota_skipped_at_min_fw=1")
         except Exception:
             pass
-        if not skip_ota_cmd:
+        if not skip_ota_cmd and not defer_ota:
             actions.append("ota")
             applied.append("cmd_ota=1")
             applied.append("ota_action=1")
@@ -197,7 +265,20 @@ def apply_commands_payload(payload, device_id=""):
     try:
         import remote_boot_config
 
-        boot_applied = remote_boot_config.apply_settings(settings)
+        persisted_settings = settings
+        if defer_ota:
+            persisted_settings = dict(settings)
+            for key in (
+                "auto_ota_on_boot",
+                "min_fw_version",
+                "target_fw_version",
+                "cmd_ota",
+                "force_ota",
+                "cmd_ota_force",
+                "ota_force",
+            ):
+                persisted_settings.pop(key, None)
+        boot_applied = remote_boot_config.apply_settings(persisted_settings)
         applied.extend(boot_applied)
     except Exception as exc:
         print("remote_control: remote_boot_config:", exc)

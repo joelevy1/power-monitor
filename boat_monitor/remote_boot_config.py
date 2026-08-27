@@ -27,6 +27,7 @@ PATH = "remote_boot_config.json"
 CELLULAR_CONTROL_SYNC_DEFAULT = 3
 CELLULAR_CONTROL_SYNC_MAX = 255
 CELLULAR_CONTROL_SYNC_COUNT_KEY = "_cellular_control_sync_success_count"
+BOOT_OTA_RETRY_LIMIT = 2
 
 
 def _truthy(value):
@@ -355,7 +356,6 @@ def set_pending_ota(value=True, force=False):
     data = load()
     data["pending_ota"] = bool(value)
     if value:
-        data["auto_ota_on_boot"] = True
         if force:
             data["cmd_ota_force"] = True
     save(data)
@@ -368,20 +368,62 @@ def clear_pending_ota():
         save(data)
 
 
-def pause_after_ota_memory_failure(error=None):
-    """Fail open into normal service; require an explicit force before retry."""
+def pause_after_ota_failure(error=None, outcome="failure_pause"):
+    """Open the boot gate into normal service after a terminal/repeated failure."""
     data = load()
     data.pop("pending_ota", None)
     data.pop("cmd_ota_force", None)
+    data.pop("boot_ota_backoff_until", None)
+    data.pop("boot_ota_skip_remaining", None)
     data["auto_ota_on_boot"] = False
     data["ota_degraded"] = True
-    data["boot_ota_fail_count"] = max(2, int(data.get("boot_ota_fail_count") or 0))
-    data["ota_manifest_profile"] = "micro"
-    data["last_boot_ota_outcome"] = "memory_pause"
+    data["boot_ota_fail_count"] = max(
+        BOOT_OTA_RETRY_LIMIT,
+        int(data.get("boot_ota_fail_count") or 0),
+    )
+    data["last_boot_ota_outcome"] = str(outcome or "failure_pause")[:40]
     if error is not None:
         data["last_boot_ota_error"] = str(error)[:200]
     save(data)
     return data
+
+
+def pause_after_ota_memory_failure(error=None):
+    """Fail open after ENOMEM and select the smallest recovery manifest."""
+    data = pause_after_ota_failure(error, outcome="memory_pause")
+    data["ota_manifest_profile"] = "micro"
+    save(data)
+    return data
+
+
+def pause_after_terminal_ota_failure(error=None):
+    """Do not retry deterministic manifest/policy failures on the next boot."""
+    return pause_after_ota_failure(error, outcome="terminal_pause")
+
+
+def pause_after_retry_limit(error=None):
+    """Circuit breaker after repeated transient boot OTA failures."""
+    return pause_after_ota_failure(error, outcome="retry_limit_pause")
+
+
+def _key_on_failed_ota_recovery(data):
+    """Let a physical key/switch request escape a persisted failed OTA gate."""
+    try:
+        failed = int(data.get("boot_ota_fail_count") or 0) > 0
+    except Exception:
+        failed = False
+    if not failed and str(data.get("last_boot_ota_outcome") or "") not in (
+        "terminal_pause",
+        "retry_limit_pause",
+        "memory_pause",
+    ):
+        return False
+    try:
+        import ble_policy
+
+        return bool(ble_policy.ble_inputs_on())
+    except Exception:
+        return False
 
 
 def set_boot_ota_backoff(seconds=600, skip_boots=None):
@@ -504,6 +546,9 @@ def clear_pending_ota_if_current():
 def boot_ota_block_reason():
     """Return the exact boot OTA gate reason, or None when OTA may run."""
     data = load()
+    if _key_on_failed_ota_recovery(data):
+        pause_after_ota_failure("physical key/switch recovery", outcome="key_on_recovery")
+        return "key_on_recovery"
     force = bool(data.get("cmd_ota_force"))
     # A force command is an explicit recovery override. Do not consume a
     # backoff boot while forced, and bypass every normal scheduling gate.

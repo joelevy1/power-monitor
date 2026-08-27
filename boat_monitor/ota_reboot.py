@@ -1,5 +1,7 @@
 """Shared helpers for post-log remote actions and OTA reboot."""
 
+SKIP_TELEMETRY_STATE_PATH = "ota_skip_event_state.json"
+
 
 def _skip_boot_ota_telemetry(reason, source=""):
     try:
@@ -8,16 +10,35 @@ def _skip_boot_ota_telemetry(reason, source=""):
         diag_log.log("boot_ota skipped %s source=%s" % (reason, source))
     except Exception:
         pass
+    data = {}
+    try:
+        import remote_boot_config
+
+        data = remote_boot_config.load()
+    except Exception:
+        pass
+    fingerprint = "%s|%s|%s" % (
+        reason,
+        data.get("min_fw_version") or "",
+        data.get("last_boot_ota_outcome") or "",
+    )
+    try:
+        import telemetry_dedupe
+
+        if not telemetry_dedupe.should_post(
+            SKIP_TELEMETRY_STATE_PATH, fingerprint
+        ):
+            return
+        # Mark before optional network telemetry so repeated call sites in the
+        # same log cannot each open a cellular/TLS session after one failure.
+        telemetry_dedupe.mark_posted(
+            SKIP_TELEMETRY_STATE_PATH, fingerprint
+        )
+    except Exception:
+        pass
     try:
         import ota_lifecycle
 
-        data = {}
-        try:
-            import remote_boot_config
-
-            data = remote_boot_config.load()
-        except Exception:
-            pass
         ota_lifecycle.phase(
             "boot_ota_skipped",
             inline=False,

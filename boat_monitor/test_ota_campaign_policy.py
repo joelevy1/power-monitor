@@ -14,8 +14,30 @@ from ota_stress_rules import (
     DOCK_BOOT_START_TIMEOUT_S,
     DOCK_STRESS_KEYS,
     STALE_SHEET_KEYS,
+    device_config_acknowledged,
+    latest_power_log_uses_wifi,
+    manifest_requires_wifi,
 )
 from usb_recovery_push import RECOVERY_FILES
+
+
+class _FakeSheets:
+    def __init__(self, ranges):
+        self.ranges = ranges
+        self.requested_range = None
+
+    def spreadsheets(self):
+        return self
+
+    def values(self):
+        return self
+
+    def get(self, spreadsheetId=None, range=None):
+        self.requested_range = range
+        return self
+
+    def execute(self):
+        return {"values": self.ranges.get(self.requested_range, [])}
 
 
 def main():
@@ -54,6 +76,16 @@ def main():
     assert "--enable-boot-ota" not in usb_batch
     usb_patch = (ROOT / "usb_recovery_patch.py").read_text(encoding="utf-8")
     assert "PENDING_OTA_ON_BOOT = False" in usb_patch
+    assert "AUTO_OTA_ON_BOOT = False" in usb_patch
+    assert 'DOCK_MODE = "home"' in usb_patch
+    assert 'OTA_MANIFEST_PROFILE = "feature-pack"' in usb_patch
+    assert "STANDBY_PREFER_WIFI = True" in usb_patch
+    usb_push = (ROOT / "usb_recovery_push.py").read_text(encoding="utf-8")
+    assert (
+        'auto_ota = "True" if args.enable_boot_ota else "False"'
+        in usb_push
+    )
+    assert 'DOCK_MODE = \\"away\\"' not in usb_push
 
     version_before = (ROOT / "version.py").read_text(encoding="utf-8")
     manifest_before = (ROOT / "ota_manifest.json").read_text(encoding="utf-8")
@@ -67,9 +99,33 @@ def main():
     assert "cmd_ota_force" in STALE_SHEET_KEYS
     assert "boat-p2:cmd_ota_force" in STALE_SHEET_KEYS
     assert DOCK_BOOT_START_TIMEOUT_S >= 3600 + 900
+    assert not manifest_requires_wifi({"files": [{}, {}]})
+    assert manifest_requires_wifi({"files": [{}, {}, {}]})
+    fake = _FakeSheets(
+        {
+            "Events!A2:D": [
+                ["t1", "boat-p2", "remote_config", "boot_ota_prefer_wifi=0"],
+                ["t2", "boat-p2", "remote_config", "boot_ota_prefer_wifi=1"],
+            ],
+            "Power_Log!1:1": [["ts", "device_id", "mode", "uplink"]],
+            "Power_Log!A2:Z": [
+                ["t1", "boat-p2", "docked_off", "cellular"],
+                ["t2", "boat-p2", "docked_off", "Levy-Guest"],
+            ],
+        }
+    )
+    assert device_config_acknowledged(
+        fake, "sheet", "boot_ota_prefer_wifi", "1"
+    )
+    assert latest_power_log_uses_wifi(fake, "sheet")
     harness_source = (ROOT / "ota_stress_harness.py").read_text(encoding="utf-8")
     assert "upsert_clear_pending" not in harness_source
     assert 'print("Bootstrap-rules skip: explicitly disabled")' in harness_source
+    ship_source = (ROOT / "apply_ship_config.py").read_text(encoding="utf-8")
+    assert "_stage_wifi_feature_prerequisites" in ship_source
+    assert "transport_ack" in ship_source
+    assert "wifi_healthy" in ship_source
+    assert "HOLD: multi-file OTA target was not queued" in ship_source
     overnight_source = (ROOT / "overnight_dock_campaign.py").read_text(
         encoding="utf-8"
     )

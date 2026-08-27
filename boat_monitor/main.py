@@ -110,17 +110,21 @@ except Exception:
     pass
 
 try:
-    import ota_telemetry
-
-    ota_telemetry.flush_pending_on_boot()
-except Exception:
-    pass
-
-try:
     import ota_config
     import remote_boot_config
 
-    if remote_boot_config.should_run_boot_ota():
+    _boot_ota_wanted = remote_boot_config.should_run_boot_ota()
+    if not _boot_ota_wanted:
+        # Never open a telemetry transport before OTA. Cellular/TLS imports
+        # fragment the fresh boot heap needed by a subsequent Wi-Fi TLS socket.
+        try:
+            import ota_telemetry
+
+            ota_telemetry.flush_pending_on_boot()
+        except Exception:
+            pass
+
+    if _boot_ota_wanted:
         try:
             import status_led
 
@@ -161,6 +165,8 @@ try:
             success = False
             ota_error = None
             ota_memory_failure = False
+            ota_terminal_failure = False
+            ota_retry_allowed = True
             ota_target = None
             try:
                 import remote_boot_config as _rbc
@@ -177,17 +183,6 @@ try:
                     target_fw=ota_target,
                     max_s=max_s,
                     prefer_wifi=prefer_wifi,
-                )
-            except Exception:
-                pass
-            try:
-                import ota_diag
-
-                ota_diag.upload_bounded(
-                    phase="boot_start",
-                    prefer_wifi=False,
-                    max_total_s=18,
-                    target_fw=ota_target,
                 )
             except Exception:
                 pass
@@ -249,6 +244,9 @@ try:
                         import ota_health
 
                         ota_memory_failure = ota_health.enomem_error(ota_error)
+                        ota_terminal_failure = ota_health.terminal_ota_error(
+                            ota_error
+                        )
                     except Exception:
                         ota_memory_failure = "memory allocation" in str(
                             ota_error
@@ -259,6 +257,9 @@ try:
 
                         ota_health.record_boot_ota_result(
                             False, error=ota_error, outcome="failed"
+                        )
+                        ota_retry_allowed = ota_health.boot_retry_allowed(
+                            ota_error
                         )
                     except Exception:
                         pass
@@ -316,7 +317,14 @@ try:
                         pass
                 else:
                     err_text = str(ota_error) if ota_error else ""
-                    if preflight_ok and (
+                    if ota_terminal_failure:
+                        try:
+                            remote_boot_config.pause_after_terminal_ota_failure(
+                                ota_error
+                            )
+                        except Exception:
+                            pass
+                    elif preflight_ok and (
                         "preflight" in err_text or err_text.startswith("low_")
                     ):
                         pass
@@ -325,6 +333,11 @@ try:
                             remote_boot_config.pause_after_ota_memory_failure(
                                 ota_error
                             )
+                        except Exception:
+                            pass
+                    elif not ota_retry_allowed:
+                        try:
+                            remote_boot_config.pause_after_retry_limit(ota_error)
                         except Exception:
                             pass
                     else:
@@ -377,10 +390,26 @@ try:
             print("Boot OTA skipped/failed:", exc)
             try:
                 import remote_boot_config
+                import ota_health
 
-                remote_boot_config.set_pending_ota(True)
+                ota_health.record_boot_ota_result(
+                    False, error=exc, outcome="boot_exception"
+                )
+                if ota_health.terminal_ota_error(exc):
+                    remote_boot_config.pause_after_terminal_ota_failure(exc)
+                elif ota_health.enomem_error(exc):
+                    remote_boot_config.pause_after_ota_memory_failure(exc)
+                elif ota_health.boot_retry_allowed(exc):
+                    remote_boot_config.set_pending_ota(True)
+                else:
+                    remote_boot_config.pause_after_retry_limit(exc)
             except Exception:
-                pass
+                try:
+                    remote_boot_config.pause_after_ota_failure(
+                        exc, outcome="boot_exception_pause"
+                    )
+                except Exception:
+                    pass
             try:
                 import diag_log
 

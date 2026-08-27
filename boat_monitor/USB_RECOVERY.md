@@ -6,8 +6,8 @@ When the Pico stops auto-logging or is stuck in a reboot/OTA loop, use USB from 
 
 ## Week-away kit (recommended)
 
-One USB session loads the full stack **plus** lean failure paths when heap is low, cellular
-standby logs at dock (`dock_mode=away`), V50 energy tracking, and OTA self-sufficiency.
+One USB session loads the full stack **plus** lean failure paths when heap is low,
+home-dock Wi-Fi logging, V50 energy tracking, and OTA recovery capability.
 
 ```bat
 cd path\to\power-monitor
@@ -18,16 +18,17 @@ boat_monitor\run_usb_ota_self_sufficient.bat
 Or explicitly:
 
 ```bat
-py boat_monitor\usb_recovery_push.py --ota-self-sufficient --enable-boot-ota --port COM7
+py boat_monitor\usb_recovery_push.py --ota-self-sufficient --port COM7
 ```
 
 **Files copied:** `mem_guard.py`, `diag_log.py`, `resilience.py`, `remote_telemetry.py`,
 `ble_service.py`, `v50_energy.py`, `standby_monitor.py`, `sheets_log.py`, `ota_*`, `main.py`,
 `version.py` (the current repository version), …
 
-**Flash patch sets:** clears `ota_degraded`/backoff, `auto_ota_on_boot=true`, `dock_mode=away`,
-`standby_prefer_wifi=0` (cellular logs — avoids dock Wi-Fi ENOMEM), `boot_ota_prefer_wifi=0`,
-`ota_manifest_profile=stress`, `ota_self_sufficient=1`, `pending_ota=true`.
+**Flash patch sets:** clears pending/degraded/backoff state,
+`auto_ota_on_boot=false`, `dock_mode=home`, `standby_prefer_wifi=1`,
+`boot_ota_prefer_wifi=1`, `ota_manifest_profile=feature-pack`, and
+`ota_self_sufficient=1`. It does not arm an update.
 
 ### ENOMEM rules
 

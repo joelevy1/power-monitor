@@ -6,13 +6,13 @@ except ImportError:
     import json
 
 PATH = "remote_boot_config.json"
-PREFER_WIFI = False
-AUTO_OTA_ON_BOOT = True
+PREFER_WIFI = True
+AUTO_OTA_ON_BOOT = False
 PENDING_OTA_ON_BOOT = False
-DOCK_MODE = "away"
-OTA_MANIFEST_PROFILE = "stress"
-OTA_SELF_SUFFICIENT = True
-STANDBY_PREFER_WIFI = False
+DOCK_MODE = "home"
+OTA_MANIFEST_PROFILE = "feature-pack"
+OTA_SELF_SUFFICIENT = False
+STANDBY_PREFER_WIFI = True
 
 
 def main():

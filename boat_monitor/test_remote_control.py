@@ -67,6 +67,40 @@ def test_min_fw_version():
     assert "min_fw_version=9.9.9" in detail
 
 
+def test_transport_change_defers_ota_until_later_payload():
+    remote_boot_config.save({"boot_ota_prefer_wifi": False})
+    payload = {
+        "settings": {
+            "boot_ota_prefer_wifi": "1",
+            "auto_ota_on_boot": "1",
+            "min_fw_version": "9.9.9",
+        },
+        "one_shots": ["ota_force"],
+    }
+    actions, detail = remote_control.apply_commands_payload(
+        payload, device_id="boat-p2"
+    )
+    assert actions == []
+    assert "ota_deferred_transport=1" in detail
+    state = remote_boot_config.load()
+    assert state["boot_ota_prefer_wifi"] is True
+    assert "pending_ota" not in state
+    assert "cmd_ota_force" not in state
+    assert "auto_ota_on_boot" not in state
+    assert "min_fw_version" not in state
+
+    actions, detail = remote_control.apply_commands_payload(
+        payload, device_id="boat-p2"
+    )
+    assert actions == ["ota"]
+    assert "ota_deferred_transport=1" not in detail
+    state = remote_boot_config.load()
+    assert state["pending_ota"] is True
+    assert state["cmd_ota_force"] is True
+    assert state["auto_ota_on_boot"] is True
+    assert state["min_fw_version"] == "9.9.9"
+
+
 def main():
     original_cwd = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
@@ -76,6 +110,7 @@ def main():
             test_one_shot_ota()
             test_one_shot_ota_force_and_unknown()
             test_min_fw_version()
+            test_transport_change_defers_ota_until_later_payload()
         finally:
             os.chdir(original_cwd)
     print("remote_control tests OK")
