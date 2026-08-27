@@ -14,6 +14,9 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 2. **Stress rounds ship version-only** — `ota_manifest.json` must contain only
    `version.py` (~19 bytes). No `bundle`, no multi-file manifests on cellular
    boot OTA.
+   A recovery bootstrap may contain exactly one runtime module plus
+   `version.py` last and still use `manifest_kind=stress`; this is not a normal
+   stress round and must be transport-acknowledged separately.
 3. **`validate_release.py --max-files 1`** must pass before any stress ship or
    `apply_ship_config.py`.
 4. **`apply_recovery_manifest.py --version-only`** runs in the harness before

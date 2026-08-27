@@ -47,6 +47,14 @@ def test_detect_reboot_trap():
 def test_master_policy_stress():
     data = {"files": [{"path": "version.py"}], "manifest_kind": "stress"}
     assert master_manifest_policy_errors(data) == []
+    cellular_patch = {
+        "files": [{"path": "main.py"}, {"path": "version.py"}],
+        "manifest_kind": "stress",
+    }
+    assert master_manifest_policy_errors(cellular_patch) == []
+    cellular_patch["files"].reverse()
+    errs = master_manifest_policy_errors(cellular_patch)
+    assert errs and "version.py last" in errs[0]
 
 
 def test_master_policy_bootstrap():

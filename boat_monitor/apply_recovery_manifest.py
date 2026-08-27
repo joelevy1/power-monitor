@@ -232,6 +232,11 @@ BLOCKED_OTA_CADENCE_PATHS = (
     "version.py",
 )
 
+CELLULAR_MAIN_BOOTSTRAP_PATHS = (
+    "main.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -429,7 +434,19 @@ def main(argv=None):
         action="store_true",
         help="3-file dock cadence and cellular command-sync release",
     )
+    p.add_argument(
+        "--cellular-main-bootstrap",
+        action="store_true",
+        help="2-file cellular patch: main.py plus version.py",
+    )
     args = p.parse_args(argv)
+    if args.cellular_main_bootstrap:
+        return _write_manifest(
+            CELLULAR_MAIN_BOOTSTRAP_PATHS,
+            "Cellular bootstrap for periodic dock command sync.",
+            include_bundle=False,
+            manifest_kind="stress",
+        )
     if args.blocked_ota_cadence:
         return _write_manifest(
             BLOCKED_OTA_CADENCE_PATHS,

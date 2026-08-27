@@ -332,10 +332,24 @@ def master_manifest_policy_errors(data, file_count: int | None = None) -> list[s
             ]
         return []
     if n == 2:
+        if kind == MASTER_MANIFEST_KIND_STRESS:
+            if not paths or paths[-1] != "version.py":
+                return [
+                    "two-file cellular patch must install version.py last, got %s"
+                    % paths
+                ]
+            if len(set(paths)) != len(paths):
+                return ["two-file cellular patch contains duplicate paths"]
+            return []
         if kind != MASTER_MANIFEST_KIND_BOOTSTRAP:
             return [
-                "manifest has 2 files but manifest_kind=%r (expected %r for master)"
-                % (kind, MASTER_MANIFEST_KIND_BOOTSTRAP)
+                "manifest has 2 files but manifest_kind=%r "
+                "(expected %r or %r for master)"
+                % (
+                    kind,
+                    MASTER_MANIFEST_KIND_BOOTSTRAP,
+                    MASTER_MANIFEST_KIND_STRESS,
+                )
             ]
         sorted_paths = sorted(paths)
         want = ["remote_boot_config.py", "version.py"]
