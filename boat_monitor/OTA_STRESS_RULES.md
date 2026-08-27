@@ -57,6 +57,9 @@ Policy for cellular OTA stress campaigns and releases that must not repeat the
 8. Boot OTA performs no cellular/Event upload before the manifest transfer;
    lifecycle telemetry stays on flash until OTA completes or normal logging
    resumes, preserving an unfragmented heap for Wi-Fi TLS.
+9. Repeated blocked-OTA checks within and across normal logs share one
+   persistent fingerprint, preventing duplicate lifecycle and cellular Events
+   uploads until the reason, target, or outcome changes.
 
 ## USB recovery rules
 

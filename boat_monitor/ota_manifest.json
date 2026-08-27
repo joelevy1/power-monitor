@@ -11,6 +11,10 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_health.py"
     },
     {
+      "path": "ota_reboot.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_reboot.py"
+    },
+    {
       "path": "remote_boot_config.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
     },

@@ -215,6 +215,7 @@ CUMULATIVE_DOCK_PATHS = (
 OTA_FAIL_OPEN_PATHS = (
     "main.py",
     "ota_health.py",
+    "ota_reboot.py",
     "remote_boot_config.py",
     "remote_control.py",
     "version.py",
@@ -405,7 +406,7 @@ def main(argv=None):
     p.add_argument(
         "--ota-fail-open",
         action="store_true",
-        help="5-file terminal failure, key-on rescue, and split-dispatch release",
+        help="6-file failure, key-on rescue, dedupe, and split-dispatch release",
     )
     args = p.parse_args(argv)
     if args.ota_fail_open:
