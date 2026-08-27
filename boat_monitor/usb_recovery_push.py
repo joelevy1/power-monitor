@@ -26,9 +26,12 @@ import argparse
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 DEFAULT_PORT = "COM7"
+USB_COMMAND_RETRIES = 5
+USB_RETRY_DELAY_S = 2
 
 ROOT = Path(__file__).resolve().parent
 
@@ -84,8 +87,20 @@ def _ensure_mpremote():
 
 def _run(mpremote_base, args, description):
     cmd = mpremote_base + list(args)
-    print("+", " ".join(cmd), "(%s)" % description)
-    subprocess.check_call(cmd)
+    for attempt in range(1, USB_COMMAND_RETRIES + 1):
+        print("+", " ".join(cmd), "(%s)" % description)
+        try:
+            subprocess.check_call(cmd)
+            return
+        except subprocess.CalledProcessError:
+            if attempt >= USB_COMMAND_RETRIES:
+                raise
+            delay = min(8, USB_RETRY_DELAY_S * attempt)
+            print(
+                "mpremote transient failure; retry %d/%d in %ds"
+                % (attempt + 1, USB_COMMAND_RETRIES, delay)
+            )
+            time.sleep(delay)
 
 
 def _mp_args(port, *parts):
