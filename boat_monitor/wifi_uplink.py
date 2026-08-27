@@ -216,6 +216,32 @@ def _prepare_tls_heap():
     _feed_watchdog_if_due()
 
 
+_TLS_CONTEXT = None
+
+
+def _wrap_tls_socket(sock, host):
+    """Use one modern SSLContext when available; retain old-port fallback."""
+    try:
+        import ussl as ssl
+    except ImportError:
+        import ssl
+
+    global _TLS_CONTEXT
+    context_type = getattr(ssl, "SSLContext", None)
+    protocol = getattr(ssl, "PROTOCOL_TLS_CLIENT", None)
+    if context_type is not None and protocol is not None:
+        if _TLS_CONTEXT is None:
+            _TLS_CONTEXT = context_type(protocol)
+        try:
+            return _TLS_CONTEXT.wrap_socket(sock, server_hostname=host)
+        except TypeError:
+            return _TLS_CONTEXT.wrap_socket(sock)
+    try:
+        return ssl.wrap_socket(sock, server_hostname=host)
+    except TypeError:
+        return ssl.wrap_socket(sock)
+
+
 def _sleep_with_watchdog(seconds):
     try:
         import resilience
@@ -904,14 +930,7 @@ class WifiHttp:
                 sock.connect(addr)
                 _feed_watchdog_if_due()
                 if is_https:
-                    try:
-                        import ussl as ssl
-                    except ImportError:
-                        import ssl
-                    try:
-                        sock = ssl.wrap_socket(sock, server_hostname=host)
-                    except TypeError:
-                        sock = ssl.wrap_socket(sock)
+                    sock = _wrap_tls_socket(sock, host)
                     _feed_watchdog_if_due()
 
                 sock.write(request_text.encode())
@@ -1052,14 +1071,7 @@ class WifiHttp:
             sock.connect(addr)
             _feed_watchdog_if_due()
             if is_https:
-                try:
-                    import ussl as ssl
-                except ImportError:
-                    import ssl
-                try:
-                    sock = ssl.wrap_socket(sock, server_hostname=host)
-                except TypeError:
-                    sock = ssl.wrap_socket(sock)
+                sock = _wrap_tls_socket(sock, host)
                 _feed_watchdog_if_due()
 
             sock.write(request_text.encode())

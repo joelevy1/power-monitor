@@ -180,7 +180,7 @@ def run():
     check(
         "download prepares heap before TLS",
         download_source.index("_prepare_tls_heap()")
-        < download_source.index("ssl.wrap_socket"),
+        < download_source.index("_wrap_tls_socket"),
     )
     check("download bounds body recv to 512 bytes", "sock.recv(min(512," in download_source)
     check(
@@ -189,6 +189,42 @@ def run():
         and download_source.rindex("_prepare_tls_heap()")
         > download_source.index("finally:"),
     )
+
+    contexts = []
+
+    class FakeContext:
+        def __init__(self, protocol):
+            self.protocol = protocol
+            self.hosts = []
+            contexts.append(self)
+
+        def wrap_socket(self, sock, server_hostname=None):
+            self.hosts.append(server_hostname)
+            return sock
+
+    original_ussl = sys.modules.get("ussl")
+    original_context = wifi_uplink._TLS_CONTEXT
+    try:
+        sys.modules["ussl"] = types.SimpleNamespace(
+            SSLContext=FakeContext,
+            PROTOCOL_TLS_CLIENT=123,
+        )
+        wifi_uplink._TLS_CONTEXT = None
+        first = object()
+        second = object()
+        assert wifi_uplink._wrap_tls_socket(first, "one.example") is first
+        assert wifi_uplink._wrap_tls_socket(second, "two.example") is second
+        check(
+            "TLS sockets reuse one SSLContext",
+            len(contexts) == 1
+            and contexts[0].hosts == ["one.example", "two.example"],
+        )
+    finally:
+        wifi_uplink._TLS_CONTEXT = original_context
+        if original_ussl is None:
+            sys.modules.pop("ussl", None)
+        else:
+            sys.modules["ussl"] = original_ussl
 
     # Redirects must run in one _request frame and release each closed response
     # before the next TLS socket is allocated.
