@@ -33,6 +33,13 @@ def _ticks_ms():
         return int(time.time() * 1000)
 
 
+def _ticks_diff(new, old):
+    try:
+        return time.ticks_diff(new, old)
+    except AttributeError:
+        return new - old
+
+
 def _fw():
     try:
         import version
@@ -135,7 +142,7 @@ def phase(phase_name, logger=None, device=None, target_fw=None, inline=True, **e
     return run_id
 
 
-def flush_pending(logger, device=None):
+def flush_pending(logger, device=None, max_rows=2):
     if not getattr(logger, "_data_open", False):
         return 0
     device = device or "boat-p2"
@@ -144,7 +151,10 @@ def flush_pending(logger, device=None):
         return 0
     posted = 0
     keep = []
-    for item in items:
+    for index, item in enumerate(items):
+        if posted >= max(1, int(max_rows)):
+            keep.extend(items[index:])
+            break
         try:
             logger.log_event(device, EVENT_NAME, item.get("detail", "")[:1500])
             posted += 1
@@ -161,7 +171,9 @@ def flush_pending(logger, device=None):
     return posted
 
 
-def upload_pending_uplink(device=None, prefer_wifi=False, max_total_s=35):
+def upload_pending_uplink(
+    device=None, prefer_wifi=False, max_total_s=35, max_rows=2
+):
     """POST pending lifecycle rows via a short cellular/Wi-Fi session."""
     items = _load_pending()
     if not items:
@@ -174,7 +186,16 @@ def upload_pending_uplink(device=None, prefer_wifi=False, max_total_s=35):
     posted = 0
     keep = []
     budget = max_total_s
-    for item in items:
+    started_ms = _ticks_ms()
+    for index, item in enumerate(items):
+        if posted >= max(1, int(max_rows)):
+            keep.extend(items[index:])
+            break
+        elapsed_s = max(0, _ticks_diff(_ticks_ms(), started_ms)) / 1000
+        remaining_s = max(0, float(budget) - elapsed_s)
+        if remaining_s < 2:
+            keep.extend(items[index:])
+            break
         detail = (item.get("detail") or "")[:1500]
         if not detail:
             continue
@@ -184,7 +205,7 @@ def upload_pending_uplink(device=None, prefer_wifi=False, max_total_s=35):
                 EVENT_NAME,
                 detail,
                 diag_tail_lines=0,
-                max_total_s=budget,
+                max_total_s=min(20, remaining_s),
                 prefer_wifi=prefer_wifi,
             )
             if ok:

@@ -18,10 +18,19 @@ def _fw():
         return "?"
 
 
+def _runtime():
+    try:
+        import os
+
+        return str(os.uname().release)
+    except Exception:
+        return "?"
+
+
 def _build_report(prefer_wifi=False):
     """Return local diagnostic detail and a stable OTA-policy fingerprint."""
     firmware = _fw()
-    stable = ["fw=%s" % firmware]
+    stable = ["fw=%s" % firmware, "micropython=%s" % _runtime()]
     parts = list(stable)
     try:
         import diag_log

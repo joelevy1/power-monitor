@@ -6,6 +6,15 @@ cellular data usage, no modem needed) and falls back to the SIM7600 **cellular**
 modem otherwise. See `APPS_SCRIPT_SETUP.md` for the same Wi-Fi-first pattern
 applied to Sheets logging.
 
+## MicroPython runtime requirement
+
+Wi-Fi OTA requires MicroPython **1.25 or newer**. Earlier RP2 builds have a
+confirmed sequential-TLS cleanup bug that can leave mbedTLS buffers allocated
+after a socket closes and make the next `ssl.wrap_socket()` fail with
+`OSError(ENOMEM)`. Use the current stable Pico W UF2 (1.29.0 as of August 2026)
+and verify `sys.version` after flashing. Copying Python files with `mpremote`
+does not update the MicroPython runtime.
+
 ## One-time setup on Pico
 
 Copy these files to the Pico:

@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import tempfile
 from pathlib import Path
 
+import ota
 from ota import download_file_streaming
 
 
@@ -37,6 +39,12 @@ class BufferedClient:
 
 
 def main():
+    update_source = inspect.getsource(ota.update)
+    before_client = update_source.split(
+        "client, used_wifi = _get_client", 1
+    )[0]
+    assert "upload_bounded" not in before_client
+
     original_cwd = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
         os.chdir(tmp)

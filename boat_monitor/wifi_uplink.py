@@ -32,6 +32,7 @@ import time
 
 
 WIFI_IO_SLICE_TIMEOUT_S = 5
+WIFI_DRIVER_SETTLE_S = 1.0
 CONNECTION_REPORT_MAX_CHARS = 512
 SCAN_TEXT_MAX_CHARS = 160
 _last_connection_report = ""
@@ -216,6 +217,32 @@ def _prepare_tls_heap():
     _feed_watchdog_if_due()
 
 
+_TLS_CONTEXT = None
+
+
+def _wrap_tls_socket(sock, host):
+    """Use one modern SSLContext when available; retain old-port fallback."""
+    try:
+        import ussl as ssl
+    except ImportError:
+        import ssl
+
+    global _TLS_CONTEXT
+    context_type = getattr(ssl, "SSLContext", None)
+    protocol = getattr(ssl, "PROTOCOL_TLS_CLIENT", None)
+    if context_type is not None and protocol is not None:
+        if _TLS_CONTEXT is None:
+            _TLS_CONTEXT = context_type(protocol)
+        try:
+            return _TLS_CONTEXT.wrap_socket(sock, server_hostname=host)
+        except TypeError:
+            return _TLS_CONTEXT.wrap_socket(sock)
+    try:
+        return ssl.wrap_socket(sock, server_hostname=host)
+    except TypeError:
+        return ssl.wrap_socket(sock)
+
+
 def _sleep_with_watchdog(seconds):
     try:
         import resilience
@@ -345,6 +372,32 @@ def _configure_association(wlan):
     return _set_pm(wlan, idle=False), reconnects
 
 
+def _scan_configured_after_failure(wlan, networks):
+    """Collect diagnostics only after direct association attempts have failed."""
+    details = []
+    text = "scan=failed"
+    results = None
+    try:
+        _feed_watchdog_if_due()
+        results = wlan.scan()
+        details = _configured_scan_details(networks, results)
+        text = _format_scan_selection(
+            [(label, rssi) for _key, label, rssi in details]
+        )
+    except Exception as exc:
+        print("wifi_uplink: diagnostic scan failed:", exc)
+    finally:
+        results = None
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+        _feed_watchdog_if_due()
+    return details, text
+
+
 def set_request_power_mode(idle=False):
     """Best-effort power mode change for an active HTTP request/session."""
     try:
@@ -378,7 +431,7 @@ def _reset_sta_for_retry(wlan):
             wlan.deinit()
         except Exception:
             pass
-    _sleep_with_watchdog(0.5)
+    _sleep_with_watchdog(WIFI_DRIVER_SETTLE_S)
     try:
         wlan = _wlan()
     except Exception:
@@ -520,37 +573,20 @@ def connect(timeout_s=15):
         print("wifi_uplink: stale association; resetting STA")
         wlan = _reset_sta_for_retry(wlan)
     else:
+        was_active = False
+        try:
+            was_active = bool(wlan.active())
+        except Exception:
+            pass
         wlan.active(True)
+        if not was_active:
+            _sleep_with_watchdog(WIFI_DRIVER_SETTLE_S)
     pm_mode, reconnects = _configure_association(wlan)
 
     scan_details = []
-    scan_selection = []
-    scan_text = "scan=failed"
-    scan_results = None
-    try:
-        _feed_watchdog_if_due()
-        scan_results = wlan.scan()
-        scan_details = _configured_scan_details(networks, scan_results)
-        scan_selection = [(label, rssi) for _key, label, rssi in scan_details]
-        scan_text = _format_scan_selection(scan_selection)
-    except Exception as exc:
-        print("wifi_uplink: scan failed:", exc)
-    finally:
-        # WLAN scans can allocate a large tuple list. Drop it before any
-        # subsequent HTTPS/TLS work and opportunistically reclaim the heap.
-        scan_results = None
-        try:
-            import gc
-
-            gc.collect()
-        except Exception:
-            pass
-        _feed_watchdog_if_due()
-
+    scan_text = ""
     visible_rssi = {}
-    for scanned_key, _scanned_label, scanned_rssi in scan_details:
-        visible_rssi[scanned_key] = scanned_rssi
-    any_configured_visible = any(rssi is not None for rssi in visible_rssi.values())
+    any_configured_visible = False
     last_failure = "reason=connection failed"
     retry_detail = ""
     attempt_history = []
@@ -703,6 +739,12 @@ def connect(timeout_s=15):
                 pass
             break
 
+    scan_details, scan_text = _scan_configured_after_failure(wlan, networks)
+    for scanned_key, _scanned_label, scanned_rssi in scan_details:
+        visible_rssi[scanned_key] = scanned_rssi
+    any_configured_visible = any(
+        rssi is not None for rssi in visible_rssi.values()
+    )
     try:
         if hasattr(wlan, "deinit"):
             wlan.deinit()
@@ -904,14 +946,7 @@ class WifiHttp:
                 sock.connect(addr)
                 _feed_watchdog_if_due()
                 if is_https:
-                    try:
-                        import ussl as ssl
-                    except ImportError:
-                        import ssl
-                    try:
-                        sock = ssl.wrap_socket(sock, server_hostname=host)
-                    except TypeError:
-                        sock = ssl.wrap_socket(sock)
+                    sock = _wrap_tls_socket(sock, host)
                     _feed_watchdog_if_due()
 
                 sock.write(request_text.encode())
@@ -1052,14 +1087,7 @@ class WifiHttp:
             sock.connect(addr)
             _feed_watchdog_if_due()
             if is_https:
-                try:
-                    import ussl as ssl
-                except ImportError:
-                    import ssl
-                try:
-                    sock = ssl.wrap_socket(sock, server_hostname=host)
-                except TypeError:
-                    sock = ssl.wrap_socket(sock)
+                sock = _wrap_tls_socket(sock, host)
                 _feed_watchdog_if_due()
 
             sock.write(request_text.encode())

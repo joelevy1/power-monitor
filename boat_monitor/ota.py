@@ -548,13 +548,6 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         gc.collect()
     except Exception:
         pass
-    try:
-        import ota_diag
-
-        ota_diag.upload_bounded(phase="ota_start", prefer_wifi=prefer_wifi, max_total_s=20)
-    except Exception:
-        pass
-
     client, used_wifi = _get_client(prefer_wifi=prefer_wifi)
     try:
         try:
