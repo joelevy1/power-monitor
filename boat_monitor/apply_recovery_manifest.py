@@ -232,6 +232,13 @@ BLOCKED_OTA_CADENCE_PATHS = (
     "version.py",
 )
 
+WIFI_OTA_HARDENING_PATHS = (
+    "ota.py",
+    "ota_capability.py",
+    "wifi_uplink.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -429,7 +436,19 @@ def main(argv=None):
         action="store_true",
         help="3-file dock cadence and cellular command-sync release",
     )
+    p.add_argument(
+        "--wifi-ota-hardening",
+        action="store_true",
+        help="4-file MicroPython 1.29 Wi-Fi association/TLS hardening release",
+    )
     args = p.parse_args(argv)
+    if args.wifi_ota_hardening:
+        return _write_manifest(
+            WIFI_OTA_HARDENING_PATHS,
+            "MicroPython 1.29 Wi-Fi OTA TLS and dock association hardening.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.blocked_ota_cadence:
         return _write_manifest(
             BLOCKED_OTA_CADENCE_PATHS,

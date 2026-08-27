@@ -1,14 +1,18 @@
 {
-  "version": "1.1.167",
-  "notes": "Keep blocked OTA targets from accelerating dock logs; restore control sync.",
+  "version": "1.1.168",
+  "notes": "MicroPython 1.29 Wi-Fi OTA TLS and dock association hardening.",
   "files": [
     {
-      "path": "auto_log.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/auto_log.py"
+      "path": "ota.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
     },
     {
-      "path": "main.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
+      "path": "ota_capability.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_capability.py"
+    },
+    {
+      "path": "wifi_uplink.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
     },
     {
       "path": "version.py",
