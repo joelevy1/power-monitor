@@ -336,6 +336,36 @@ def run():
     finally:
         cellular_module.time = real_time
 
+    setup = object.__new__(Sim7600Modem)
+    setup._ssl_context_configured = False
+    setup_calls = []
+
+    def setup_at(cmd, timeout_ms=3000, expect=None, quiet=False):
+        setup_calls.append(cmd)
+        return "\r\nOK\r\n"
+
+    setup.at = setup_at
+    Sim7600Modem._begin_http(
+        setup,
+        "https://example.test/path",
+        content_type="application/json",
+    )
+    check(
+        "HTTPS setup never sends unsupported HTTPSSL",
+        not any("HTTPSSL" in command for command in setup_calls),
+    )
+    check(
+        "HTTPS setup configures and binds TLS context",
+        'AT+CSSLCFG="sslversion",0,4' in setup_calls
+        and 'AT+CSSLCFG="enableSNI",0,1' in setup_calls
+        and 'AT+HTTPPARA="SSLCFG",0' in setup_calls,
+    )
+    check(
+        "HTTP setup applies bounded connect and receive timeouts",
+        'AT+HTTPPARA="CONNECTTO",20' in setup_calls
+        and 'AT+HTTPPARA="RECVTO",20' in setup_calls,
+    )
+
     print()
     if failures:
         print("FAILED: %d check(s): %s" % (len(failures), ", ".join(failures)))

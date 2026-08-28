@@ -273,6 +273,11 @@ CELLULAR_SYNC_FAIL_OPEN_PATHS = (
     "version.py",
 )
 
+CELLULAR_HTTP_HARDENING_PATHS = (
+    "cellular.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -495,7 +500,19 @@ def main(argv=None):
         action="store_true",
         help="3-file failed control-sync Wi-Fi backoff release",
     )
+    p.add_argument(
+        "--cellular-http-hardening",
+        action="store_true",
+        help="2-file validated bounded SIM7600 HTTP/TLS release",
+    )
     args = p.parse_args(argv)
+    if args.cellular_http_hardening:
+        return _write_manifest(
+            CELLULAR_HTTP_HARDENING_PATHS,
+            "Validate and bound SIM7600 HTTP/TLS setup.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.cellular_sync_fail_open:
         return _write_manifest(
             CELLULAR_SYNC_FAIL_OPEN_PATHS,
