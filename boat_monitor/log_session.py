@@ -90,7 +90,7 @@ def log_power_and_gps(
                 import remote_boot_config
 
                 force_cellular_sync = (
-                    remote_boot_config.cellular_control_sync_due()
+                    remote_boot_config.claim_cellular_control_sync()
                 )
             except Exception:
                 force_cellular_sync = False

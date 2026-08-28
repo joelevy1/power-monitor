@@ -28,6 +28,7 @@ CELLULAR_CONTROL_SYNC_DEFAULT = 3
 CELLULAR_CONTROL_SYNC_MAX = 255
 CELLULAR_CONTROL_SYNC_COUNT_KEY = "_cellular_control_sync_success_count"
 CELLULAR_CONTROL_SYNC_BACKOFF_KEY = "_cellular_control_sync_backoff_logs"
+CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY = "_cellular_control_sync_in_progress"
 CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS = 6
 BOOT_OTA_RETRY_LIMIT = 2
 
@@ -163,6 +164,7 @@ def apply_settings(settings):
                 data["cellular_control_sync_every_logs"] = every
                 data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
                 data.pop(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
+                data.pop(CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY, None)
                 applied.append("cellular_control_sync_every_logs=%s" % every)
         except (TypeError, ValueError):
             pass
@@ -319,6 +321,21 @@ def cellular_control_sync_due():
     return max(0, count) >= every - 1
 
 
+def claim_cellular_control_sync():
+    """Atomically pre-arm Wi-Fi backoff before any blocking modem operation."""
+    if not cellular_control_sync_due():
+        return False
+    data = load()
+    data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
+    data[CELLULAR_CONTROL_SYNC_BACKOFF_KEY] = (
+        CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS
+    )
+    data[CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY] = True
+    data["last_cellular_control_sync_outcome"] = "in_progress"
+    save(data)
+    return True
+
+
 def note_cellular_control_sync_power_success(used_cellular):
     """Persist one successful Power_Log outcome without relying on an RTC."""
     data = load()
@@ -326,9 +343,10 @@ def note_cellular_control_sync_power_success(used_cellular):
     if every == 0:
         if data.get(CELLULAR_CONTROL_SYNC_COUNT_KEY) or data.get(
             CELLULAR_CONTROL_SYNC_BACKOFF_KEY
-        ):
+        ) or data.get(CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY):
             data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
             data.pop(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
+            data.pop(CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY, None)
             save(data)
         return
     try:
@@ -340,12 +358,21 @@ def note_cellular_control_sync_power_success(used_cellular):
     if backoff > 0:
         if used_cellular:
             data.pop(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
+            data.pop(CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY, None)
+            data["last_cellular_control_sync_outcome"] = "success"
         else:
+            interrupted = bool(
+                data.pop(CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY, None)
+            )
             backoff -= 1
             if backoff:
                 data[CELLULAR_CONTROL_SYNC_BACKOFF_KEY] = backoff
             else:
                 data.pop(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
+            if interrupted:
+                data["last_cellular_control_sync_outcome"] = (
+                    "interrupted_backoff"
+                )
         data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
         save(data)
         return
@@ -358,6 +385,9 @@ def note_cellular_control_sync_power_success(used_cellular):
             count = 1
         count = max(0, min(every - 1, count))
     data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = count
+    if used_cellular:
+        data.pop(CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY, None)
+        data["last_cellular_control_sync_outcome"] = "success"
     save(data)
 
 
@@ -368,6 +398,7 @@ def note_cellular_control_sync_failure():
     data[CELLULAR_CONTROL_SYNC_BACKOFF_KEY] = (
         CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS
     )
+    data.pop(CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY, None)
     data["last_cellular_control_sync_outcome"] = "failed_backoff"
     save(data)
     return data

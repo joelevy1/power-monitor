@@ -1,5 +1,5 @@
 {
-  "version": "1.1.172",
+  "version": "1.1.173",
   "notes": "Back off failed cellular control sync and resume Wi-Fi logging.",
   "files": [
     {
