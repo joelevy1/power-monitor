@@ -87,13 +87,13 @@ if _dock_log_requested:
     try:
         from log_session import log_power_and_gps as _dock_log_once
 
+        _release_ota_tls_reserve()
         _dock_result = _dock_log_once(
             "auto_log",
             gps_timeout_s=10,
             prefer_wifi=True,
             ble_monitor=None,
             periodic_cellular_sync=True,
-            before_network=_release_ota_tls_reserve,
         )
         print("dock log handoff:", _dock_result)
     except Exception as _dock_exc:
