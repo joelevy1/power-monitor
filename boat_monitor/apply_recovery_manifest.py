@@ -261,6 +261,12 @@ OTA_IMMEDIATE_REBOOT_PATHS = (
     "version.py",
 )
 
+WIFI_RESERVE_ORDER_PATHS = (
+    "log_session.py",
+    "main.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -473,7 +479,19 @@ def main(argv=None):
         action="store_true",
         help="7-file reserved-heap and telemetry-free OTA/log release",
     )
+    p.add_argument(
+        "--wifi-reserve-order",
+        action="store_true",
+        help="3-file load-config-before-TLS-reserve release",
+    )
     args = p.parse_args(argv)
+    if args.wifi_reserve_order:
+        return _write_manifest(
+            WIFI_RESERVE_ORDER_PATHS,
+            "Load Wi-Fi configuration before reserving contiguous TLS heap.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.ota_immediate_reboot:
         return _write_manifest(
             OTA_IMMEDIATE_REBOOT_PATHS,

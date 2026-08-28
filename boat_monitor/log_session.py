@@ -8,7 +8,7 @@ def _wifi_uplink_configured():
         import wifi_uplink
 
         return bool(wifi_uplink.load_networks())
-    except Exception:
+    except ImportError:
         return False
 
 
@@ -23,8 +23,6 @@ def log_power_and_gps(
     before_network=None,
 ):
     """Log Power_Log + GPS_Log, optionally handing Wi-Fi radio control to BLE."""
-    import sheets_log
-
     if ble_monitor is not None and getattr(ble_monitor, "_cellular_busy", False):
         msg = "power: failed: cellular session busy, gps: skipped"
         print("log_power_and_gps:", msg)
@@ -35,6 +33,36 @@ def log_power_and_gps(
         except Exception:
             pass
         return msg
+
+    wifi_configured = False
+    if prefer_wifi:
+        wifi_configured = _wifi_uplink_configured()
+
+    tls_reserve = None
+    if prefer_wifi and wifi_configured:
+        try:
+            tls_reserve = bytearray(48 * 1024)
+        except Exception:
+            tls_reserve = None
+    reserve_released = False
+
+    def _release_network_reserve():
+        nonlocal reserve_released, tls_reserve
+        if reserve_released:
+            return
+        reserve_released = True
+        tls_reserve = None
+        if before_network is not None:
+            before_network()
+        try:
+            import gc
+
+            gc.collect()
+            gc.collect()
+        except Exception:
+            pass
+
+    import sheets_log
 
     if ble_monitor is not None:
         ble_monitor._cellular_busy = True
@@ -95,8 +123,7 @@ def log_power_and_gps(
                     log_note = gpio_probe.enrich_note(session_note, status)
                 except Exception:
                     log_note = session_note
-                if before_network is not None:
-                    before_network()
+                _release_network_reserve()
                 summary = logger.log_power_and_gps(
                     device=status["device"],
                     mode=status["mode"],
@@ -127,9 +154,8 @@ def log_power_and_gps(
             finally:
                 logger.close_data(mode=log_mode)
 
-        if prefer_wifi and not _wifi_uplink_configured():
-            if before_network is not None:
-                before_network()
+        if prefer_wifi and not wifi_configured:
+            _release_network_reserve()
             msg = "power: failed: no Wi-Fi networks on Pico, gps: skipped"
             print("log_power_and_gps:", msg)
             try:
@@ -143,7 +169,7 @@ def log_power_and_gps(
         use_wifi = (
             prefer_wifi
             and not force_cellular_sync
-            and _wifi_uplink_configured()
+            and wifi_configured
         )
         if use_wifi and ble_monitor is not None and ble_monitor.connections:
             use_wifi = False
@@ -168,5 +194,6 @@ def log_power_and_gps(
             pass
         return summary
     finally:
+        _release_network_reserve()
         if ble_monitor is not None:
             ble_monitor._cellular_busy = False

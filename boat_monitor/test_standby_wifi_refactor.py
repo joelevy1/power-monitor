@@ -189,7 +189,9 @@ def test_standby_manifest_mode_is_complete_and_version_last():
     assert "with open(STANDBY_AFTER_LOG_PATH" in dock_log
     assert "_dock_resilience.set_service_hook(_dock_log_deadline)" in dock_log
     assert "periodic_cellular_sync=True" in dock_log
-    assert "before_network=_release_ota_tls_reserve" in dock_log
+    assert dock_log.index("_release_ota_tls_reserve()") < dock_log.index(
+        "_dock_log_once("
+    )
     assert dock_log.index("_dock_wifi.ensure_wifi_off()") < dock_log.index(
         "_dock_machine.reset()"
     )
@@ -211,6 +213,15 @@ def test_standby_manifest_mode_is_complete_and_version_last():
         "last_auto_log_mode = mode", 1
     )[0]
     assert due.index("open(DOCK_LOG_REQUEST_PATH") < due.index("machine.reset()")
+    log_source = (ROOT / "log_session.py").read_text(encoding="utf-8")
+    log_function = log_source.split("def log_power_and_gps(", 1)[1]
+    assert log_function.index("wifi_configured = _wifi_uplink_configured()") < (
+        log_function.index("tls_reserve = bytearray(48 * 1024)")
+    )
+    run_source = log_function.split("def _run(prefer):", 1)[1]
+    assert run_source.index("_release_network_reserve()") < run_source.index(
+        "summary = logger.log_power_and_gps("
+    )
 
 
 def main():
