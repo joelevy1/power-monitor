@@ -215,7 +215,7 @@ def test_counter_persistence_nth_selection_and_return_to_wifi():
     original_path = remote_boot_config.PATH
     original_sheets = sys.modules.get("sheets_log")
     calls = []
-    transport = {"wifi_falls_back": False}
+    transport = {"wifi_falls_back": False, "cellular_sync_fails": False}
 
     class FakeLogger:
         def __init__(
@@ -225,6 +225,7 @@ def test_counter_persistence_nth_selection_and_return_to_wifi():
             cellular_control_sync=False,
         ):
             self.prefer_wifi = prefer_wifi
+            self.cellular_control_sync = cellular_control_sync
             self._used_cellular = (not prefer_wifi) or transport["wifi_falls_back"]
             transport["wifi_falls_back"] = False
             self._last_power_success = False
@@ -234,6 +235,10 @@ def test_counter_persistence_nth_selection_and_return_to_wifi():
             )
 
         def log_power_and_gps(self, **kwargs):
+            if self.cellular_control_sync and transport["cellular_sync_fails"]:
+                transport["cellular_sync_fails"] = False
+                calls.append(("power_failed", kwargs["note"]))
+                return "power: failed: simulated cellular timeout, gps: skipped"
             self._last_power_success = True
             calls.append(("power", kwargs["note"]))
             return "power: ok, gps: ok"
@@ -302,6 +307,39 @@ def test_counter_persistence_nth_selection_and_return_to_wifi():
                     remote_boot_config.CELLULAR_CONTROL_SYNC_COUNT_KEY
                 ]
                 == 0
+            )
+
+            # A failed due cellular sync must open the next cycles back to
+            # Wi-Fi instead of trapping every future Power_Log on cellular.
+            state = remote_boot_config.load()
+            state[remote_boot_config.CELLULAR_CONTROL_SYNC_COUNT_KEY] = 2
+            remote_boot_config.save(state)
+            transport["cellular_sync_fails"] = True
+            log_session.log_power_and_gps(
+                "auto_log",
+                prefer_wifi=True,
+                periodic_cellular_sync=True,
+            )
+            state = remote_boot_config.load()
+            assert state[remote_boot_config.CELLULAR_CONTROL_SYNC_COUNT_KEY] == 0
+            assert (
+                state[remote_boot_config.CELLULAR_CONTROL_SYNC_BACKOFF_KEY]
+                == remote_boot_config.CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS
+            )
+
+            log_session.log_power_and_gps(
+                "auto_log",
+                prefer_wifi=True,
+                periodic_cellular_sync=True,
+            )
+            selections = [item for item in calls if item[0] == "select"]
+            assert selections[-1][1] is True
+            assert (
+                remote_boot_config.load()[
+                    remote_boot_config.CELLULAR_CONTROL_SYNC_BACKOFF_KEY
+                ]
+                == remote_boot_config.CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS
+                - 1
             )
 
             # A manual session remains Wi-Fi even if the persisted count is due.

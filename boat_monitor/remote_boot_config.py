@@ -27,6 +27,8 @@ PATH = "remote_boot_config.json"
 CELLULAR_CONTROL_SYNC_DEFAULT = 3
 CELLULAR_CONTROL_SYNC_MAX = 255
 CELLULAR_CONTROL_SYNC_COUNT_KEY = "_cellular_control_sync_success_count"
+CELLULAR_CONTROL_SYNC_BACKOFF_KEY = "_cellular_control_sync_backoff_logs"
+CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS = 6
 BOOT_OTA_RETRY_LIMIT = 2
 
 
@@ -160,6 +162,7 @@ def apply_settings(settings):
             if 0 <= every <= CELLULAR_CONTROL_SYNC_MAX:
                 data["cellular_control_sync_every_logs"] = every
                 data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
+                data.pop(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
                 applied.append("cellular_control_sync_every_logs=%s" % every)
         except (TypeError, ValueError):
             pass
@@ -305,6 +308,11 @@ def cellular_control_sync_due():
     if every == 0:
         return False
     try:
+        if int(load().get(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, 0)) > 0:
+            return False
+    except (TypeError, ValueError):
+        pass
+    try:
         count = int(load().get(CELLULAR_CONTROL_SYNC_COUNT_KEY, 0))
     except (TypeError, ValueError):
         count = 0
@@ -316,9 +324,30 @@ def note_cellular_control_sync_power_success(used_cellular):
     data = load()
     every = effective_cellular_control_sync_every_logs()
     if every == 0:
-        if data.get(CELLULAR_CONTROL_SYNC_COUNT_KEY):
+        if data.get(CELLULAR_CONTROL_SYNC_COUNT_KEY) or data.get(
+            CELLULAR_CONTROL_SYNC_BACKOFF_KEY
+        ):
             data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
+            data.pop(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
             save(data)
+        return
+    try:
+        backoff = max(
+            0, int(data.get(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, 0))
+        )
+    except (TypeError, ValueError):
+        backoff = 0
+    if backoff > 0:
+        if used_cellular:
+            data.pop(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
+        else:
+            backoff -= 1
+            if backoff:
+                data[CELLULAR_CONTROL_SYNC_BACKOFF_KEY] = backoff
+            else:
+                data.pop(CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
+        data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
+        save(data)
         return
     if used_cellular:
         count = 0
@@ -330,6 +359,18 @@ def note_cellular_control_sync_power_success(used_cellular):
         count = max(0, min(every - 1, count))
     data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = count
     save(data)
+
+
+def note_cellular_control_sync_failure():
+    """Fail open to Wi-Fi logs after one unsuccessful cellular sync."""
+    data = load()
+    data[CELLULAR_CONTROL_SYNC_COUNT_KEY] = 0
+    data[CELLULAR_CONTROL_SYNC_BACKOFF_KEY] = (
+        CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS
+    )
+    data["last_cellular_control_sync_outcome"] = "failed_backoff"
+    save(data)
+    return data
 
 
 def effective_boot_ota_prefer_wifi():

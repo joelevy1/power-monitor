@@ -149,6 +149,20 @@ def log_power_and_gps(
                             diag_log.log("cellular control sync counter: %s" % exc)
                         except Exception:
                             pass
+                elif force_cellular_sync:
+                    try:
+                        import remote_boot_config
+
+                        remote_boot_config.note_cellular_control_sync_failure()
+                    except Exception as exc:
+                        try:
+                            import diag_log
+
+                            diag_log.log(
+                                "cellular control sync fail-open: %s" % exc
+                            )
+                        except Exception:
+                            pass
                 actions = getattr(logger, "_last_remote_actions", []) or []
                 return summary, actions
             finally:

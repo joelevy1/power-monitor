@@ -1,14 +1,14 @@
 {
-  "version": "1.1.171",
-  "notes": "Load Wi-Fi configuration before reserving contiguous TLS heap.",
+  "version": "1.1.172",
+  "notes": "Back off failed cellular control sync and resume Wi-Fi logging.",
   "files": [
     {
       "path": "log_session.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/log_session.py"
     },
     {
-      "path": "main.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
+      "path": "remote_boot_config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
     },
     {
       "path": "version.py",

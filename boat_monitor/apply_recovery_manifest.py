@@ -267,6 +267,12 @@ WIFI_RESERVE_ORDER_PATHS = (
     "version.py",
 )
 
+CELLULAR_SYNC_FAIL_OPEN_PATHS = (
+    "log_session.py",
+    "remote_boot_config.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -484,7 +490,19 @@ def main(argv=None):
         action="store_true",
         help="3-file load-config-before-TLS-reserve release",
     )
+    p.add_argument(
+        "--cellular-sync-fail-open",
+        action="store_true",
+        help="3-file failed control-sync Wi-Fi backoff release",
+    )
     args = p.parse_args(argv)
+    if args.cellular_sync_fail_open:
+        return _write_manifest(
+            CELLULAR_SYNC_FAIL_OPEN_PATHS,
+            "Back off failed cellular control sync and resume Wi-Fi logging.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.wifi_reserve_order:
         return _write_manifest(
             WIFI_RESERVE_ORDER_PATHS,
