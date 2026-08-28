@@ -251,6 +251,14 @@ RADIO_TEARDOWN_PATHS = (
     "version.py",
 )
 
+OTA_IMMEDIATE_REBOOT_PATHS = (
+    "main.py",
+    "ota.py",
+    "ota_health.py",
+    "ota_trace.py",
+    "version.py",
+)
+
 
 def _version():
     text = (ROOT / "version.py").read_text(encoding="utf-8")
@@ -458,7 +466,19 @@ def main(argv=None):
         action="store_true",
         help="6-file non-destructive Wi-Fi/BLE handoff release",
     )
+    p.add_argument(
+        "--ota-immediate-reboot",
+        action="store_true",
+        help="5-file reserved-heap and telemetry-free OTA reboot release",
+    )
     args = p.parse_args(argv)
+    if args.ota_immediate_reboot:
+        return _write_manifest(
+            OTA_IMMEDIATE_REBOOT_PATHS,
+            "Reserve contiguous TLS heap; queue OTA telemetry and reboot immediately.",
+            include_bundle=False,
+            manifest_kind="wifi-feature",
+        )
     if args.radio_teardown:
         return _write_manifest(
             RADIO_TEARDOWN_PATHS,

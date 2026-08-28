@@ -17,6 +17,9 @@ def main():
     assert "terminal_ota_error" in source
     assert "boot_retry_allowed" in source
     assert "boot OTA Wi-Fi ENOMEM" not in source
+    assert source.index("_ota_tls_reserve = bytearray(48 * 1024)") < source.index(
+        "STANDBY_CLEAN_BOOT_PATH"
+    )
     before_update = source.split("success = ota.update(", 1)[0]
     boot_ota = before_update.split("if _boot_ota_wanted:", 1)[1]
     assert "upload_bounded(" not in boot_ota
@@ -35,6 +38,16 @@ def main():
     assert reboot_success.index("clear_pending_ota()") < reboot_success.index(
         "\n            machine.reset()"
     )
+    assert "queue_result(" in reboot_success
+    assert "report_boot_ota(" not in reboot_success
+    update_source = ota_source.split("def update(", 1)[1].split(
+        "def check(", 1
+    )[0]
+    ota_failure = update_source.rsplit("except Exception as exc:", 1)[1].split(
+        "finally:", 1
+    )[0]
+    assert "upload_bounded(" not in ota_failure
+    assert "ota_trace.queue(" in ota_failure
     deferred = source.split("if _deferred_ble_log:", 1)[1].split(
         "# Decide which mode was requested", 1
     )[0]

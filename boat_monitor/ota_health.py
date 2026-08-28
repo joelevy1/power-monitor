@@ -290,10 +290,4 @@ def _emit(phase, **extra):
         diag_log.log("ota_health %s" % detail[:200])
     except Exception:
         pass
-    try:
-        import ota_diag
-
-        ota_diag.upload_bounded(phase="ota_health_%s" % phase, max_total_s=20, **extra)
-    except Exception:
-        pass
     return detail
