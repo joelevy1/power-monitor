@@ -1,6 +1,7 @@
 """Host regression for transient Windows COM-port retries."""
 
 import subprocess
+from pathlib import Path
 
 import usb_recovery_push
 
@@ -30,6 +31,9 @@ def main():
 
     assert len(calls) == 3
     assert sleeps == [2, 4]
+    source = Path(usb_recovery_push.__file__).read_text(encoding="utf-8")
+    assert '_mp_args(port, "reset")' in source
+    assert 'exec", "import machine; machine.soft_reset()' not in source
     print("USB recovery transient retry tests OK")
     return 0
 

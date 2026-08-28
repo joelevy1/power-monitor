@@ -222,8 +222,8 @@ def main(argv=None):
     )
     steps.append(
         (
-            _mp_args(port, "exec", "import machine; machine.soft_reset()"),
-            "soft reset",
+            _mp_args(port, "reset"),
+            "hard reset into main.py",
         ),
     )
 
