@@ -1,14 +1,10 @@
 {
-  "version": "1.1.173",
-  "notes": "Back off failed cellular control sync and resume Wi-Fi logging.",
+  "version": "1.1.174",
+  "notes": "Validate and bound SIM7600 HTTP/TLS setup.",
   "files": [
     {
-      "path": "log_session.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/log_session.py"
-    },
-    {
-      "path": "remote_boot_config.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+      "path": "cellular.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular.py"
     },
     {
       "path": "version.py",

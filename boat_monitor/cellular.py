@@ -299,6 +299,9 @@ class Sim7600Modem:
     RX_BUFFER_SIZE = 4096
     HTTP_FILE_RANGE_SIZE = 1024
     HTTP_FILE_UART_READ_SIZE = 256
+    HTTP_CONNECT_TIMEOUT_S = 20
+    HTTP_RECEIVE_TIMEOUT_S = 20
+    HTTP_SSL_CONTEXT_ID = 0
 
     def __init__(self):
         # Imported here, not at module level, so one_line()/parse_http_action()/
@@ -321,6 +324,7 @@ class Sim7600Modem:
         self.pwrkey = Pin(cfg.PIN_MODEM_PWRKEY, Pin.OUT, value=0)
         self._cfg = cfg
         self._data_open = False
+        self._ssl_context_configured = False
 
     def reset(self):
         print("Resetting modem...")
@@ -615,20 +619,70 @@ class Sim7600Modem:
             raise CellularError("HTTPREAD unknown-length body exceeded 262144 bytes")
         return total
 
+    def _require_ok(self, cmd, timeout_ms=15000):
+        response = self.at(cmd, timeout_ms)
+        if "OK" not in response or "ERROR" in response:
+            raise CellularError("%s failed: %s" % (cmd, one_line(response)))
+        return response
+
+    def _terminate_http(self):
+        """Best-effort HTTP cleanup; an inactive service legitimately errors."""
+        for attempt in range(2):
+            response = self.at("AT+HTTPTERM", 15000)
+            if "OK" in response and "ERROR" not in response:
+                return True
+            if attempt == 0:
+                _sleep_with_watchdog(0.5)
+        return False
+
+    def _configure_ssl_context(self):
+        if self._ssl_context_configured:
+            return
+        context = self.HTTP_SSL_CONTEXT_ID
+        for command in (
+            'AT+CSSLCFG="sslversion",%d,4' % context,
+            'AT+CSSLCFG="authmode",%d,0' % context,
+            'AT+CSSLCFG="ignorelocaltime",%d,1' % context,
+            'AT+CSSLCFG="enableSNI",%d,1' % context,
+            'AT+CSSLCFG="negotiatetime",%d,30' % context,
+        ):
+            self._require_ok(command)
+        self._ssl_context_configured = True
+
+    def _begin_http(self, url, content_type=None):
+        """Start one validated, bounded HTTP(S) session."""
+        self._terminate_http()
+        try:
+            self._require_ok("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
+        except CellularError:
+            self._terminate_http()
+            _sleep_with_watchdog(0.5)
+            self._require_ok("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
+        self._require_ok(
+            'AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID
+        )
+        self._require_ok(
+            'AT+HTTPPARA="CONNECTTO",%d' % self.HTTP_CONNECT_TIMEOUT_S
+        )
+        self._require_ok(
+            'AT+HTTPPARA="RECVTO",%d' % self.HTTP_RECEIVE_TIMEOUT_S
+        )
+        if url.startswith("https://"):
+            self._configure_ssl_context()
+            self._require_ok(
+                'AT+HTTPPARA="SSLCFG",%d' % self.HTTP_SSL_CONTEXT_ID
+            )
+        self._require_ok('AT+HTTPPARA="URL","%s"' % url)
+        if content_type:
+            self._require_ok(
+                'AT+HTTPPARA="CONTENT","%s"' % content_type
+            )
+
     def _http_get_open(self, url):
         """Start HTTP GET; return (status, length, redirect_count). Caller must HTTPTERM."""
         redirect_count = 0
         while True:
-            self.at("AT+HTTPTERM", 15000)
-            self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
-            self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
-
-            if url.startswith("https://"):
-                self.at("AT+HTTPSSL=1", 15000)
-            else:
-                self.at("AT+HTTPSSL=0", 15000)
-
-            self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
+            self._begin_http(url)
             action = self.at(
                 "AT+HTTPACTION=0", HTTP_CMD_TIMEOUT_MS, expect=("+HTTPACTION:", "\r\nERROR\r\n")
             )
@@ -866,16 +920,7 @@ class Sim7600Modem:
         print("HTTP GET", url)
         redirect_count = 0
         while True:
-            self.at("AT+HTTPTERM", 15000)
-            self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
-            self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
-
-            if url.startswith("https://"):
-                self.at("AT+HTTPSSL=1", 15000)
-            else:
-                self.at("AT+HTTPSSL=0", 15000)
-
-            self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
+            self._begin_http(url)
             action = self.at(
                 "AT+HTTPACTION=0", HTTP_CMD_TIMEOUT_MS, expect=("+HTTPACTION:", "\r\nERROR\r\n")
             )
@@ -906,16 +951,7 @@ class Sim7600Modem:
         print("HTTP GET (bytes)", url)
         redirect_count = 0
         while True:
-            self.at("AT+HTTPTERM", 15000)
-            self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
-            self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
-
-            if url.startswith("https://"):
-                self.at("AT+HTTPSSL=1", 15000)
-            else:
-                self.at("AT+HTTPSSL=0", 15000)
-
-            self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
+            self._begin_http(url)
             action = self.at(
                 "AT+HTTPACTION=0", HTTP_CMD_TIMEOUT_MS, expect=("+HTTPACTION:", "\r\nERROR\r\n")
             )
@@ -978,17 +1014,7 @@ class Sim7600Modem:
         return nbytes
 
     def http_post_json(self, url, body_bytes, timeout_ms=HTTP_CMD_TIMEOUT_MS):
-        self.at("AT+HTTPTERM", 15000)
-        self.at("AT+HTTPINIT", HTTP_CMD_TIMEOUT_MS)
-        self.at('AT+HTTPPARA="CID",%d' % ota_config.OTA_CONTEXT_ID, 15000)
-
-        if url.startswith("https://"):
-            self.at("AT+HTTPSSL=1", 15000)
-        else:
-            self.at("AT+HTTPSSL=0", 15000)
-
-        self.at('AT+HTTPPARA="URL","%s"' % url, 15000)
-        self.at('AT+HTTPPARA="CONTENT","application/json"', 15000)
+        self._begin_http(url, content_type="application/json")
 
         download_prompt = self.at(
             "AT+HTTPDATA=%d,10000" % len(body_bytes),
