@@ -349,6 +349,30 @@ def test_counter_persistence_nth_selection_and_return_to_wifi():
             log_session.log_power_and_gps("manual", prefer_wifi=True)
             selections = [item for item in calls if item[0] == "select"]
             assert selections[-1][1] is True
+
+            # If watchdog/reset interrupts the modem before the logger returns,
+            # the claim itself must make the next boot choose Wi-Fi.
+            state = remote_boot_config.load()
+            state.pop(remote_boot_config.CELLULAR_CONTROL_SYNC_BACKOFF_KEY, None)
+            state[remote_boot_config.CELLULAR_CONTROL_SYNC_COUNT_KEY] = 2
+            remote_boot_config.save(state)
+            assert remote_boot_config.claim_cellular_control_sync() is True
+            claimed = remote_boot_config.load()
+            assert claimed[
+                remote_boot_config.CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY
+            ] is True
+            assert remote_boot_config.cellular_control_sync_due() is False
+            remote_boot_config.note_cellular_control_sync_power_success(False)
+            recovered = remote_boot_config.load()
+            assert (
+                recovered["last_cellular_control_sync_outcome"]
+                == "interrupted_backoff"
+            )
+            assert (
+                recovered[remote_boot_config.CELLULAR_CONTROL_SYNC_BACKOFF_KEY]
+                == remote_boot_config.CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS
+                - 1
+            )
         finally:
             remote_boot_config.PATH = original_path
             log_session.read_status = old_status
