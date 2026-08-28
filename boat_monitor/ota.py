@@ -705,8 +705,8 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
 
         if reboot:
             # update() resets internally, so main.py never regains control to
-            # clear pending/force state. Persist success before machine.reset()
-            # without opening another telemetry session on the fragmented heap.
+            # clear pending/force state. Persist success before machine.reset().
+            # Never open another network session on the fragmented OTA heap.
             try:
                 import ota_health
                 import remote_boot_config
@@ -722,16 +722,21 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
                 import ota_trace
 
                 extra = ota_trace.stats()
-                ota_telemetry.report_boot_ota(
-                    "success_pending_reboot",
-                    fw_target=target_version,
-                    fw_from=fw_at_start,
-                    max_s=max_total_s,
-                    prefer_wifi=prefer_wifi,
-                    elapsed_s=int(extra.get("elapsed_s") or _ota_elapsed_s(start)),
-                    http_sessions=extra.get("http_sessions"),
-                    transport="bundle" if use_bundle else "per_file",
-                    source="ota.update",
+                ota_telemetry.queue_result(
+                    {
+                        "outcome": "success",
+                        "source": "ota.update",
+                        "fw_from": fw_at_start,
+                        "fw_target": target_version,
+                        "max_s": max_total_s,
+                        "prefer_wifi": prefer_wifi,
+                        "elapsed_s": int(
+                            extra.get("elapsed_s") or _ota_elapsed_s(start)
+                        ),
+                        "http_sessions": extra.get("http_sessions"),
+                        "transport": "bundle" if use_bundle else "per_file",
+                        "status": "rebooting",
+                    }
                 )
             except Exception:
                 pass
@@ -743,28 +748,17 @@ def update(reboot=False, prefer_wifi=None, max_total_s=None):
         return True
     except Exception as exc:
         try:
-            import ota_diag
-
-            ota_diag.upload_bounded(
-                phase="ota_failed",
-                prefer_wifi=prefer_wifi,
-                max_total_s=25,
-                err=str(exc)[:120],
-            )
-        except Exception:
-            pass
-        try:
             import ota_trace
 
             ota_trace.step("error", err=str(exc)[:200])
+            ota_trace.queue(
+                outcome="failed",
+                fw_target=target_version,
+                error=str(exc)[:200],
+                elapsed_s=int(_ota_elapsed_s(start)),
+            )
         except Exception:
             pass
-        _upload_trace(
-            "failed",
-            fw_target=target_version,
-            error=str(exc)[:200],
-            elapsed_s=int(_ota_elapsed_s(start)),
-        )
         raise
     finally:
         _close_client(client, used_wifi)

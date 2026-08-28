@@ -1,3 +1,26 @@
+try:
+    # Hold one contiguous block through early imports, then release it directly
+    # before TLS. This prevents ordinary boot imports from fragmenting all
+    # space large enough for Pico W mbedTLS buffers.
+    _ota_tls_reserve = bytearray(48 * 1024)
+except Exception:
+    _ota_tls_reserve = None
+
+
+def _release_ota_tls_reserve():
+    global _ota_tls_reserve
+    if _ota_tls_reserve is None:
+        return
+    _ota_tls_reserve = None
+    try:
+        import gc
+
+        gc.collect()
+        gc.collect()
+    except Exception:
+        pass
+
+
 STANDBY_CLEAN_BOOT_PATH = "standby_clean_boot.flag"  # legacy 1.1.159 marker
 DOCK_LOG_REQUEST_PATH = "dock_log_request.flag"
 STANDBY_AFTER_LOG_PATH = "standby_after_log.flag"
@@ -70,6 +93,7 @@ if _dock_log_requested:
             prefer_wifi=True,
             ble_monitor=None,
             periodic_cellular_sync=True,
+            before_network=_release_ota_tls_reserve,
         )
         print("dock log handoff:", _dock_result)
     except Exception as _dock_exc:
@@ -98,6 +122,7 @@ if _standby_after_log:
     except Exception:
         _standby_can_idle = True
     if _standby_can_idle:
+        _release_ota_tls_reserve()
         import standby_monitor as _early_standby
 
         _early_standby.main(skip_boot_log=True)
@@ -129,6 +154,7 @@ try:
 
     _boot_ota_wanted = remote_boot_config.should_run_boot_ota()
     if not _boot_ota_wanted:
+        _release_ota_tls_reserve()
         # Never open a telemetry transport before OTA. Cellular/TLS imports
         # fragment the fresh boot heap needed by a subsequent Wi-Fi TLS socket.
         try:
@@ -230,13 +256,17 @@ try:
                     import ota_health
 
                     ota_health.record_boot_ota_result(
-                        False, outcome="preflight", error=preflight_reason
+                        False,
+                        outcome="preflight",
+                        error=preflight_reason,
+                        emit=False,
                     )
                 except Exception:
                     pass
                 success = False
                 ota_error = preflight_reason or "preflight"
             else:
+                _release_ota_tls_reserve()
                 try:
                     import gc
 
@@ -270,7 +300,10 @@ try:
                         import ota_health
 
                         ota_health.record_boot_ota_result(
-                            False, error=ota_error, outcome="failed"
+                            False,
+                            error=ota_error,
+                            outcome="failed",
+                            emit=False,
                         )
                         ota_retry_allowed = ota_health.boot_retry_allowed(
                             ota_error
@@ -281,7 +314,9 @@ try:
                     try:
                         import ota_health
 
-                        ota_health.record_boot_ota_result(True, outcome="success")
+                        ota_health.record_boot_ota_result(
+                            True, outcome="success", emit=False
+                        )
                     except Exception:
                         pass
             elapsed = None
@@ -310,13 +345,15 @@ try:
                 try:
                     import ota_telemetry
 
-                    ota_telemetry.report_boot_ota(
-                        "success",
-                        fw_target=ota_target,
-                        max_s=max_s,
-                        prefer_wifi=prefer_wifi,
-                        elapsed_s=elapsed,
-                        source="main.boot",
+                    ota_telemetry.queue_result(
+                        {
+                            "outcome": "success",
+                            "source": "main.boot",
+                            "fw_target": ota_target,
+                            "max_s": max_s,
+                            "prefer_wifi": prefer_wifi,
+                            "elapsed_s": elapsed,
+                        }
                     )
                 except Exception:
                     pass
@@ -382,14 +419,18 @@ try:
                     import ota_telemetry
 
                     outcome = "failed" if ota_error else "no_upgrade"
-                    ota_telemetry.report_boot_ota(
-                        outcome,
-                        fw_target=ota_target,
-                        max_s=max_s,
-                        prefer_wifi=prefer_wifi,
-                        error=ota_error,
-                        elapsed_s=elapsed,
-                        source="main.boot",
+                    ota_telemetry.queue_result(
+                        {
+                            "outcome": outcome,
+                            "source": "main.boot",
+                            "fw_target": ota_target,
+                            "max_s": max_s,
+                            "prefer_wifi": prefer_wifi,
+                            "error": (
+                                str(ota_error)[:300] if ota_error else None
+                            ),
+                            "elapsed_s": elapsed,
+                        }
                     )
                 except Exception:
                     pass
@@ -400,7 +441,10 @@ try:
                 import ota_health
 
                 ota_health.record_boot_ota_result(
-                    False, error=exc, outcome="boot_exception"
+                    False,
+                    error=exc,
+                    outcome="boot_exception",
+                    emit=False,
                 )
                 if ota_health.terminal_ota_error(exc):
                     remote_boot_config.pause_after_terminal_ota_failure(exc)
@@ -426,12 +470,14 @@ try:
             try:
                 import ota_telemetry
 
-                ota_telemetry.report_boot_ota(
-                    "failed",
-                    max_s=max_s,
-                    prefer_wifi=prefer_wifi,
-                    error=exc,
-                    source="main.boot",
+                ota_telemetry.queue_result(
+                    {
+                        "outcome": "failed",
+                        "source": "main.boot",
+                        "max_s": max_s,
+                        "prefer_wifi": prefer_wifi,
+                        "error": str(exc)[:300],
+                    }
                 )
             except Exception:
                 pass
@@ -446,6 +492,8 @@ try:
             pass
 except Exception as exc:
     print("OTA config unavailable:", exc)
+
+_release_ota_tls_reserve()
 
 try:
     import resilience

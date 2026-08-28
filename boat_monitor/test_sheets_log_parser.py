@@ -82,6 +82,11 @@ def run():
         'note == "ble_log_now"' in log_method
         and "_suppress_optional_ota_flush" in source,
     )
+    check(
+        "failed Power_Log suppresses optional OTA backlog",
+        "self._last_power_success\n                and not getattr("
+        in source,
+    )
 
     fake_wifi = types.ModuleType("wifi_uplink")
     fake_wifi.load_networks = lambda: [("Dock", "password")]

@@ -1,26 +1,30 @@
 {
-  "version": "1.1.169",
-  "notes": "Avoid CYW43 deinit during Wi-Fi/BLE handoff; honor explicit OTA.",
+  "version": "1.1.170",
+  "notes": "Reserve contiguous TLS heap; queue OTA telemetry and reboot immediately.",
   "files": [
     {
-      "path": "ble_service.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ble_service.py"
+      "path": "log_session.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/log_session.py"
     },
     {
       "path": "main.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
     },
     {
-      "path": "remote_boot_config.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+      "path": "ota.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota.py"
+    },
+    {
+      "path": "ota_health.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_health.py"
+    },
+    {
+      "path": "ota_trace.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_trace.py"
     },
     {
       "path": "sheets_log.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
-    },
-    {
-      "path": "wifi_uplink.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/wifi_uplink.py"
     },
     {
       "path": "version.py",

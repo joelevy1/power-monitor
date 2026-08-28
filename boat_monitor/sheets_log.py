@@ -379,7 +379,10 @@ class SheetsLogger:
             self._data_open = False
             actions = getattr(self, "_last_remote_actions", None) or []
             self._last_remote_actions = []
-            if not getattr(self, "_suppress_optional_ota_flush", False):
+            if (
+                self._last_power_success
+                and not getattr(self, "_suppress_optional_ota_flush", False)
+            ):
                 try:
                     import ota_events_flush
 
@@ -411,7 +414,10 @@ class SheetsLogger:
         device = getattr(self, "_last_device", None) or "boat-p2"
         if actions and ("ota" in actions or "reboot" in actions):
             pass
-        if not getattr(self, "_suppress_optional_ota_flush", False):
+        if (
+            self._last_power_success
+            and not getattr(self, "_suppress_optional_ota_flush", False)
+        ):
             try:
                 import ota_events_flush
 

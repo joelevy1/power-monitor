@@ -128,6 +128,13 @@ def upload(device="boat-p2", outcome="unknown", prefer_wifi=None, max_total_s=45
         return False
 
 
+def queue(device="boat-p2", outcome="unknown", **extra):
+    """Persist trace for a later normal session without opening a transport."""
+    detail = build_detail(outcome, **extra)
+    _queue_pending(detail, device)
+    return True
+
+
 def _queue_pending(detail, device):
     try:
         import ujson as json
