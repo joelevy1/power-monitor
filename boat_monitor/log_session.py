@@ -20,6 +20,7 @@ def log_power_and_gps(
     ble_monitor=None,
     wifi_handoff=None,
     periodic_cellular_sync=False,
+    before_network=None,
 ):
     """Log Power_Log + GPS_Log, optionally handing Wi-Fi radio control to BLE."""
     import sheets_log
@@ -94,6 +95,8 @@ def log_power_and_gps(
                     log_note = gpio_probe.enrich_note(session_note, status)
                 except Exception:
                     log_note = session_note
+                if before_network is not None:
+                    before_network()
                 summary = logger.log_power_and_gps(
                     device=status["device"],
                     mode=status["mode"],
@@ -125,6 +128,8 @@ def log_power_and_gps(
                 logger.close_data(mode=log_mode)
 
         if prefer_wifi and not _wifi_uplink_configured():
+            if before_network is not None:
+                before_network()
             msg = "power: failed: no Wi-Fi networks on Pico, gps: skipped"
             print("log_power_and_gps:", msg)
             try:

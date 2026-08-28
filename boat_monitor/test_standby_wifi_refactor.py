@@ -147,12 +147,16 @@ def test_log_session_uses_optional_handoff_without_bluetooth():
         return fn()
 
     result = log_session.log_power_and_gps(
-        "host_test", ble_monitor=monitor, wifi_handoff=handoff
+        "host_test",
+        ble_monitor=monitor,
+        wifi_handoff=handoff,
+        before_network=lambda: calls.append(("release", None)),
     )
     assert result == "power: ok, gps: ok"
     assert calls == [
         ("handoff", None),
         ("logger", True),
+        ("release", None),
         ("log", "host_test"),
         ("close", "docked_off"),
     ]
@@ -185,6 +189,7 @@ def test_standby_manifest_mode_is_complete_and_version_last():
     assert "with open(STANDBY_AFTER_LOG_PATH" in dock_log
     assert "_dock_resilience.set_service_hook(_dock_log_deadline)" in dock_log
     assert "periodic_cellular_sync=True" in dock_log
+    assert "before_network=_release_ota_tls_reserve" in dock_log
     assert dock_log.index("_dock_wifi.ensure_wifi_off()") < dock_log.index(
         "_dock_machine.reset()"
     )

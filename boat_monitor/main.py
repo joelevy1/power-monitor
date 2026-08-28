@@ -48,7 +48,6 @@ except Exception:
     pass
 
 if _dock_log_requested:
-    _release_ota_tls_reserve()
     # Consume the request before networking. If the deadline/watchdog resets,
     # the next boot enters idle standby rather than retrying in a tight loop.
     try:
@@ -94,6 +93,7 @@ if _dock_log_requested:
             prefer_wifi=True,
             ble_monitor=None,
             periodic_cellular_sync=True,
+            before_network=_release_ota_tls_reserve,
         )
         print("dock log handoff:", _dock_result)
     except Exception as _dock_exc:

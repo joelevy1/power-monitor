@@ -3,6 +3,10 @@
   "notes": "Reserve contiguous TLS heap; queue OTA telemetry and reboot immediately.",
   "files": [
     {
+      "path": "log_session.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/log_session.py"
+    },
+    {
       "path": "main.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/main.py"
     },
@@ -17,6 +21,10 @@
     {
       "path": "ota_trace.py",
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/ota_trace.py"
+    },
+    {
+      "path": "sheets_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
     },
     {
       "path": "version.py",

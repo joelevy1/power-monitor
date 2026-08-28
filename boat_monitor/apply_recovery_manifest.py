@@ -252,10 +252,12 @@ RADIO_TEARDOWN_PATHS = (
 )
 
 OTA_IMMEDIATE_REBOOT_PATHS = (
+    "log_session.py",
     "main.py",
     "ota.py",
     "ota_health.py",
     "ota_trace.py",
+    "sheets_log.py",
     "version.py",
 )
 
@@ -469,7 +471,7 @@ def main(argv=None):
     p.add_argument(
         "--ota-immediate-reboot",
         action="store_true",
-        help="5-file reserved-heap and telemetry-free OTA reboot release",
+        help="7-file reserved-heap and telemetry-free OTA/log release",
     )
     args = p.parse_args(argv)
     if args.ota_immediate_reboot:
