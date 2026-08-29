@@ -30,7 +30,10 @@ from wifi_uplink import ensure_wifi_off
 # Faster connectable advertising (µs). 128 ms is aggressive but helps iOS find/connect.
 BLE_ADV_INTERVAL_US = 128000
 BLE_ADV_REFRESH_MS = 15000
-BLE_CONNECTED_SENSOR_REFRESH_MS = 5000
+# Keep connected status feeling live without making the app issue overlapping
+# refresh commands. Dock standby is unaffected because BLE is off there.
+BLE_CONNECTED_STATUS_TICK_S = 2
+BLE_CONNECTED_SENSOR_REFRESH_MS = 2000
 BLE_ADV_FAILURE_RESET_COUNT = 3
 BLE_NOTIFY_FAILURE_LIMIT = 3
 BLE_CONNECT_MIN_HEAP_BYTES = 60000
@@ -628,7 +631,7 @@ class BoatMonitorBle:
 
     def run(self):
         while True:
-            tick_s = 5 if self.connections else 2
+            tick_s = BLE_CONNECTED_STATUS_TICK_S if self.connections else 2
             if (
                 not self.connections
                 and time.ticks_diff(
