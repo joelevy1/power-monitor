@@ -8,16 +8,12 @@ def main():
     source = (
         Path(__file__).resolve().parent / "apps_script" / "Code.gs"
     ).read_text(encoding="utf-8")
-    assert "var RECEIVER_VERSION = 7;" in source
-    assert "return jsonOutput_(result);" in source
+    assert "var RECEIVER_VERSION = 6;" in source
     json_output = source.split("function jsonOutput_(body)", 1)[1].split(
         "function handleDashboardGet_", 1
     )[0]
-    assert "HtmlService.createHtmlOutput(text)" in json_output
-    assert ".createTextOutput(" not in json_output
-    assert ".replace(/&/g, '\\\\u0026')" in json_output
-    assert ".replace(/</g, '\\\\u003c')" in json_output
-    assert ".replace(/>/g, '\\\\u003e')" in json_output
+    assert "ContentService" in json_output
+    assert ".createTextOutput(JSON.stringify(body))" in json_output
     assert "body.consume_commands === true" in source
     assert "legacyResponseCapable" in source
     assert "uplink === 'cellular'" in source

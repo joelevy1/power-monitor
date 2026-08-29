@@ -1,6 +1,6 @@
 {
   "version": "1.1.175",
-  "notes": "Direct Apps Script responses, acknowledged Wi-Fi commands, and portable sensor calibration.",
+  "notes": "Portable sensor calibration, stable Apps Script endpoint, and reusable acceptance checks.",
   "files": [
     {
       "path": "sensor_calibration.py",

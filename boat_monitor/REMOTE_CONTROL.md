@@ -2,9 +2,11 @@
 
 You can change boat behavior **from the spreadsheet** without visiting the Pico. Every successful **log POST** (auto-log or Log Now) returns a `commands` object from Apps Script; firmware applies it before the next sleep interval.
 
-**Requires:** Apps Script receiver **v7+** for a direct `/exec` response and
-reliable Wi-Fi command acknowledgement. Deploy it as a **new Web App version**
-(see `APPS_SCRIPT_SETUP.md`).
+**Requires:** Apps Script receiver **v6+** for command-consumption
+acknowledgement. Deploy it as a **new Web App version** (see
+`APPS_SCRIPT_SETUP.md`). A one-TLS Wi-Fi POST records data but deliberately
+does not consume commands because Apps Script's response body is behind a
+redirect; command reads require the configured control-sync path.
 
 ## Config tab
 

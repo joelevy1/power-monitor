@@ -819,8 +819,8 @@ def split_url(url):
 # A GET/POST to a URL answering with one of these should be re-requested
 # against its Location header instead of treated as the final response --
 # same convention cellular.py's Sim7600Modem client follows. Apps Script
-# receiver v7 uses HtmlService for a direct 200; redirects remain supported
-# for older ContentService deployments and other HTTP endpoints.
+# ContentService requires this redirect; HtmlService's direct 200 is a large
+# sandboxed HTML document rather than a usable raw-JSON response.
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 MAX_REDIRECTS = 5
 APPS_SCRIPT_ACCEPTED_REDIRECT_KEY = "_apps_script_redirect_accepted"

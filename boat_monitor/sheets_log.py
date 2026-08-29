@@ -476,11 +476,10 @@ class SheetsLogger:
             "tab": tab,
             "token": self.token,
             "data": data,
-            # Receiver v7 responds directly from /exec, so Wi-Fi can read and
-            # acknowledge commands without opening a second TLS connection.
-            # Older deployments are followed normally instead of accepting a
-            # bodyless redirect, preserving command delivery during rollout.
-            "consume_commands": True,
+            # Apps Script must clear one-shots only when this transport reads
+            # its JSON response. Trusted one-TLS Wi-Fi redirects intentionally
+            # do not, so those posts preserve pending commands for cellular.
+            "consume_commands": not bool(self._wifi_ssid),
         }
         last_exc = None
         for attempt in range(2):
@@ -516,7 +515,7 @@ class SheetsLogger:
                     response_text = wifi_uplink.WifiHttp().http_post_json(
                         self.url,
                         body_text,
-                        accept_apps_script_redirect=False,
+                        accept_apps_script_redirect=True,
                     )
                 else:
                     from cellular import CellularError

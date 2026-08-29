@@ -182,7 +182,7 @@ def test_synthetic_response_never_applies_commands():
     assert sync_logger.uplink_label() == "cellular_control_sync"
 
 
-def test_wifi_log_row_requires_direct_response_body():
+def test_wifi_log_row_requests_bodyless_apps_script_mode():
     calls = []
     synthetic = {
         "_apps_script_redirect_accepted": True,
@@ -207,8 +207,8 @@ def test_wifi_log_row_requires_direct_response_body():
         logger._wifi_ssid = "DockNet"
         result = logger.log_row("Events", {"device": "boat-p2"})
         assert result is synthetic
-        assert calls[0][2]["accept_apps_script_redirect"] is False
-        assert '"consume_commands": true' in calls[0][1]
+        assert calls[0][2]["accept_apps_script_redirect"] is True
+        assert '"consume_commands": false' in calls[0][1]
     finally:
         if old is None:
             sys.modules.pop("wifi_uplink", None)
@@ -413,7 +413,7 @@ def main():
     test_trusted_redirect_acceptance_is_one_tls()
     test_untrusted_and_default_redirects_are_followed()
     test_synthetic_response_never_applies_commands()
-    test_wifi_log_row_requires_direct_response_body()
+    test_wifi_log_row_requests_bodyless_apps_script_mode()
     test_counter_persistence_nth_selection_and_return_to_wifi()
     test_remote_setting_is_bounded_and_zero_disables()
     print("one-TLS control sync tests OK")

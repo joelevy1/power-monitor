@@ -84,9 +84,9 @@ def _sleep_with_watchdog(seconds):
 HTTP_CMD_TIMEOUT_MS = 120000
 
 # Apps Script ContentService responses redirect to a googleusercontent.com
-# URL. Receiver v7 uses HtmlService for a direct 200, but redirect support is
-# retained for older deployments and unrelated HTTP endpoints. The legacy
-# behavior was confirmed on real hardware: AT+HTTPACTION returned
+# URL. HtmlService returns 200 but wraps output in a large sandbox document,
+# so it is not a raw-JSON substitute. Redirect support is therefore required
+# for this endpoint. The behavior was confirmed on real hardware: AT+HTTPACTION returned
 # "1,302,0" (status 302, zero-length body -- nothing for AT+HTTPREAD to
 # read). This is normal, expected Apps Script behavior, not an error. It
 # was invisible from the PC-side test (apps_script_test.py) because

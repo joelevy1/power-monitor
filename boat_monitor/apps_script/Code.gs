@@ -31,7 +31,7 @@
  * Saving Code.gs alone does NOT update the live /exec URL the Pico uses.
  */
 
-var RECEIVER_VERSION = 7;
+var RECEIVER_VERSION = 6;
 var TIMESTAMP_DISPLAY_FORMAT = 'mmm d, yyyy h:mm AM/PM';
 var CONFIG_TAB = 'Config';
 
@@ -42,7 +42,9 @@ function doPost(e) {
   } catch (err) {
     result = { ok: false, error: String(err) };
   }
-  return jsonOutput_(result);
+  return ContentService
+    .createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doGet(e) {
@@ -64,16 +66,9 @@ function doGet(e) {
 }
 
 function jsonOutput_(body) {
-  // ContentService always redirects /exec responses to googleusercontent.com.
-  // HtmlService returns the body directly from /exec. Its MIME type is
-  // text/html, but every client deliberately parses the response text as JSON.
-  // Escape HTML-significant characters so untrusted sheet/config text cannot
-  // be interpreted as markup if this endpoint is opened in a browser.
-  var text = JSON.stringify(body)
-    .replace(/&/g, '\\u0026')
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e');
-  return HtmlService.createHtmlOutput(text);
+  return ContentService
+    .createTextOutput(JSON.stringify(body))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function handleDashboardGet_(params) {
