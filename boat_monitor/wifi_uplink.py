@@ -818,14 +818,9 @@ def split_url(url):
 
 # A GET/POST to a URL answering with one of these should be re-requested
 # against its Location header instead of treated as the final response --
-# same convention cellular.py's Sim7600Modem client now follows, added for
-# the identical reason: Google Apps Script Web Apps (script.google.com/
-# .../exec, used by sheets_log.py) ALWAYS answer with a 302 to a
-# script.googleusercontent.com URL carrying the real response. This path
-# is currently untested on real hardware (no Wi-Fi network configured yet
-# -- see wifi_uplink: no networks configured in the boot log) but would
-# hit the exact same bug the moment it were used, so it's fixed here too
-# rather than waiting to rediscover it later.
+# same convention cellular.py's Sim7600Modem client follows. Apps Script
+# receiver v7 uses HtmlService for a direct 200; redirects remain supported
+# for older ContentService deployments and other HTTP endpoints.
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 MAX_REDIRECTS = 5
 APPS_SCRIPT_ACCEPTED_REDIRECT_KEY = "_apps_script_redirect_accepted"

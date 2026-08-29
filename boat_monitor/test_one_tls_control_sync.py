@@ -9,7 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-if "boat_status" not in sys.modules:
+_original_boat_status = sys.modules.get("boat_status")
+if _original_boat_status is None:
     boat_status = types.ModuleType("boat_status")
     boat_status.read_status = lambda: {}
     sys.modules["boat_status"] = boat_status
@@ -18,6 +19,9 @@ import log_session
 import remote_boot_config
 import sheets_log
 import wifi_uplink
+
+if _original_boat_status is None:
+    sys.modules.pop("boat_status", None)
 
 
 REDIRECT = (
@@ -178,7 +182,7 @@ def test_synthetic_response_never_applies_commands():
     assert sync_logger.uplink_label() == "cellular_control_sync"
 
 
-def test_wifi_log_row_requests_bodyless_apps_script_mode():
+def test_wifi_log_row_requires_direct_response_body():
     calls = []
     synthetic = {
         "_apps_script_redirect_accepted": True,
@@ -203,7 +207,8 @@ def test_wifi_log_row_requests_bodyless_apps_script_mode():
         logger._wifi_ssid = "DockNet"
         result = logger.log_row("Events", {"device": "boat-p2"})
         assert result is synthetic
-        assert calls[0][2]["accept_apps_script_redirect"] is True
+        assert calls[0][2]["accept_apps_script_redirect"] is False
+        assert '"consume_commands": true' in calls[0][1]
     finally:
         if old is None:
             sys.modules.pop("wifi_uplink", None)
@@ -408,7 +413,7 @@ def main():
     test_trusted_redirect_acceptance_is_one_tls()
     test_untrusted_and_default_redirects_are_followed()
     test_synthetic_response_never_applies_commands()
-    test_wifi_log_row_requests_bodyless_apps_script_mode()
+    test_wifi_log_row_requires_direct_response_body()
     test_counter_persistence_nth_selection_and_return_to_wifi()
     test_remote_setting_is_bounded_and_zero_disables()
     print("one-TLS control sync tests OK")

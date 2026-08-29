@@ -38,6 +38,10 @@ except (ImportError, SyntaxError):
 
 REMOTE_CONFIG_STATE_PATH = "remote_config_event_state.json"
 MAX_EVENT_DETAIL_CHARS = 1500
+DEFAULT_APPS_SCRIPT_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbyySDCjEf0qJcfwdlZkhOU21v10qgYGnOWi0mk3AgBxZy6n_sRf59KZFc8xn6lwNWctlg/exec"
+)
 
 
 class SheetsLogError(Exception):
@@ -128,7 +132,11 @@ class SheetsLogger:
         keep_wifi_connected=None,
         cellular_control_sync=False,
     ):
-        self.url = url if url is not None else _config_value("GOOGLE_APPS_SCRIPT_URL")
+        self.url = (
+            url
+            if url is not None
+            else (_config_value("GOOGLE_APPS_SCRIPT_URL") or DEFAULT_APPS_SCRIPT_URL)
+        )
         self.token = token if token is not None else _config_value("SHEETS_POST_TOKEN")
         if not self.url:
             raise SheetsLogError(
@@ -468,10 +476,11 @@ class SheetsLogger:
             "tab": tab,
             "token": self.token,
             "data": data,
-            # Apps Script must clear one-shots only when this transport reads
-            # its JSON response. Trusted one-TLS Wi-Fi redirects intentionally
-            # do not, so those posts preserve pending commands for cellular.
-            "consume_commands": not bool(self._wifi_ssid),
+            # Receiver v7 responds directly from /exec, so Wi-Fi can read and
+            # acknowledge commands without opening a second TLS connection.
+            # Older deployments are followed normally instead of accepting a
+            # bodyless redirect, preserving command delivery during rollout.
+            "consume_commands": True,
         }
         last_exc = None
         for attempt in range(2):
@@ -507,7 +516,7 @@ class SheetsLogger:
                     response_text = wifi_uplink.WifiHttp().http_post_json(
                         self.url,
                         body_text,
-                        accept_apps_script_redirect=True,
+                        accept_apps_script_redirect=False,
                     )
                 else:
                     from cellular import CellularError

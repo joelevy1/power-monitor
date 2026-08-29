@@ -66,8 +66,12 @@ def run():
         encoding="utf-8"
     )
     check(
-        "Wi-Fi posts preserve unacknowledged commands",
-        '"consume_commands": not bool(self._wifi_ssid)' in source,
+        "direct responses acknowledge commands on every uplink",
+        '"consume_commands": True' in source,
+    )
+    check(
+        "Wi-Fi requires a response body during receiver rollout",
+        "accept_apps_script_redirect=False" in source,
     )
     log_method = source.split("def log_power_and_gps(", 1)[1].split(
         "def log_gps_now(", 1
