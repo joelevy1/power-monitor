@@ -88,6 +88,21 @@ def run():
     assert soft_calls[0].kwargs["sda"].number == 4
     assert soft_calls[0].kwargs["scl"].number == 5
 
+    class Ina260Bus:
+        registers = {
+            0x01: (65536 - 800),  # -1.000 A
+            0x02: 10000,          # 12.500 V
+            0x03: 123,            # 1.230 W
+        }
+
+        def readfrom_mem(self, _addr, reg, _length):
+            return self.registers[reg].to_bytes(2, "big")
+
+    ina260 = soft_module.INA260(Ina260Bus())
+    assert ina260.voltage_v() == 12.5
+    assert ina260.current_a() == -1.0
+    assert ina260.power_w() == 1.23
+
     fallback_module, fallback_calls = load_boat_status(with_soft_i2c=False)
     fallback = fallback_module.read_v50()
     assert fallback["ok"] is True, fallback
@@ -118,6 +133,24 @@ def run():
     assert populated["v50"]["v"] == 5.1
     assert len(sensor_reads) == 2
     assert sensor_reads[0][4] == 1.01
+    assert {
+        "device",
+        "fw",
+        "mode",
+        "inputs",
+        "note",
+        "engine",
+        "house",
+        "v50",
+    }.issubset(populated)
+    assert set(populated["inputs"]) == {
+        "switch",
+        "key",
+        "mid_bilge",
+        "aft_bilge",
+        "mid_float",
+        "aft_float",
+    }
 
     sensor_reads.clear()
     cached = soft_module.read_status(sensors=False)
