@@ -59,6 +59,13 @@ Verify from a PC:
 curl -sL "$GOOGLE_APPS_SCRIPT_URL" | python3 -m json.tool
 ```
 
+Apps Script `ContentService` necessarily redirects `/exec` to a temporary
+`script.googleusercontent.com` URL. `HtmlService` can return HTTP 200, but
+Google wraps it in a large sandbox document rather than returning raw JSON.
+Therefore it is not a safe no-redirect substitute for the Pico. A direct raw
+JSON response requires a separate endpoint such as Cloud Run or Cloud
+Functions. The Pico transports retain bounded redirect handling.
+
 You want `"receiver_version": 3` (or higher) for remote Config commands on each log POST (see `REMOTE_CONTROL.md`). Version `2` logs rows only. **Version `4`+** adds `GET ?action=dashboard&token=...` for the iOS app’s away-from-boat view. If that field is missing,
 the live deployment is still old and new log rows will keep ISO text
 timestamps until you redeploy.

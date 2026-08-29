@@ -2,7 +2,11 @@
 
 You can change boat behavior **from the spreadsheet** without visiting the Pico. Every successful **log POST** (auto-log or Log Now) returns a `commands` object from Apps Script; firmware applies it before the next sleep interval.
 
-**Requires:** Apps Script **receiver v3** (`RECEIVER_VERSION = 3` in `Code.gs`) deployed as a **new Web App version** (see `APPS_SCRIPT_SETUP.md`). Pico firmware with `remote_control.py` (OTA **1.1.7+**).
+**Requires:** Apps Script receiver **v6+** for command-consumption
+acknowledgement. Deploy it as a **new Web App version** (see
+`APPS_SCRIPT_SETUP.md`). A one-TLS Wi-Fi POST records data but deliberately
+does not consume commands because Apps Script's response body is behind a
+redirect; command reads require the configured control-sync path.
 
 ## Config tab
 
@@ -22,6 +26,12 @@ Created by `sheets_bootstrap.py` — columns: `key` | `value` | `updated_utc` | 
 | `wifi_networks` | see below | Saves networks on the Pico (`wifi_sheet.json`); used on next Wi-Fi connect |
 | `boat-p2:v50_capacity_mah` | `13400` | V50 rated mAh (Pico + **Away** app % estimate) |
 | `boat-p2:v50_full_at_utc` | ISO time | **Mark bank full** — app button **Bank is 100% full**, or set this manually; Pico resets cumulative mAh on next log when it changes |
+
+Calibration keys are also persistent and device-prefix compatible:
+`engine_voltage_scale/offset`, `engine_current_scale/offset`,
+`house_voltage_scale/offset`, `house_current_scale/offset`, and
+`v50_voltage_scale/offset`, `v50_current_scale/offset`. See
+[`SENSOR_CALIBRATION.md`](./SENSOR_CALIBRATION.md); never enter guessed values.
 
 Use **`boat-p2:v50_capacity_mah` only** — do not set legacy `v50_capacity_wh`. Run `python3 sheets_config_cleanup.py` to remove empty `cmd_*` dupes and backup rows.
 

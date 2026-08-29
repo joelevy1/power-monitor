@@ -9,6 +9,11 @@ def main():
         Path(__file__).resolve().parent / "apps_script" / "Code.gs"
     ).read_text(encoding="utf-8")
     assert "var RECEIVER_VERSION = 6;" in source
+    json_output = source.split("function jsonOutput_(body)", 1)[1].split(
+        "function handleDashboardGet_", 1
+    )[0]
+    assert "ContentService" in json_output
+    assert ".createTextOutput(JSON.stringify(body))" in json_output
     assert "body.consume_commands === true" in source
     assert "legacyResponseCapable" in source
     assert "uplink === 'cellular'" in source

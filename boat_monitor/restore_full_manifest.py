@@ -17,6 +17,7 @@ RAW = "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_moni
 EXTRA_PATHS = (
     "ota_trace.py",
     "status_led.py",
+    "sensor_calibration.py",
 )
 
 

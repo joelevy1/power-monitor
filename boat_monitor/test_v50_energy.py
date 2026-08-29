@@ -49,6 +49,19 @@ def run():
     snap2 = mod.snapshot()
     assert snap2["mah_used"] == 0.0
 
+    mod.reset_full("2026-03-01T00:00:00Z")
+    idle = {"ok": True, "v": 5.0, "a": 0.019, "bank_idle": True}
+    mod.tick(idle)
+    clock.advance_s(3600)
+    mod.tick(idle)
+    assert mod.snapshot()["mah_used"] == 0.0
+
+    zero = {"ok": True, "v": 5.0, "a": 0.0}
+    mod.tick(zero)
+    clock.advance_s(3600)
+    mod.tick(zero)
+    assert mod.snapshot()["mah_used"] == 0.0
+
     if state_path.exists():
         state_path.unlink()
     print("v50_energy tests OK")

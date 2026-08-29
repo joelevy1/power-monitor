@@ -38,6 +38,10 @@ except (ImportError, SyntaxError):
 
 REMOTE_CONFIG_STATE_PATH = "remote_config_event_state.json"
 MAX_EVENT_DETAIL_CHARS = 1500
+DEFAULT_APPS_SCRIPT_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbyySDCjEf0qJcfwdlZkhOU21v10qgYGnOWi0mk3AgBxZy6n_sRf59KZFc8xn6lwNWctlg/exec"
+)
 
 
 class SheetsLogError(Exception):
@@ -128,7 +132,11 @@ class SheetsLogger:
         keep_wifi_connected=None,
         cellular_control_sync=False,
     ):
-        self.url = url if url is not None else _config_value("GOOGLE_APPS_SCRIPT_URL")
+        self.url = (
+            url
+            if url is not None
+            else (_config_value("GOOGLE_APPS_SCRIPT_URL") or DEFAULT_APPS_SCRIPT_URL)
+        )
         self.token = token if token is not None else _config_value("SHEETS_POST_TOKEN")
         if not self.url:
             raise SheetsLogError(

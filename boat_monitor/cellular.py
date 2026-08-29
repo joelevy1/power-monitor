@@ -83,10 +83,10 @@ def _sleep_with_watchdog(seconds):
 # too-short timeout would cause a real, in-progress transfer to be cut off.
 HTTP_CMD_TIMEOUT_MS = 120000
 
-# Google Apps Script Web Apps (the script.google.com/.../exec URL used by
-# sheets_log.py) ALWAYS answer with an HTTP redirect to a
-# script.googleusercontent.com URL that serves the actual doPost()/doGet()
-# response body -- confirmed on real hardware: AT+HTTPACTION returned
+# Apps Script ContentService responses redirect to a googleusercontent.com
+# URL. HtmlService returns 200 but wraps output in a large sandbox document,
+# so it is not a raw-JSON substitute. Redirect support is therefore required
+# for this endpoint. The behavior was confirmed on real hardware: AT+HTTPACTION returned
 # "1,302,0" (status 302, zero-length body -- nothing for AT+HTTPREAD to
 # read). This is normal, expected Apps Script behavior, not an error. It
 # was invisible from the PC-side test (apps_script_test.py) because

@@ -69,6 +69,10 @@ def run():
         "Wi-Fi posts preserve unacknowledged commands",
         '"consume_commands": not bool(self._wifi_ssid)' in source,
     )
+    check(
+        "Wi-Fi accepts trusted commit redirect without second TLS",
+        "accept_apps_script_redirect=True" in source,
+    )
     log_method = source.split("def log_power_and_gps(", 1)[1].split(
         "def log_gps_now(", 1
     )[0]

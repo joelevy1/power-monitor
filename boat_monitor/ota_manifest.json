@@ -1,10 +1,26 @@
 {
-  "version": "1.1.174",
-  "notes": "Validate and bound SIM7600 HTTP/TLS setup.",
+  "version": "1.1.175",
+  "notes": "Portable sensor calibration, stable Apps Script endpoint, and reusable acceptance checks.",
   "files": [
     {
-      "path": "cellular.py",
-      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/cellular.py"
+      "path": "sensor_calibration.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sensor_calibration.py"
+    },
+    {
+      "path": "config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/config.py"
+    },
+    {
+      "path": "remote_boot_config.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/remote_boot_config.py"
+    },
+    {
+      "path": "boat_status.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/boat_status.py"
+    },
+    {
+      "path": "sheets_log.py",
+      "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/sheets_log.py"
     },
     {
       "path": "version.py",

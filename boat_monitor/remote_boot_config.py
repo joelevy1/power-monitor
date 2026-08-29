@@ -12,6 +12,7 @@ Config tab keys (via Apps Script commands on each log POST):
   cmd_ota_force — one-shot: allow boot OTA / reboot when ota_degraded (cleared on success)
   keep_modem_awake_underway — 1|0: skip AT+CPOF after cellular log while underway
   cellular_control_sync_every_logs — periodic dock cellular command sync (0 disables)
+  *_voltage_scale/offset, *_current_scale/offset — bounded sensor calibration
 
 When the sheet requests OTA (min_fw_version, cmd_ota, …), remote_control sets
 pending_ota so the next boot runs ota.update() even if ota_config.py still
@@ -31,6 +32,20 @@ CELLULAR_CONTROL_SYNC_BACKOFF_KEY = "_cellular_control_sync_backoff_logs"
 CELLULAR_CONTROL_SYNC_IN_PROGRESS_KEY = "_cellular_control_sync_in_progress"
 CELLULAR_CONTROL_SYNC_FAILURE_BACKOFF_LOGS = 6
 BOOT_OTA_RETRY_LIMIT = 2
+CALIBRATION_LIMITS = {
+    "engine_voltage_scale": (0.5, 1.5),
+    "engine_voltage_offset": (-2.0, 2.0),
+    "engine_current_scale": (0.5, 1.5),
+    "engine_current_offset": (-5.0, 5.0),
+    "house_voltage_scale": (0.5, 1.5),
+    "house_voltage_offset": (-2.0, 2.0),
+    "house_current_scale": (0.5, 1.5),
+    "house_current_offset": (-5.0, 5.0),
+    "v50_voltage_scale": (0.5, 1.5),
+    "v50_voltage_offset": (-1.0, 1.0),
+    "v50_current_scale": (0.5, 1.5),
+    "v50_current_offset": (-2.0, 2.0),
+}
 
 
 def _truthy(value):
@@ -168,6 +183,17 @@ def apply_settings(settings):
                 applied.append("cellular_control_sync_every_logs=%s" % every)
         except (TypeError, ValueError):
             pass
+    for key, limits in CALIBRATION_LIMITS.items():
+        value = settings.get(key)
+        if value is None or str(value).strip() == "":
+            continue
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            continue
+        if limits[0] <= value <= limits[1]:
+            data[key] = value
+            applied.append("%s=%s" % (key, value))
     min_fw = settings.get("min_fw_version") or settings.get("target_fw_version")
     if min_fw is not None and str(min_fw).strip() != "":
         data["min_fw_version"] = str(min_fw).strip()

@@ -9,7 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-if "boat_status" not in sys.modules:
+_original_boat_status = sys.modules.get("boat_status")
+if _original_boat_status is None:
     boat_status = types.ModuleType("boat_status")
     boat_status.read_status = lambda: {}
     sys.modules["boat_status"] = boat_status
@@ -18,6 +19,9 @@ import log_session
 import remote_boot_config
 import sheets_log
 import wifi_uplink
+
+if _original_boat_status is None:
+    sys.modules.pop("boat_status", None)
 
 
 REDIRECT = (
@@ -204,6 +208,7 @@ def test_wifi_log_row_requests_bodyless_apps_script_mode():
         result = logger.log_row("Events", {"device": "boat-p2"})
         assert result is synthetic
         assert calls[0][2]["accept_apps_script_redirect"] is True
+        assert '"consume_commands": false' in calls[0][1]
     finally:
         if old is None:
             sys.modules.pop("wifi_uplink", None)

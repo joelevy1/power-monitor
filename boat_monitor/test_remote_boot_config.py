@@ -92,6 +92,22 @@ def main():
             assert state.get("boot_ota_fail_count") == 0
             _check("current_meets_min_fw")
 
+            _state()
+            applied = remote_boot_config.apply_settings(
+                {
+                    "engine_voltage_scale": "1.0125",
+                    "house_current_offset": "-0.08",
+                    "v50_current_scale": "9",
+                    "v50_voltage_offset": "not-a-number",
+                }
+            )
+            state = remote_boot_config.load()
+            assert state["engine_voltage_scale"] == 1.0125
+            assert state["house_current_offset"] == -0.08
+            assert "v50_current_scale" not in state
+            assert "v50_voltage_offset" not in state
+            assert "engine_voltage_scale=1.0125" in applied
+
             _state(
                 min_fw_version="999.0",
                 auto_ota_on_boot=True,
