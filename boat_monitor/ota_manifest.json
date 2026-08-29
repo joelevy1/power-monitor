@@ -27,5 +27,5 @@
       "url": "https://raw.githubusercontent.com/joelevy1/power-monitor/master/boat_monitor/version.py"
     }
   ],
-  "manifest_kind": "wifi-feature"
+  "manifest_kind": "bootstrap"
 }
