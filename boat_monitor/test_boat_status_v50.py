@@ -81,6 +81,9 @@ def run():
     assert result["raw_shunt"] == 3500, result
     assert result["raw_current"] == 320, result
     assert result["raw_calibration"] == 4096, result
+    assert result["raw_v"] == 5.0, result
+    assert result["raw_a"] == 0.032, result
+    assert result["raw_a_signed"] == 0.032, result
     assert [bus.kind for bus in soft_calls] == ["soft"], soft_calls
     assert soft_calls[0].kwargs["sda"].number == 4
     assert soft_calls[0].kwargs["scl"].number == 5
@@ -98,12 +101,23 @@ def run():
         return {"ok": True, "v": 12.4, "a": 0.2}
 
     soft_module.read_ina260 = fake_ina
-    soft_module.read_v50 = lambda: {"ok": True, "v": 5.1, "a": 0.03}
-    populated = soft_module.read_status(sensors=True)
+    soft_module.read_v50 = lambda *_args: {"ok": True, "v": 5.1, "a": 0.03}
+    old_remote = sys.modules.get("remote_boot_config")
+    sys.modules["remote_boot_config"] = types.SimpleNamespace(
+        load=lambda: {"engine_voltage_scale": 1.01}
+    )
+    try:
+        populated = soft_module.read_status(sensors=True)
+    finally:
+        if old_remote is None:
+            sys.modules.pop("remote_boot_config", None)
+        else:
+            sys.modules["remote_boot_config"] = old_remote
     assert populated["engine"]["v"] == 12.4
     assert populated["house"]["v"] == 12.4
     assert populated["v50"]["v"] == 5.1
     assert len(sensor_reads) == 2
+    assert sensor_reads[0][4] == 1.01
 
     sensor_reads.clear()
     cached = soft_module.read_status(sensors=False)

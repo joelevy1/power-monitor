@@ -10,6 +10,16 @@ INA260_ENGINE_ADDR = 0x40
 INA260_HOUSE_ADDR = 0x40
 INA219_V50_ADDR = 0x40
 
+# Linear calibration: corrected = raw * scale + offset.
+# Keep defaults unchanged until two reference measurements are recorded; see
+# SENSOR_CALIBRATION.md. These constants are portable to the Particle firmware.
+ENGINE_VOLTAGE_SCALE, ENGINE_VOLTAGE_OFFSET = 1.0, 0.0
+ENGINE_CURRENT_SCALE, ENGINE_CURRENT_OFFSET = 1.0, 0.0
+HOUSE_VOLTAGE_SCALE, HOUSE_VOLTAGE_OFFSET = 1.0, 0.0
+HOUSE_CURRENT_SCALE, HOUSE_CURRENT_OFFSET = 1.0, 0.0
+V50_VOLTAGE_SCALE, V50_VOLTAGE_OFFSET = 1.0, 0.0
+V50_CURRENT_SCALE, V50_CURRENT_OFFSET = 1.0, 0.0
+
 # TPS2113A
 PIN_TPS_STAT = 6    # phys 9
 PIN_TPS_VSNS = 11   # phys 15 — drive LOW

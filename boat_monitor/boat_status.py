@@ -8,6 +8,7 @@ except ImportError:
     SoftI2C = None
 
 import config as cfg
+import sensor_calibration
 
 try:
     import version
@@ -79,20 +80,47 @@ def v50_i2c_bus(sda, scl):
     return i2c_bus(sda, scl, 0)
 
 
-def read_ina260(sda, scl, bus_id, addr):
+def _calibration_value(overrides, key, config_name, default):
+    value = (overrides or {}).get(key, getattr(cfg, config_name, default))
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def read_ina260(
+    sda,
+    scl,
+    bus_id,
+    addr,
+    voltage_scale=1.0,
+    voltage_offset=0.0,
+    current_scale=1.0,
+    current_offset=0.0,
+):
     try:
         sensor = INA260(i2c_bus(sda, scl, bus_id), addr)
+        reading = sensor_calibration.calibrated_reading(
+            sensor.voltage_v(),
+            sensor.current_a(),
+            voltage_scale,
+            voltage_offset,
+            current_scale,
+            current_offset,
+        )
         return {
-            "v": round(sensor.voltage_v(), 3),
-            "a": round(sensor.current_a(), 4),
+            "v": round(reading["v"], 3),
+            "a": round(reading["a"], 4),
             "w": round(sensor.power_w(), 3),
+            "raw_v": round(reading["raw_v"], 4),
+            "raw_a": round(reading["raw_a"], 5),
             "ok": True,
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
-def read_v50():
+def read_v50(calibration=None):
     try:
         sensor = INA219(
             v50_i2c_bus(cfg.I2C_V50_SDA, cfg.I2C_V50_SCL),
@@ -101,12 +129,34 @@ def read_v50():
         raw_shunt = sensor._read_signed(0x01)
         raw_current = sensor._read_signed(0x04)
         raw_calibration = sensor._read(0x05)
-        a = round(abs(raw_current * 0.1) / 1000, 4)
-        v = round(sensor.voltage_v(), 3)
+        raw_a_signed = raw_current * 0.1 / 1000
+        raw_a = abs(raw_a_signed)
+        raw_v = sensor.voltage_v()
+        reading = sensor_calibration.calibrated_reading(
+            raw_v,
+            raw_a,
+            _calibration_value(
+                calibration, "v50_voltage_scale", "V50_VOLTAGE_SCALE", 1.0
+            ),
+            _calibration_value(
+                calibration, "v50_voltage_offset", "V50_VOLTAGE_OFFSET", 0.0
+            ),
+            _calibration_value(
+                calibration, "v50_current_scale", "V50_CURRENT_SCALE", 1.0
+            ),
+            _calibration_value(
+                calibration, "v50_current_offset", "V50_CURRENT_OFFSET", 0.0
+            ),
+        )
+        a = round(reading["a"], 4)
+        v = round(reading["v"], 3)
         result = {
             "v": v,
             "a": a,
             "ok": True,
+            "raw_v": round(raw_v, 4),
+            "raw_a": round(raw_a, 5),
+            "raw_a_signed": round(raw_a_signed, 5),
             "raw_shunt": raw_shunt,
             "raw_current": raw_current,
             "raw_calibration": raw_calibration,
@@ -158,20 +208,74 @@ def read_status(command_result=None, sensors=True):
         "note": "negative current means solar charging",
     }
     if sensors:
+        try:
+            import remote_boot_config
+
+            calibration = remote_boot_config.load()
+        except Exception:
+            calibration = {}
         _last_sensor_status = {
             "engine": read_ina260(
                 cfg.I2C_ENGINE_SDA,
                 cfg.I2C_ENGINE_SCL,
                 0,
                 cfg.INA260_ENGINE_ADDR,
+                _calibration_value(
+                    calibration,
+                    "engine_voltage_scale",
+                    "ENGINE_VOLTAGE_SCALE",
+                    1.0,
+                ),
+                _calibration_value(
+                    calibration,
+                    "engine_voltage_offset",
+                    "ENGINE_VOLTAGE_OFFSET",
+                    0.0,
+                ),
+                _calibration_value(
+                    calibration,
+                    "engine_current_scale",
+                    "ENGINE_CURRENT_SCALE",
+                    1.0,
+                ),
+                _calibration_value(
+                    calibration,
+                    "engine_current_offset",
+                    "ENGINE_CURRENT_OFFSET",
+                    0.0,
+                ),
             ),
             "house": read_ina260(
                 cfg.I2C_HOUSE_SDA,
                 cfg.I2C_HOUSE_SCL,
                 1,
                 cfg.INA260_HOUSE_ADDR,
+                _calibration_value(
+                    calibration,
+                    "house_voltage_scale",
+                    "HOUSE_VOLTAGE_SCALE",
+                    1.0,
+                ),
+                _calibration_value(
+                    calibration,
+                    "house_voltage_offset",
+                    "HOUSE_VOLTAGE_OFFSET",
+                    0.0,
+                ),
+                _calibration_value(
+                    calibration,
+                    "house_current_scale",
+                    "HOUSE_CURRENT_SCALE",
+                    1.0,
+                ),
+                _calibration_value(
+                    calibration,
+                    "house_current_offset",
+                    "HOUSE_CURRENT_OFFSET",
+                    0.0,
+                ),
             ),
-            "v50": read_v50(),
+            "v50": read_v50(calibration),
         }
     if _last_sensor_status:
         status.update(_last_sensor_status)
